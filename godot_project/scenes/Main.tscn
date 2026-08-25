@@ -16,6 +16,19 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 
+[node name="Announce" type="Label" parent="UI/Hud"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -400.0
+offset_top = 120.0
+offset_right = 400.0
+offset_bottom = 170.0
+grow_horizontal = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 30
+text = ""
+
 [node name="Info" type="Label" parent="UI/Hud"]
 offset_left = 12.0
 offset_top = 8.0
@@ -110,9 +123,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -230.0
-offset_top = -155.0
+offset_top = -195.0
 offset_right = 230.0
-offset_bottom = 155.0
+offset_bottom = 195.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -123,6 +136,25 @@ theme_override_constants/separation = 10
 horizontal_alignment = 1
 text = "ДжваГода — Этап 0
 сетевой фундамент"
+
+[node name="FactionRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
+theme_override_constants/separation = 8
+
+[node name="FactionLabel" type="Label" parent="UI/Menu/Panel/VBox/FactionRow"]
+custom_minimum_size = Vector2(100, 0)
+text = "Сторона"
+
+[node name="FactionOpt" type="OptionButton" parent="UI/Menu/Panel/VBox/FactionRow"]
+custom_minimum_size = Vector2(0, 40)
+size_flags_horizontal = 3
+selected = 0
+item_count = 3
+popup/item_0/text = "Злодей"
+popup/item_0/id = 0
+popup/item_1/text = "Лесные эльфы"
+popup/item_1/id = 1
+popup/item_2/text = "Охрана дворца"
+popup/item_2/id = 2
 
 [node name="TransportRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
 theme_override_constants/separation = 8

@@ -69,11 +69,17 @@ func _test_harvest(me: Node3D, kind: int, label: String) -> void:
 		_check(false, label, "источник не найден на карте")
 		return
 
-	# Встаём вплотную и поворачиваемся к источнику.
+	# Встаём у КРАЯ источника, а не в двух метрах от его центра: горы у злодея
+	# бывают шириной в десятки метров, и такая точка оказывается внутри скалы.
+	var reach := 2.0
+	for child in source.get_children():
+		if child is MeshInstance3D:
+			var box: AABB = (child as MeshInstance3D).get_aabb()
+			reach = maxf(reach, maxf(box.size.x, box.size.z) * 0.5 + 1.6)
 	var to_source := source.global_position - me.global_position
 	to_source.y = 0.0
 	var dir := to_source.normalized()
-	me.global_position = source.global_position - dir * 2.0
+	me.global_position = source.global_position - dir * reach
 	me.global_position.y = 2.0
 	me.sync_position = me.global_position
 	me.rotation.y = atan2(-dir.x, -dir.z)

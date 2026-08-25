@@ -20,6 +20,7 @@ const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 
 const MODELS := [
@@ -91,6 +92,8 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 
 var peer_id := 1
 var spawn_slot := 0
+## Сторона игрока. Приезжает данными спавна, поэтому одинакова на всех пирах.
+var faction := 0
 var control_enabled := true
 var scripted_input := {}
 
@@ -128,15 +131,16 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	var slot := clampi(spawn_slot, 0, SPAWN_POINTS.size() - 1)
-	var spawn := SPAWN_POINTS[slot]
+	var spawn := faction_spawn()
 	global_position = spawn
 	sync_position = spawn
 	sync_yaw = rotation.y
+	sync_weapon = FACTIONS.default_weapon(faction)
 
-	_build_model(slot)
+	# Внешность выбираем по стороне, чтобы фракции различались в лицо.
+	_build_model(clampi(faction, 0, MODELS.size() - 1))
 	_spring.add_excluded_object(get_rid())
-	_name_tag.text = "ХОСТ (1)" if peer_id == 1 else "ИГРОК (%d)" % peer_id
+	_name_tag.text = "%s (%d)" % [FACTIONS.name_of(faction), peer_id]
 
 	var mine := is_multiplayer_authority()
 	_camera.current = mine
@@ -328,12 +332,14 @@ func _update_attack(delta: float) -> void:
 	if not control_enabled or not health.alive:
 		return
 
+	# Оружие переключаем только среди разрешённого стороне: у эльфов и стражи
+	# нет атакующей магии (DESIGN_ANSWERS.md, пункт 18).
 	if Input.is_action_just_pressed("weapon_1"):
-		sync_weapon = WEAPONS.Kind.SWORD
+		_select_weapon(WEAPONS.Kind.SWORD)
 	elif Input.is_action_just_pressed("weapon_2"):
-		sync_weapon = WEAPONS.Kind.BOW
+		_select_weapon(WEAPONS.Kind.BOW)
 	elif Input.is_action_just_pressed("weapon_3"):
-		sync_weapon = WEAPONS.Kind.SPELL
+		_select_weapon(WEAPONS.Kind.SPELL)
 
 	var wants: bool = scripted_input.get("attack", false)
 	if not wants and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -360,6 +366,8 @@ func _update_attack(delta: float) -> void:
 ## Деревянный протез руки годится только для ближнего боя: лук и заклинания
 ## требуют полноценной кисти (GDD раздел 4 — «ограничены действия»).
 func _weapon_allowed(kind: int) -> bool:
+	if not FACTIONS.allows_weapon(faction, kind):
+		return false
 	if kind == WEAPONS.Kind.SWORD:
 		return body.can_attack_melee()
 	return body.can_attack_ranged()
@@ -581,8 +589,7 @@ func set_dead(dead: bool) -> void:
 
 
 func respawn_at_slot() -> void:
-	var slot := clampi(spawn_slot, 0, SPAWN_POINTS.size() - 1)
-	teleport.rpc(SPAWN_POINTS[slot])
+	teleport.rpc(faction_spawn())
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -977,3 +984,27 @@ func request_train_unit() -> void:
 	var radius: float = 3.0 + float(index) * 0.45
 	var offset := Vector3(cos(angle) * radius, 1.0, 9.0 + sin(angle) * radius)
 	world.spawn_unit(peer_id, index, barracks.global_position + offset)
+
+
+# --- фракция --------------------------------------------------------------
+
+## Где сторона появляется. Слот разводит нескольких игроков одной стороны,
+## хотя в срезе стороны в сессии уникальны.
+func faction_spawn() -> Vector3:
+	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
+	return base + Vector3(float(spawn_slot) * 3.0, 0.0, 0.0)
+
+
+func _select_weapon(kind: int) -> void:
+	if FACTIONS.allows_weapon(faction, kind):
+		sync_weapon = kind
+
+
+## Есть ли у стороны стратегический режим. Только у злодея
+## (DESIGN_ANSWERS.md, пункт 19).
+func has_strategy() -> bool:
+	return FACTIONS.has_strategy(faction)
+
+
+func can_build() -> bool:
+	return FACTIONS.can_build(faction)

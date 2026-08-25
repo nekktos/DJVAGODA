@@ -26,6 +26,7 @@ const CARAVAN_SCENE := preload("res://scenes/Caravan.tscn")
 const LOOT_SCENE := preload("res://scenes/Loot.tscn")
 const UNIT_SCENE := preload("res://scenes/Unit.tscn")
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 
 ## Через сколько секунд после смерти игрок возвращается в мир.
 ## Временное правило (DESIGN_ANSWERS.md, пункт 10) — настоящие условия
@@ -55,6 +56,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var build_controller: Node3D = $BuildController
 @onready var route_controller: Node3D = $RouteController
 @onready var mine: Node3D = $Mine
+@onready var objective: Node3D = $Objective
 
 var strategy_mode := false
 
@@ -110,6 +112,10 @@ func local_player() -> Node3D:
 
 
 func toggle_camera_mode() -> void:
+	# Стратегический режим есть только у злодея (DESIGN_ANSWERS.md, пункт 19).
+	var player := local_player()
+	if player != null and not player.has_strategy():
+		return
 	set_strategy_mode(not strategy_mode)
 
 
@@ -144,11 +150,11 @@ func strategy_height() -> float:
 
 func _on_session_started() -> void:
 	if multiplayer.is_server():
-		_spawn_player(1)
+		_spawn_player(1, Net.chosen_faction)
 	else:
 		# Клиент сам просит хоста о спавне — к этому моменту его World точно
 		# готов принять реплицированную ноду.
-		_request_spawn.rpc_id(1)
+		_request_spawn.rpc_id(1, Net.chosen_faction)
 
 
 func _on_session_ended() -> void:
@@ -170,25 +176,39 @@ func _on_peer_disconnected(id: int) -> void:
 
 
 @rpc("any_peer", "reliable")
-func _request_spawn() -> void:
+func _request_spawn(wanted_faction: int) -> void:
 	if not multiplayer.is_server():
 		return
-	_spawn_player(multiplayer.get_remote_sender_id())
+	_spawn_player(multiplayer.get_remote_sender_id(), wanted_faction)
 
 
-func _spawn_player(id: int) -> void:
+func _spawn_player(id: int, wanted_faction: int = 0) -> void:
 	if _players.has_node(str(id)):
 		return
 	var slot := _next_free_slot()
 	if slot < 0:
 		push_warning("Сессия заполнена, игроку %d места нет." % id)
 		return
-	print("[world] спавню игрока %d в слот %d" % [id, slot])
-	var node := _spawner.spawn({"id": id, "slot": slot})
+
+	# Две одинаковые стороны в сессии запрещены (DESIGN_ANSWERS.md, пункт 3).
+	# Занятую заменяем ближайшей свободной и говорим об этом вслух, а не молча.
+	var faction := _assign_faction(wanted_faction)
+	if faction < 0:
+		push_warning("Свободных сторон не осталось, игроку %d места нет." % id)
+		return
+	if faction != wanted_faction:
+		Net.status_changed.emit("Сторона «%s» занята, игрок %d играет за «%s»." % [
+			FACTIONS.name_of(wanted_faction), id, FACTIONS.name_of(faction)
+		])
+
+	print("[world] спавню игрока %d, сторона %s, слот %d" % [id, FACTIONS.name_of(faction), slot])
+	var node := _spawner.spawn({"id": id, "slot": slot, "faction": faction})
 	if node != null:
 		# Сигналы нужны только хосту: и снаряды, и смерть считает он.
 		node.death_reported.connect(_on_player_death)
 		node.projectile_requested.connect(_on_projectile_requested)
+		# Стартовый запас по стороне: у злодея форт и шахта, эльфы живут грабежом.
+		node.stock.amounts = PackedInt32Array(FACTIONS.STARTING_RESOURCES[faction])
 
 
 ## Выполняется на всех пирах с одними и теми же данными, поэтому имя ноды и
@@ -198,6 +218,7 @@ func _make_player(data: Dictionary) -> Node:
 	# Имя == peer id: по нему персонаж на всех пирах определяет своего авторитета.
 	player.name = str(data["id"])
 	player.spawn_slot = int(data["slot"])
+	player.faction = int(data.get("faction", 0))
 	return player
 
 
@@ -254,6 +275,7 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
+	objective.report_death(int(player.faction), faction_of(killer_id))
 	_spawn_corpse(player)
 	player.set_dead.rpc(true)
 
@@ -475,3 +497,38 @@ func spawn_unit(owner_id: int, slot: int, point: Vector3) -> Node:
 	if node != null:
 		print("[отряд] игрок %d нанял мечника, слот %d" % [owner_id, slot])
 	return node
+
+
+# --- фракции ---------------------------------------------------------------
+
+## Какие стороны уже заняты в сессии.
+func taken_factions() -> Array:
+	var taken := []
+	for child in _players.get_children():
+		if "faction" in child:
+			taken.append(int(child.faction))
+	return taken
+
+
+func faction_of(peer: int) -> int:
+	var node := _players.get_node_or_null(str(peer))
+	return int(node.faction) if node != null and "faction" in node else -1
+
+
+## Выдать сторону: запрошенную, если свободна, иначе первую свободную.
+func _assign_faction(wanted: int) -> int:
+	var taken := taken_factions()
+	if wanted >= 0 and wanted < FACTIONS.COUNT and not taken.has(wanted):
+		return wanted
+	for i in FACTIONS.COUNT:
+		if not taken.has(i):
+			return i
+	return -1
+
+
+func players_of(faction: int) -> Array:
+	var found := []
+	for child in _players.get_children():
+		if "faction" in child and int(child.faction) == faction:
+			found.append(child)
+	return found

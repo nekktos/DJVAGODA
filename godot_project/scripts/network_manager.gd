@@ -43,6 +43,8 @@ signal session_ended
 var transport: Transport = Transport.ENET
 var is_host := false
 var active := false
+## Сторона, выбранная в меню до подключения. Хост проверит, свободна ли она.
+var chosen_faction := 0
 
 var _connect_timeout_left := 0.0
 var _steam_ready := false

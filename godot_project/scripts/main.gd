@@ -18,6 +18,8 @@ extends Node
 ##   --econtest      автопроверка добычи и стройки (headless)
 ##   --caravantest   автопроверка шахты, каравана и грабежа (headless)
 ##   --squadtest     автопроверка отряда и построений (headless)
+##   --slicetest     автопроверка вертикального среза (headless)
+##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
@@ -29,6 +31,10 @@ const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
+
+## Сколько секунд держится объявление о результате.
+const ANNOUNCE_SECONDS := 7.0
 
 @onready var _menu: Control = $UI/Menu
 @onready var _status: Label = $UI/Menu/Panel/VBox/Status
@@ -42,6 +48,8 @@ const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 @onready var _blind_right: ColorRect = $UI/Blind/Right
 @onready var _bench: Control = $UI/Bench
 @onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
+@onready var _announce: Label = $UI/Hud/Announce
+@onready var _faction_opt: OptionButton = $UI/Menu/Panel/VBox/FactionRow/FactionOpt
 
 
 func _ready() -> void:
@@ -53,6 +61,9 @@ func _ready() -> void:
 	_transport_opt.item_selected.connect(_on_transport_selected)
 	_ip_edit.text_submitted.connect(func(_t: String) -> void: _on_join_pressed())
 	_world.camera_mode_changed.connect(_on_camera_mode_changed)
+	_world.objective.announced.connect(_on_announced)
+	_faction_opt.item_selected.connect(func(index: int) -> void: Net.chosen_faction = index)
+	Net.chosen_faction = _faction_opt.selected
 
 	var bench := $UI/Bench/Panel/VBox
 	bench.get_node("Wooden").pressed.connect(_on_bench_prosthetic.bind(1))
@@ -70,7 +81,8 @@ func _ready() -> void:
 	_apply_cmdline()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_tick_announce(delta)
 	if not Net.active:
 		_hud.text = "Оффлайн"
 		return
@@ -82,6 +94,7 @@ func _process(_delta: float) -> void:
 	]
 	if Net.is_host and Net.transport == Net.Transport.STEAM:
 		line += "\nSteam ID для друга: %d   (F9 — скопировать)" % Net.local_steam_id()
+	line += "\n" + _objective_hint(_world.local_player())
 	if _world.strategy_mode:
 		line += "   высота: %d м" % int(_world.strategy_height())
 		var boss: Node3D = _world.local_player()
@@ -270,6 +283,18 @@ func _apply_cmdline() -> void:
 		var probe: Node = preload("res://tools/player_probe.gd").new()
 		add_child(probe)
 		probe.start(_world)
+		needs_session = true
+
+	for arg in args:
+		if arg.begins_with("--faction="):
+			var wanted := int(arg.substr("--faction=".length()))
+			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
+			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--slicetest"):
+		var slice: Node = preload("res://tools/slice_test.gd").new()
+		add_child(slice)
+		slice.start(_world)
 		needs_session = true
 
 	if args.has("--squadtest"):
@@ -469,3 +494,32 @@ func _squad_hint() -> String:
 		squad.size(), RES.SQUAD_LIMIT, stance,
 		FORMATIONS.describe(me.squad_formation), RES.format_cost(RES.UNIT_COST)
 	]
+
+
+# --- результат партии ------------------------------------------------------
+
+var _announce_left := 0.0
+
+
+func _on_announced(text: String) -> void:
+	_announce.text = text
+	_announce_left = ANNOUNCE_SECONDS
+	print("[цель] ", text)
+
+
+func _tick_announce(delta: float) -> void:
+	if _announce_left <= 0.0:
+		return
+	_announce_left -= delta
+	if _announce_left <= 0.0:
+		_announce.text = ""
+
+
+## Строка цели и состояния дворца для HUD.
+func _objective_hint(me: Node3D) -> String:
+	var line: String = _world.objective.status_text()
+	if me != null:
+		line = "сторона: %s   цель: %s\n%s" % [
+			FACTIONS.name_of(me.faction), FACTIONS.goal_of(me.faction), line
+		]
+	return line

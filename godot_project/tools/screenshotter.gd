@@ -94,6 +94,12 @@ func _shots() -> Array:
 			"caravan": true,
 		},
 		{
+			"name": "18_дворец_точка_захвата",
+			"pos": Vector3(300.0, 62.0, -200.0),
+			"look": Vector3(300.0, 20.0, -300.0),
+			"capture": true,
+		},
+		{
 			"name": "16_отряд_шеренга",
 			"pos": Vector3(-46.0, 14.0, 132.0),
 			"look": Vector3(-60.0, 1.0, 108.0),
@@ -146,6 +152,9 @@ func _run() -> void:
 		if shot.get("caravan", false):
 			_stage_caravan()
 			await get_tree().create_timer(3.0).timeout
+		if shot.get("capture", false):
+			_stage_capture()
+			await get_tree().create_timer(2.0).timeout
 		if shot.has("squad"):
 			await _stage_squad(int(shot["squad"]))
 		if shot.get("crawl", false):
@@ -285,3 +294,14 @@ func _stage_squad(formation: int) -> void:
 	for unit in squad:
 		if is_instance_valid(unit):
 			print("[shot]   боец %s" % unit.global_position)
+
+
+## Поставить злодея в точку захвата дворца, чтобы в кадре был виден захват,
+## а не просто дворец.
+func _stage_capture() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.body.reset()
+	me.health.revive()
+	me.teleport.rpc(_world.objective.PALACE + Vector3(0.0, 3.0, 0.0))
