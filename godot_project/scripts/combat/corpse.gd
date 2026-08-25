@@ -27,6 +27,8 @@ func _ready() -> void:
 	var packed: PackedScene = load(MODELS[slot])
 	var model: Node3D = packed.instantiate()
 	model.scale = Vector3.ONE * MODEL_SCALE
+	# Тот же разворот, что у живых: модель смотрит в +Z, игра — в -Z.
+	model.rotation.y = PI
 	add_child(model)
 
 	# Оторванные при жизни части у трупа тоже отсутствуют.

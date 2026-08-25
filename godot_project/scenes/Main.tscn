@@ -55,6 +55,30 @@ anchor_bottom = 1.0
 color = Color(0, 0, 0, 1)
 visible = false
 
+[node name="Console" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="Panel" type="PanelContainer" parent="UI/Console"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 320.0
+grow_horizontal = 2
+
+[node name="VBox" type="VBoxContainer" parent="UI/Console/Panel"]
+theme_override_constants/separation = 4
+
+[node name="Output" type="RichTextLabel" parent="UI/Console/Panel/VBox"]
+size_flags_vertical = 3
+scroll_following = true
+text = "Консоль. help — список команд."
+
+[node name="Input" type="LineEdit" parent="UI/Console/Panel/VBox"]
+custom_minimum_size = Vector2(0, 36)
+placeholder_text = "команда, Enter — выполнить"
+
 [node name="Bench" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0

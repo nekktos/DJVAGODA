@@ -19,6 +19,7 @@ extends Node
 ##   --caravantest   автопроверка шахты, каравана и грабежа (headless)
 ##   --squadtest     автопроверка отряда и построений (headless)
 ##   --slicetest     автопроверка вертикального среза (headless)
+##   --consoletest   автопроверка консольных команд (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -50,6 +51,9 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
 @onready var _announce: Label = $UI/Hud/Announce
 @onready var _faction_opt: OptionButton = $UI/Menu/Panel/VBox/FactionRow/FactionOpt
+@onready var _console: Control = $UI/Console
+@onready var _console_out: RichTextLabel = $UI/Console/Panel/VBox/Output
+@onready var _console_in: LineEdit = $UI/Console/Panel/VBox/Input
 
 
 func _ready() -> void:
@@ -64,6 +68,7 @@ func _ready() -> void:
 	_world.objective.announced.connect(_on_announced)
 	_faction_opt.item_selected.connect(func(index: int) -> void: Net.chosen_faction = index)
 	Net.chosen_faction = _faction_opt.selected
+	_console_in.text_submitted.connect(_on_console_submitted)
 
 	var bench := $UI/Bench/Panel/VBox
 	bench.get_node("Wooden").pressed.connect(_on_bench_prosthetic.bind(1))
@@ -165,6 +170,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_toggle_bench()
 		get_viewport().set_input_as_handled()
+		return
+	# Тильда открывает консоль. Ловим до всего остального, чтобы она работала
+	# и в меню, и в бою.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_QUOTELEFT:
+		_toggle_console()
+		get_viewport().set_input_as_handled()
+		return
+	if _console.visible:
 		return
 	if event.is_action_pressed(&"toggle_camera") and Net.active:
 		_world.toggle_camera_mode()
@@ -290,6 +303,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--consoletest"):
+		var console: Node = preload("res://tools/console_test.gd").new()
+		add_child(console)
+		console.start(_world)
+		needs_session = true
 
 	if args.has("--slicetest"):
 		var slice: Node = preload("res://tools/slice_test.gd").new()
@@ -523,3 +542,44 @@ func _objective_hint(me: Node3D) -> String:
 			FACTIONS.name_of(me.faction), FACTIONS.goal_of(me.faction), line
 		]
 	return line
+
+
+# --- консоль для playtest -------------------------------------------------
+
+## Персонаж, чьи ответы сейчас слушаем. Пересоединяем при респавне.
+var _console_player: Node3D = null
+
+
+func _toggle_console() -> void:
+	if not OS.is_debug_build():
+		return
+	_console.visible = not _console.visible
+	if _console.visible:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_console_in.grab_focus()
+	elif Net.active and not _world.strategy_mode:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _console_print(text: String) -> void:
+	if text.is_empty():
+		return
+	_console_out.text += "\n" + text
+
+
+func _on_console_submitted(line: String) -> void:
+	_console_in.clear()
+	if line.strip_edges().is_empty():
+		return
+	_console_print("> " + line)
+	var me: Node3D = _world.local_player()
+	if me == null:
+		_console_print("персонажа нет — сначала войди в сессию")
+		return
+	# Ответ приходит асинхронно: команду исполняет хост.
+	if _console_player != me:
+		if _console_player != null and is_instance_valid(_console_player):
+			_console_player.cheat_reply.disconnect(_console_print)
+		_console_player = me
+		me.cheat_reply.connect(_console_print)
+	me.ask_cheat(line)

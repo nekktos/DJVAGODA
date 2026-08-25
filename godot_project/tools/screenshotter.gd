@@ -214,6 +214,9 @@ func _stage_wounds(take_eye: bool, legs: bool = false) -> void:
 	# в следующий и кадр показывает не то, что подписано.
 	me.body.reset()
 	me.health.revive()
+	# И явно ставим персонажа под камеру: со Этапа 7 стороны стартуют по своим
+	# зонам, и полагаться на точку спавна больше нельзя.
+	me.teleport.rpc(Vector3(-14.0, 2.0, 14.0))
 	var zones := ["arm_l", "leg_r"] if legs else ["arm_l"]
 	for zone in zones:
 		for i in 6:

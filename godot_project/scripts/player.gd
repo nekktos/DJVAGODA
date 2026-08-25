@@ -19,6 +19,7 @@ extends CharacterBody3D
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
@@ -118,7 +119,10 @@ var _model: Node3D
 var _anim: AnimationPlayer
 var _parts := {}
 var _zones := {}
-var _weapon_mesh: MeshInstance3D
+var _weapon_visual: Node3D
+## Какое оружие сейчас показано. Нужно, чтобы перерисовывать при смене — в том
+## числе у чужих персонажей, у которых sync_weapon приезжает по сети.
+var _weapon_shown := -1
 var _current_anim := ""
 
 
@@ -159,6 +163,10 @@ func _build_model(slot: int) -> void:
 	_model = packed.instantiate()
 	_model.name = "Model"
 	_model.scale = Vector3.ONE * MODEL_SCALE
+	# Модель Kenney смотрит в +Z, а игра считает передом -Z (движение, прицел и
+	# разворот по atan2(-dir.x, -dir.z) — всё в -Z). Без этого разворота персонаж
+	# бежит задом наперёд, а камера из-за спины смотрит ему в лицо.
+	_model.rotation.y = PI
 	add_child(_model)
 
 	_anim = _find_node(_model, AnimationPlayer) as AnimationPlayer
@@ -171,7 +179,7 @@ func _build_model(slot: int) -> void:
 		_parts[key] = mesh
 		_zones[key] = _attach_zone(mesh, key)
 
-	_build_weapon_mesh()
+	_refresh_weapon_visual()
 	_play("idle")
 
 
@@ -215,6 +223,7 @@ func _physics_process(delta: float) -> void:
 		_server_cooldown = maxf(0.0, _server_cooldown - delta)
 
 	_swing_left = maxf(0.0, _swing_left - delta)
+	_refresh_weapon_visual()
 
 	if is_multiplayer_authority():
 		var inp := _gather_input()
@@ -606,21 +615,13 @@ func set_view_active(on: bool) -> void:
 		_camera.current = on
 
 
-## Заглушка вместо модели оружия: коробка в руке. Висит на правой руке, чтобы
-## ехать вместе с ней по анимации и исчезать вместе с оторванной рукой.
-func _build_weapon_mesh() -> void:
-	var hand: MeshInstance3D = _parts.get("arm_r")
-	if hand == null:
+## Оружие висит на правой руке: едет с ней по анимации и исчезает вместе с
+## оторванной рукой. Точку хвата считает weapon_visual по габаритам руки.
+func _refresh_weapon_visual() -> void:
+	if _weapon_shown == sync_weapon:
 		return
-	_weapon_mesh = MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(0.16, 0.16, 1.5)
-	_weapon_mesh.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.82, 0.84, 0.88)
-	_weapon_mesh.material_override = mat
-	hand.add_child(_weapon_mesh)
-	_weapon_mesh.position = Vector3(0.0, -0.5, -0.5)
+	_weapon_shown = sync_weapon
+	_weapon_visual = WEAPON_VISUAL.attach(_parts.get("arm_r"), sync_weapon, _weapon_visual)
 
 
 static func _is_bot() -> bool:
@@ -1008,3 +1009,44 @@ func has_strategy() -> bool:
 
 func can_build() -> bool:
 	return FACTIONS.can_build(faction)
+
+
+# --- консоль для playtest -------------------------------------------------
+
+const CHEATS := preload("res://scripts/cheats.gd")
+
+## Ответ хоста на консольную команду.
+signal cheat_reply(text: String)
+
+
+func ask_cheat(line: String) -> void:
+	if not OS.is_debug_build():
+		cheat_reply.emit("консоль доступна только в отладочной сборке")
+		return
+	if multiplayer.is_server():
+		request_cheat(line)
+	else:
+		request_cheat.rpc_id(1, line)
+
+
+## Команду исполняет ТОЛЬКО хост: выданные локально ресурсы затёрла бы
+## репликация, а спавн юнита на клиенте другие пиры бы не увидели.
+@rpc("any_peer", "reliable")
+func request_cheat(line: String) -> void:
+	if not multiplayer.is_server() or not OS.is_debug_build():
+		return
+	if not _sender_is_owner():
+		return
+	var reply: String = CHEATS.execute(get_parent().get_parent(), self, line)
+	print("[консоль] %d: %s -> %s" % [peer_id, line, reply])
+	if multiplayer.get_remote_sender_id() == 0:
+		cheat_reply.emit(reply)
+	else:
+		cheat_answer.rpc_id(peer_id, reply)
+
+
+@rpc("any_peer", "reliable")
+func cheat_answer(text: String) -> void:
+	if not _sender_is_host():
+		return
+	cheat_reply.emit(text)

@@ -13,6 +13,7 @@ extends CharacterBody3D
 
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 
@@ -94,6 +95,8 @@ func _build_model() -> void:
 	_model = packed.instantiate()
 	_model.name = "Model"
 	_model.scale = Vector3.ONE * MODEL_SCALE
+	# Модель смотрит в +Z, игра считает передом -Z — см. player.gd::_build_model.
+	_model.rotation.y = PI
 	add_child(_model)
 
 	var shape := CollisionShape3D.new()
@@ -112,6 +115,8 @@ func _build_model() -> void:
 		var key: String = PART_ZONES[part_name]
 		_parts[key] = mesh
 		HIT_ZONE.attach(mesh, key, ZONE_MULTIPLIERS.get(key, 1.0), HITBOX_LAYER)
+	# Мечник — с мечом в руке, точка хвата считается по габаритам руки.
+	WEAPON_VISUAL.attach(_parts.get("arm_r"), WEAPONS.Kind.SWORD, null)
 	_play("idle")
 
 
