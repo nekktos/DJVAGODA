@@ -1,0 +1,148 @@
+extends Node
+##
+## Автопроверка боевой петли на двух пирах. Работает headless.
+##
+## Запуск (два процесса):
+##   godot --headless --path godot_project -- --host --combattest
+##   godot --headless --path godot_project -- --join=127.0.0.1 --combattest
+##
+## Роли расходятся сами: хост бьёт, клиент стоит и пытается смошенничать.
+## Проверяем две вещи, ради которых Этап 2 вообще так устроен:
+##   1. Урон доходит и одинаково виден обоим пирам.
+##   2. Клиент НЕ может снять здоровье в обход хоста.
+##
+
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
+
+var _world: Node3D
+
+
+func start(world: Node3D) -> void:
+	_world = world
+	_run.call_deferred()
+
+
+func _run() -> void:
+	await get_tree().create_timer(4.0).timeout
+	var mine: Node3D = _world.local_player()
+	var other := _find_other(mine)
+	if mine == null or other == null:
+		print("[бой-тест] ПРОВАЛ: нужны два игрока в сессии")
+		get_tree().quit(1)
+		return
+
+	if multiplayer.is_server():
+		await _run_host(mine, other)
+	else:
+		await _run_client(mine, other)
+	get_tree().quit()
+
+
+func _find_other(mine: Node3D) -> Node3D:
+	for child in _world.get_node("Players").get_children():
+		if child != mine:
+			return child
+	return null
+
+
+# --- хост: бьёт и проверяет, что урон прошёл ------------------------------
+
+func _run_host(mine: Node3D, other: Node3D) -> void:
+	var failures := 0
+	for kind in [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.SPELL]:
+		other.health.revive()
+		await get_tree().process_frame
+
+		var distance := 2.0 if kind == WEAPONS.Kind.SWORD else 20.0
+		var before: float = other.health.current
+		_aim_at(mine, other, distance)
+		mine.sync_weapon = kind
+		mine.scripted_input = {"move": Vector2.ZERO, "jump": false, "attack": true}
+		await get_tree().create_timer(4.0).timeout
+		mine.scripted_input = {}
+		await get_tree().create_timer(0.6).timeout
+
+		var after: float = other.health.current
+		var ok := after < before
+		if not ok:
+			failures += 1
+		print("[бой-тест] %s | %s: здоровье цели %.0f -> %.0f" % [
+			"OK  " if ok else "ПРОВАЛ", WEAPONS.NAMES[kind], before, after
+		])
+
+	# Убить цель и убедиться, что она вернулась в мир после респавна.
+	if not is_instance_valid(other):
+		print("[бой-тест] смерть и респавн: пропущено, цель ушла из сессии")
+		return
+	other.health.revive()
+	await get_tree().process_frame
+	other.take_damage(999.0, 1, "torso", other.global_position, Vector3.FORWARD)
+	await get_tree().create_timer(1.0).timeout
+	var died: bool = not other.health.alive
+	await get_tree().create_timer(6.0).timeout
+	if not is_instance_valid(other):
+		print("[бой-тест] смерть и респавн: пропущено, цель ушла из сессии")
+		return
+	var revived: bool = other.health.alive and other.health.current > 99.0
+	if not died or not revived:
+		failures += 1
+	print("[бой-тест] %s | смерть и респавн: умер=%s, вернулся=%s" % [
+		"OK  " if (died and revived) else "ПРОВАЛ", died, revived
+	])
+
+	if failures == 0:
+		print("[бой-тест] хост: все проверки пройдены")
+	else:
+		print("[бой-тест] хост: провалено проверок: %d" % failures)
+
+
+## Поставить себя на нужной дистанции от цели и повернуться к ней лицом.
+func _aim_at(mine: Node3D, other: Node3D, distance: float) -> void:
+	var target := other.global_position
+	var point := target + Vector3(0.0, 0.0, 1.0) * distance
+	mine.global_position = Vector3(point.x, target.y, point.z)
+	mine.sync_position = mine.global_position
+	var dir := (target - mine.global_position)
+	dir.y = 0.0
+	dir = dir.normalized()
+	mine.rotation.y = atan2(-dir.x, -dir.z)
+	mine.sync_yaw = mine.rotation.y
+	mine.velocity = Vector3.ZERO
+
+
+# --- клиент: стоит смирно и пробует смошенничать --------------------------
+
+func _run_client(mine: Node3D, _other: Node3D) -> void:
+	# Ждём, пока хост отработает свои сценарии, и следим за своим здоровьем.
+	var seen_damage := false
+	# Окно короче, чем сценарии хоста: иначе он закончит и порвёт сессию
+	# раньше, чем клиент успеет проверить подделку.
+	for i in 11:
+		await get_tree().create_timer(1.0).timeout
+		if not is_instance_valid(mine):
+			print("[бой-тест] клиент: сессия закончилась раньше проверки")
+			return
+		if mine.health.current < 100.0:
+			seen_damage = true
+
+	if not is_instance_valid(mine):
+		return
+
+	# Прямая попытка чита: выставляем себе заведомо невозможное здоровье.
+	# Хост об этом не знает и знать не должен — но репликация обязана затереть
+	# подделку, а все решения по урону хост и так принимает по своему значению.
+	mine.health.current = 500.0
+	await get_tree().create_timer(2.0).timeout
+	if not is_instance_valid(mine):
+		return
+	var after_cheat: float = mine.health.current
+	var cheat_blocked := after_cheat <= 100.0
+
+	print("[бой-тест] %s | клиент видел урон: %s" % ["OK  " if seen_damage else "ПРОВАЛ", seen_damage])
+	print("[бой-тест] %s | подделка здоровья затёрта: выставил 500, стало %.0f" % [
+		"OK  " if cheat_blocked else "ПРОВАЛ", after_cheat
+	])
+
+	# Досиживаем до конца сценариев хоста, иначе его цель исчезнет из сессии
+	# посреди проверки смерти и респавна.
+	await get_tree().create_timer(20.0).timeout

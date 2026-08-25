@@ -46,6 +46,12 @@ script = ExtResource("2_strategy")
 
 [node name="Players" type="Node3D" parent="."]
 
+[node name="Spawned" type="Node3D" parent="."]
+
 [node name="PlayerSpawner" type="MultiplayerSpawner" parent="."]
 _spawnable_scenes = PackedStringArray("res://scenes/Player.tscn")
 spawn_path = NodePath("../Players")
+
+[node name="WorldSpawner" type="MultiplayerSpawner" parent="."]
+_spawnable_scenes = PackedStringArray("res://scenes/Projectile.tscn", "res://scenes/Corpse.tscn")
+spawn_path = NodePath("../Spawned")

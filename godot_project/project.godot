@@ -64,6 +64,27 @@ cam_rotate_right={
 ]
 }
 
+attack={
+"deadzone": 0.2,
+"events": [Object(InputEventMouseButton,"device":-1,"button_index":1,"script":null)
+]
+}
+weapon_1={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":49,"script":null)
+]
+}
+weapon_2={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":50,"script":null)
+]
+}
+weapon_3={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":51,"script":null)
+]
+}
+
 [rendering]
 
 renderer/rendering_method="forward_plus"

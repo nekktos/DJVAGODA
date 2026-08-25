@@ -1,6 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/combat/health.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/combat/hit_zone.gd" id="3_zone"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_body"]
 radius = 0.4
@@ -13,6 +15,18 @@ height = 1.8
 [sub_resource type="BoxMesh" id="Mesh_nose"]
 size = Vector3(0.22, 0.22, 0.45)
 
+[sub_resource type="BoxShape3D" id="Shape_head"]
+size = Vector3(0.36, 0.36, 0.36)
+
+[sub_resource type="BoxShape3D" id="Shape_torso"]
+size = Vector3(0.62, 0.72, 0.44)
+
+[sub_resource type="BoxShape3D" id="Shape_arm"]
+size = Vector3(0.2, 0.66, 0.26)
+
+[sub_resource type="BoxShape3D" id="Shape_leg"]
+size = Vector3(0.24, 0.72, 0.3)
+
 [sub_resource type="SceneReplicationConfig" id="Repl_player"]
 properties/0/path = NodePath(".:sync_position")
 properties/0/spawn = true
@@ -20,8 +34,18 @@ properties/0/replication_mode = 1
 properties/1/path = NodePath(".:sync_yaw")
 properties/1/spawn = true
 properties/1/replication_mode = 1
+properties/2/path = NodePath(".:sync_weapon")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+
+[sub_resource type="SceneReplicationConfig" id="Repl_server"]
+properties/0/path = NodePath("Health:current")
+properties/0/spawn = true
+properties/0/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 3
 script = ExtResource("1_player")
 
 [node name="Col" type="CollisionShape3D" parent="."]
@@ -53,7 +77,89 @@ margin = 0.2
 
 [node name="Camera3D" type="Camera3D" parent="CamPivot/SpringArm3D"]
 current = false
+far = 3000.0
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("2_health")
+
+[node name="Zones" type="Node3D" parent="."]
+
+[node name="Head" type="Area3D" parent="Zones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.62, 0)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("3_zone")
+zone = "head"
+damage_multiplier = 2.0
+
+[node name="Col" type="CollisionShape3D" parent="Zones/Head"]
+shape = SubResource("Shape_head")
+
+[node name="Torso" type="Area3D" parent="Zones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("3_zone")
+zone = "torso"
+damage_multiplier = 1.0
+
+[node name="Col" type="CollisionShape3D" parent="Zones/Torso"]
+shape = SubResource("Shape_torso")
+
+[node name="ArmL" type="Area3D" parent="Zones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.36, 1.05, 0)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("3_zone")
+zone = "arm_l"
+damage_multiplier = 0.7
+
+[node name="Col" type="CollisionShape3D" parent="Zones/ArmL"]
+shape = SubResource("Shape_arm")
+
+[node name="ArmR" type="Area3D" parent="Zones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.36, 1.05, 0)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("3_zone")
+zone = "arm_r"
+damage_multiplier = 0.7
+
+[node name="Col" type="CollisionShape3D" parent="Zones/ArmR"]
+shape = SubResource("Shape_arm")
+
+[node name="LegL" type="Area3D" parent="Zones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.16, 0.36, 0)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("3_zone")
+zone = "leg_l"
+damage_multiplier = 0.7
+
+[node name="Col" type="CollisionShape3D" parent="Zones/LegL"]
+shape = SubResource("Shape_leg")
+
+[node name="LegR" type="Area3D" parent="Zones"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, 0.36, 0)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("3_zone")
+zone = "leg_r"
+damage_multiplier = 0.7
+
+[node name="Col" type="CollisionShape3D" parent="Zones/LegR"]
+shape = SubResource("Shape_leg")
 
 [node name="Sync" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("Repl_player")
 replication_interval = 0.033
+
+[node name="ServerSync" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("Repl_server")
+replication_interval = 0.1

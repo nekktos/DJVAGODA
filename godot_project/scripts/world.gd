@@ -19,6 +19,16 @@ const PLAYER_SCRIPT := preload("res://scripts/player.gd")
 ## То же и для строителя карты: обращаться к нему по class_name нельзя, кэш
 ## глобальных классов строится только редактором и на свежем клоне его нет.
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
+const PROJECTILE_SCENE := preload("res://scenes/Projectile.tscn")
+const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
+
+## Через сколько секунд после смерти игрок возвращается в мир.
+## Временное правило (DESIGN_ANSWERS.md, пункт 10) — настоящие условия
+## респавна решаются вместе с кампаниями.
+const RESPAWN_DELAY := 5.0
+## Сколько трупов держим в мире. GDD требует, чтобы труп не исчезал мгновенно,
+## но копить их без предела нельзя.
+const CORPSE_LIMIT := 30
 
 ## Дебаг-ключ --netlog: раз в секунду печатать позиции всех персонажей — видно,
 ## доезжает ли чужое движение до этого пира.
@@ -32,10 +42,16 @@ signal camera_mode_changed(strategy: bool)
 @onready var _strategy_camera: Camera3D = $StrategyCamera
 @onready var _terrain: Node3D = $Terrain
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
+@onready var _spawned: Node3D = $Spawned
+@onready var _world_spawner: MultiplayerSpawner = $WorldSpawner
 
 var strategy_mode := false
 
 var _netlog := false
+## Сквозной номер для снарядов и трупов: имя ноды должно совпадать на всех
+## пирах, иначе команда на удаление уедет не по тому пути.
+var _spawn_counter := 0
+var _corpses: Array[Node] = []
 var _netlog_t := 0.0
 
 
@@ -45,6 +61,7 @@ func _ready() -> void:
 	# Кастомная spawn_function: даёт положить в пакет спавна произвольные данные
 	# (сейчас — номер слота, позже сюда же ляжет фракция).
 	_spawner.spawn_function = _make_player
+	_world_spawner.spawn_function = _make_spawned
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
@@ -151,7 +168,11 @@ func _spawn_player(id: int) -> void:
 		push_warning("Сессия заполнена, игроку %d места нет." % id)
 		return
 	print("[world] спавню игрока %d в слот %d" % [id, slot])
-	_spawner.spawn({"id": id, "slot": slot})
+	var node := _spawner.spawn({"id": id, "slot": slot})
+	if node != null:
+		# Сигналы нужны только хосту: и снаряды, и смерть считает он.
+		node.death_reported.connect(_on_player_death)
+		node.projectile_requested.connect(_on_projectile_requested)
 
 
 ## Выполняется на всех пирах с одними и теми же данными, поэтому имя ноды и
@@ -173,3 +194,72 @@ func _next_free_slot() -> int:
 		if not used.has(i):
 			return i
 	return -1
+
+
+# --- бой: снаряды, трупы, респавн -----------------------------------------
+
+## Общая фабрика для всего, что мир спавнит по сети. Выполняется на всех пирах
+## с одинаковыми данными, поэтому имя и параметры совпадают везде.
+func _make_spawned(data: Dictionary) -> Node:
+	var node: Node
+	if data["type"] == "projectile":
+		node = PROJECTILE_SCENE.instantiate()
+	else:
+		node = CORPSE_SCENE.instantiate()
+	node.name = "%s_%d" % [data["type"], int(data["id"])]
+	node.setup(data)
+	return node
+
+
+func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	_spawn_counter += 1
+	_world_spawner.spawn({
+		"type": "projectile",
+		"id": _spawn_counter,
+		"kind": kind,
+		"origin": origin,
+		"dir": dir,
+		"shooter": shooter_id,
+	})
+
+
+func _on_player_death(player: Node3D, killer_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	print("[бой] %s убит игроком %d" % [player.name, killer_id])
+	_spawn_corpse(player)
+	player.set_dead.rpc(true)
+
+	await get_tree().create_timer(RESPAWN_DELAY).timeout
+	if not is_instance_valid(player):
+		return
+	player.health.revive()
+	player.respawn_at_slot()
+	player.set_dead.rpc(false)
+
+
+func _spawn_corpse(player: Node3D) -> void:
+	place_corpse(player.global_position, player.rotation.y, player.spawn_slot)
+
+
+## Положить труп в заданной точке. Отдельным методом, потому что этим
+## пользуются инструменты проверки (tools/screenshotter.gd).
+func place_corpse(point: Vector3, yaw: float, slot: int) -> void:
+	if not multiplayer.is_server():
+		return
+	_spawn_counter += 1
+	var corpse := _world_spawner.spawn({
+		"type": "corpse",
+		"id": _spawn_counter,
+		"point": point,
+		"yaw": yaw,
+		"slot": slot,
+	})
+	if corpse != null:
+		_corpses.append(corpse)
+	while _corpses.size() > CORPSE_LIMIT:
+		var oldest: Node = _corpses.pop_front()
+		if is_instance_valid(oldest):
+			oldest.queue_free()

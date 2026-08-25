@@ -63,6 +63,12 @@ func _shots() -> Array:
 			"look": Vector3(300, 40, -300),
 		},
 		{"name": "09_стратегическая_камера", "strategy": true},
+		{
+			"name": "10_кровь_и_трупы",
+			"pos": Vector3(14, 4, 34),
+			"look": Vector3(0, 1, 20),
+			"gore": true,
+		},
 	]
 
 
@@ -81,6 +87,9 @@ func _run() -> void:
 
 	var saved := 0
 	for shot in _shots():
+		if shot.get("gore", false):
+			_stage_gore()
+			await get_tree().create_timer(0.4).timeout
 		if shot.get("strategy", false):
 			_world.set_strategy_mode(true)
 		else:
@@ -104,3 +113,17 @@ func _run() -> void:
 
 	print("[shot] готово, кадров: %d" % saved)
 	get_tree().quit()
+
+
+## Разложить перед камерой трупы и плеснуть кровью: рейтинг 21+, эту часть тоже
+## надо видеть на скриншоте, а не принимать на веру.
+func _stage_gore() -> void:
+	const EFFECTS := preload("res://scripts/combat/effects.gd")
+	var spots := [
+		Vector3(-2.0, 0.0, 18.0),
+		Vector3(1.5, 0.0, 20.5),
+		Vector3(-4.0, 0.0, 22.0),
+	]
+	for i in spots.size():
+		_world.place_corpse(spots[i], float(i) * 1.3, i)
+		EFFECTS.blood(_world, spots[i] + Vector3.UP * 1.0, Vector3.UP, 60.0)

@@ -13,11 +13,14 @@ extends Node
 ##   --walktest      автопроверка проходимости карты и выход (работает headless)
 ##   --perftest      замер fps в обоих режимах камеры и выход (нужно окно)
 ##   --strategytest  через 8 с уйти в стратегический режим и остаться в нём
+##   --combattest    автопроверка боевой петли на двух пирах (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
 
 const LOCAL_HINT := "Локально: порт 24545, второе окно подключается к 127.0.0.1."
 const STEAM_HINT := "Steam: хост сообщает свой Steam ID, второй игрок вставляет его в поле."
+
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 
 @onready var _menu: Control = $UI/Menu
 @onready var _status: Label = $UI/Menu/Panel/VBox/Status
@@ -64,7 +67,10 @@ func _process(_delta: float) -> void:
 		line += "   высота: %d м" % int(_world.strategy_height())
 		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню"
 	else:
-		_hud.text = line + "\nWASD — движение, Space — прыжок, мышь — обзор, Tab — вид сверху, Esc — курсор, F10 — в меню"
+		var me: Node3D = _world.local_player()
+		if me != null:
+			line += "   HP: %d   оружие: %s" % [int(me.health.current), WEAPONS.NAMES[me.sync_weapon]]
+		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню"
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -180,6 +186,11 @@ func _apply_cmdline() -> void:
 		add_child(perf)
 		perf.start(_world)
 		needs_session = true
+
+	if args.has("--combattest"):
+		var fighter: Node = preload("res://tools/combat_test.gd").new()
+		add_child(fighter)
+		fighter.start(_world)
 
 	if args.has("--walktest"):
 		var walker: Node = preload("res://tools/walk_test.gd").new()
