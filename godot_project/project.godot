@@ -1,0 +1,15 @@
+; Engine configuration file.
+; Project: ДжваГода — skeleton, to be filled in by Claude Code per HANDOFF.md Stage 0.
+
+config_version=5
+
+[application]
+
+config/name="DzhvaGoda"
+config/description="3D action/RTS multiplayer prototype — see /GDD.md and /HANDOFF.md at repo root."
+run/main_scene=""
+config/features=PackedStringArray("4.3", "Forward Plus")
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
