@@ -83,6 +83,12 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 ## Нужен, чтобы чужие персонажи анимировались: движение у них не считается.
 @export var sync_moving: bool = false
 
+## Состояние отряда. Считает и меняет только хост, клиенты читают.
+@export var squad_formation: int = 0
+@export var squad_hold: bool = false
+@export var squad_rally: Vector3 = Vector3.ZERO
+@export var squad_rally_yaw: float = 0.0
+
 var peer_id := 1
 var spawn_slot := 0
 var control_enabled := true
@@ -165,27 +171,10 @@ func _build_model(slot: int) -> void:
 	_play("idle")
 
 
-## Зона попадания строится из собственного AABB меша и вешается на него же:
-## тогда она едет за анимацией и переживает замену модели.
+## Зона попадания строится из размеров самого меша и вешается на него же —
+## общий помощник с юнитами, см. hit_zone.gd::attach.
 func _attach_zone(mesh: MeshInstance3D, key: String) -> Area3D:
-	var box := mesh.get_aabb()
-	var area := Area3D.new()
-	area.set_script(HIT_ZONE)
-	area.zone = key
-	area.damage_multiplier = ZONE_MULTIPLIERS.get(key, 1.0)
-	area.collision_layer = HITBOX_LAYER
-	area.collision_mask = 0
-	area.monitoring = false
-	area.position = box.get_center()
-
-	var shape := CollisionShape3D.new()
-	var box_shape := BoxShape3D.new()
-	box_shape.size = box.size
-	shape.shape = box_shape
-	area.add_child(shape)
-
-	mesh.add_child(area)
-	return area
+	return HIT_ZONE.attach(mesh, key, ZONE_MULTIPLIERS.get(key, 1.0), HITBOX_LAYER)
 
 
 func _find_node(node: Node, type) -> Node:
@@ -497,7 +486,7 @@ func _server_swing_sword(aim: Vector3) -> void:
 
 
 ## Принять урон. Вызывается ТОЛЬКО на хосте (из оружия или снаряда).
-func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3) -> void:
+func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
 	if not multiplayer.is_server():
 		return
 	var dealt: float = health.apply_damage(amount, attacker_id)
@@ -515,10 +504,17 @@ func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, 
 func show_hit(point: Vector3, dir: Vector3, amount: float, zone: String) -> void:
 	if not _sender_is_host():
 		return
-	EFFECTS.blood(get_parent(), point, dir, amount)
+	EFFECTS.blood(_effects_root(), point, dir, amount)
 
 
 ## Вызов пришёл от хоста? Локальный вызов даёт 0, удалённый от хоста — 1.
+## Куда класть партиклы. НЕ в Players и НЕ в Spawned: за первой ходят юниты в
+## поиске целей, за второй следит MultiplayerSpawner. Обе ноды должны содержать
+## только то, что в них по смыслу лежит.
+func _effects_root() -> Node:
+	return get_parent().get_parent()
+
+
 func _sender_is_host() -> bool:
 	var sender := multiplayer.get_remote_sender_id()
 	return sender == 0 or sender == 1
@@ -545,7 +541,7 @@ func _on_limb_severed(limb: int) -> void:
 		zone.collision_layer = 0
 
 	# Кровь и сама оторванная часть, которая падает и остаётся лежать.
-	EFFECTS.blood(get_parent(), at.origin, Vector3.UP, 80.0)
+	EFFECTS.blood(_effects_root(), at.origin, Vector3.UP, 80.0)
 	var piece: Node3D = SEVERED_LIMB.instantiate()
 	# Кладём прямо в мир, а не в Spawned: за той нодой следит MultiplayerSpawner,
 	# а оторванная часть — локальный визуал, её каждый пир создаёт себе сам по
@@ -755,7 +751,7 @@ func harvested(point: Vector3, kind: int, taken: int) -> void:
 		return
 	if taken <= 0:
 		return
-	EFFECTS.chips(get_parent(), point, kind)
+	EFFECTS.chips(_effects_root(), point, kind)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -879,3 +875,105 @@ func loot_nearby() -> Node3D:
 		if pile != null and pile.global_position.distance_to(global_position) <= pile.PICKUP_RANGE:
 			return pile
 	return null
+
+
+# --- отряд и построения ---------------------------------------------------
+
+const FORMATIONS := preload("res://scripts/units/formations.gd")
+
+
+## Куда равняется отряд. В режиме следования — на командира, после приказа —
+## на назначенную точку.
+func squad_anchor() -> Vector3:
+	return squad_rally if squad_hold else global_position
+
+
+func squad_facing() -> float:
+	return squad_rally_yaw if squad_hold else rotation.y
+
+
+func ask_formation(kind: int) -> void:
+	if multiplayer.is_server():
+		request_formation(kind)
+	else:
+		request_formation.rpc_id(1, kind)
+
+
+func ask_squad_move(point: Vector3) -> void:
+	if multiplayer.is_server():
+		request_squad_move(point)
+	else:
+		request_squad_move.rpc_id(1, point)
+
+
+func ask_squad_follow() -> void:
+	if multiplayer.is_server():
+		request_squad_follow()
+	else:
+		request_squad_follow.rpc_id(1)
+
+
+func ask_train_unit() -> void:
+	if multiplayer.is_server():
+		request_train_unit()
+	else:
+		request_train_unit.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_formation(kind: int) -> void:
+	if not multiplayer.is_server() or not _sender_is_owner():
+		return
+	squad_formation = clampi(kind, 0, FORMATIONS.NAMES.size() - 1)
+
+
+## Приказ «идти туда». Разворот берём по направлению марша, чтобы отряд
+## пришёл лицом вперёд, а не спиной.
+@rpc("any_peer", "reliable")
+func request_squad_move(point: Vector3) -> void:
+	if not multiplayer.is_server() or not _sender_is_owner():
+		return
+	if absf(point.x) > ROUTE_BOUND or absf(point.z) > ROUTE_BOUND:
+		return
+	var march := point - squad_anchor()
+	march.y = 0.0
+	squad_rally = point
+	if march.length() > 0.5:
+		var dir := march.normalized()
+		squad_rally_yaw = atan2(-dir.x, -dir.z)
+	squad_hold = true
+
+
+@rpc("any_peer", "reliable")
+func request_squad_follow() -> void:
+	if not multiplayer.is_server() or not _sender_is_owner():
+		return
+	squad_hold = false
+
+
+## Нанять мечника. Нужна достроенная казарма и ресурсы (Этап 4).
+@rpc("any_peer", "reliable")
+func request_train_unit() -> void:
+	if not multiplayer.is_server() or not _sender_is_owner():
+		return
+	if not health.alive:
+		return
+	var world := get_parent().get_parent()
+	var barracks: Node3D = world.barracks_of(peer_id)
+	if barracks == null:
+		push_warning("Игроку %d негде нанимать: нет достроенной казармы" % peer_id)
+		return
+	var squad: Array = world.units_of(peer_id)
+	if squad.size() >= RES.SQUAD_LIMIT:
+		push_warning("У игрока %d отряд уже полон" % peer_id)
+		return
+	if not stock.spend(RES.UNIT_COST):
+		push_warning("Игроку %d не хватает ресурсов на мечника" % peer_id)
+		return
+	# Разводим по спирали: если спавнить всех в одну точку, капсулы влезают друг
+	# в друга и CharacterBody3D потом не может их расцепить.
+	var index: int = squad.size()
+	var angle: float = float(index) * 0.9
+	var radius: float = 3.0 + float(index) * 0.45
+	var offset := Vector3(cos(angle) * radius, 1.0, 9.0 + sin(angle) * radius)
+	world.spawn_unit(peer_id, index, barracks.global_position + offset)

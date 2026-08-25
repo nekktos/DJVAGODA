@@ -94,6 +94,18 @@ func _shots() -> Array:
 			"caravan": true,
 		},
 		{
+			"name": "16_отряд_шеренга",
+			"pos": Vector3(-46.0, 14.0, 132.0),
+			"look": Vector3(-60.0, 1.0, 108.0),
+			"squad": 0,
+		},
+		{
+			"name": "17_отряд_рассыпной_строй",
+			"pos": Vector3(-46.0, 14.0, 132.0),
+			"look": Vector3(-60.0, 1.0, 108.0),
+			"squad": 3,
+		},
+		{
 			"name": "13_ползание_без_ноги",
 			"pos": Vector3(-11.0, 1.9, 17.2),
 			"look": Vector3(-14, 0.5, 14),
@@ -134,6 +146,8 @@ func _run() -> void:
 		if shot.get("caravan", false):
 			_stage_caravan()
 			await get_tree().create_timer(3.0).timeout
+		if shot.has("squad"):
+			await _stage_squad(int(shot["squad"]))
 		if shot.get("crawl", false):
 			_stage_wounds(false, true)
 			await get_tree().create_timer(1.6).timeout
@@ -234,3 +248,40 @@ func _stage_caravan() -> void:
 		Vector3(10.0, 0.0, 45.0),
 		Vector3(80.0, 0.0, 45.0),
 	]), me.peer_id)
+
+
+## Поставить отряд в заданное построение перед камерой. Казарму и бойцов
+## выдаём напрямую: проверка оплаты и потолка — дело автотеста, а не кадра.
+func _stage_squad(formation: int) -> void:
+	const RES := preload("res://scripts/economy/resources.gd")
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+
+	# Бойцов ставим прямо у камеры. Настоящий путь найма — казарма, ресурсы,
+	# потолок отряда — проверяет автотест; тащить их сюда пешком через полкарты
+	# от казармы из предыдущего кадра значит снимать марш, а не построение.
+	if _world.units_of(me.peer_id).is_empty():
+		for i in 10:
+			var angle: float = float(i) * 0.9
+			var radius: float = 3.0 + float(i) * 0.45
+			_world.spawn_unit(me.peer_id, i, Vector3(
+				-60.0 + cos(angle) * radius, 1.0, 100.0 + sin(angle) * radius
+			))
+		await get_tree().create_timer(0.5).timeout
+
+	# Командир встаёт туда, где должен стоять строй: отряд равняется на него.
+	me.global_position = Vector3(-60.0, 2.0, 108.0)
+	me.sync_position = me.global_position
+	me.rotation.y = 0.0
+	me.request_squad_follow()
+	me.request_formation(formation)
+	# Даём построиться: бойцы идут к слотам своим ходом.
+	await get_tree().create_timer(11.0).timeout
+	var squad: Array = _world.units_of(me.peer_id)
+	print("[shot] отряд: бойцов %d, казарма %s" % [
+		squad.size(), "есть" if _world.barracks_of(me.peer_id) != null else "НЕТ"
+	])
+	for unit in squad:
+		if is_instance_valid(unit):
+			print("[shot]   боец %s" % unit.global_position)

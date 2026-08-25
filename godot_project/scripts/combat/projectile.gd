@@ -157,7 +157,8 @@ func _explode(point: Vector3) -> void:
 		var damage: float = WEAPONS.DAMAGE[kind] * zone.damage_multiplier * falloff
 		if damage > 0.5:
 			var dir: Vector3 = (target.global_position - point).normalized()
-			target.take_damage(damage, shooter_id, zone.zone, zone.global_position, dir)
+			# Флаг «по площади»: рассыпной строй именно его и гасит.
+			target.take_damage(damage, shooter_id, zone.zone, zone.global_position, dir, true)
 
 	_show_impact.rpc(point, true)
 

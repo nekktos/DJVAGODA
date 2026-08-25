@@ -24,3 +24,29 @@ func owner_character() -> Node3D:
 			return node as Node3D
 		node = node.get_parent()
 	return null
+
+
+## Собрать зону попадания из собственного AABB меша и повесить на него же.
+##
+## Общий помощник для персонажей и юнитов: зона строится из РАЗМЕРОВ модели, а
+## не из захардкоженных чисел, и висит на самой части тела — значит едет за
+## анимацией и переживает замену модели.
+static func attach(mesh: MeshInstance3D, key: String, multiplier: float, layer: int) -> Area3D:
+	var box := mesh.get_aabb()
+	var area := Area3D.new()
+	area.set_script(load("res://scripts/combat/hit_zone.gd"))
+	area.zone = key
+	area.damage_multiplier = multiplier
+	area.collision_layer = layer
+	area.collision_mask = 0
+	area.monitoring = false
+	area.position = box.get_center()
+
+	var shape := CollisionShape3D.new()
+	var box_shape := BoxShape3D.new()
+	box_shape.size = box.size
+	shape.shape = box_shape
+	area.add_child(shape)
+
+	mesh.add_child(area)
+	return area

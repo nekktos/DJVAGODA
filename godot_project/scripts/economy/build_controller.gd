@@ -153,3 +153,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			set_active(false)
 			get_viewport().set_input_as_handled()
+
+
+## Точка на земле под курсором. Общий помощник: им пользуются и призрак здания,
+## и прокладка маршрута, и приказ отряду — чтобы все три брали одну и ту же
+## точку и не расходились в мелочах.
+static func pick_ground(context: Node3D) -> Dictionary:
+	var camera := context.get_viewport().get_camera_3d()
+	if camera == null:
+		return {}
+	var mouse := context.get_viewport().get_mouse_position()
+	var query := PhysicsRayQueryParameters3D.create(
+		camera.project_ray_origin(mouse),
+		camera.project_ray_origin(mouse) + camera.project_ray_normal(mouse) * PICK_DISTANCE
+	)
+	query.collision_mask = 1
+	return context.get_world_3d().direct_space_state.intersect_ray(query)

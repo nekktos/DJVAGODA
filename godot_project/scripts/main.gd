@@ -17,6 +17,7 @@ extends Node
 ##   --woundtest     автопроверка системы ранений и протезов (headless)
 ##   --econtest      автопроверка добычи и стройки (headless)
 ##   --caravantest   автопроверка шахты, каравана и грабежа (headless)
+##   --squadtest     автопроверка отряда и построений (headless)
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
@@ -26,6 +27,8 @@ const STEAM_HINT := "Steam: хост сообщает свой Steam ID, вто�
 
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const FORMATIONS := preload("res://scripts/units/formations.gd")
+const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 
 @onready var _menu: Control = $UI/Menu
 @onready var _status: Label = $UI/Menu/Panel/VBox/Status
@@ -85,6 +88,7 @@ func _process(_delta: float) -> void:
 		if boss != null:
 			line += "\nсклад: %s" % boss.stock.summary()
 		line += "\n" + _build_hint()
+		line += "\n" + _squad_hint()
 		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню"
 	else:
 		var me: Node3D = _world.local_player()
@@ -121,6 +125,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event.keycode == KEY_C:
 			_world.set_route_mode(not _world.route_controller.active)
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode >= KEY_F1 and event.keycode <= KEY_F4:
+			_squad_order("formation", event.keycode - KEY_F1)
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_G:
+			_squad_order("follow", 0)
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_T:
+			_squad_order("train", 0)
+			get_viewport().set_input_as_handled()
+			return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		# Стройка и прокладка маршрута перехватывают ПКМ раньше — там это отмена.
+		if _try_squad_move_order():
 			get_viewport().set_input_as_handled()
 			return
 	if event.is_action_pressed(&"interact") and Net.active:
@@ -249,6 +270,12 @@ func _apply_cmdline() -> void:
 		var probe: Node = preload("res://tools/player_probe.gd").new()
 		add_child(probe)
 		probe.start(_world)
+		needs_session = true
+
+	if args.has("--squadtest"):
+		var squad: Node = preload("res://tools/squad_test.gd").new()
+		add_child(squad)
+		squad.start(_world)
 		needs_session = true
 
 	if args.has("--caravantest"):
@@ -398,3 +425,47 @@ func _build_hint() -> String:
 		line += "
 караван: %s, здоровье %d" % [caravan.state_text(), int(caravan.health)]
 	return line
+
+
+# --- приказы отряду --------------------------------------------------------
+
+func _squad_order(what: String, value: int) -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	match what:
+		"formation":
+			me.ask_formation(value)
+		"follow":
+			me.ask_squad_follow()
+		"train":
+			me.ask_train_unit()
+
+
+## ПКМ в стратегической камере, когда не идёт стройка и не рисуется маршрут —
+## это приказ отряду идти в точку.
+func _try_squad_move_order() -> bool:
+	if not (Net.active and _world.strategy_mode):
+		return false
+	if _world.build_controller.active or _world.route_controller.active:
+		return false
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return false
+	var hit := BUILD_CONTROLLER.pick_ground(_world)
+	if hit.is_empty():
+		return false
+	me.ask_squad_move(hit["position"])
+	return true
+
+
+func _squad_hint() -> String:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return ""
+	var squad: Array = _world.units_of(me.peer_id)
+	var stance := "держит позицию" if me.squad_hold else "следует за командиром"
+	return "отряд: %d/%d, %s, %s   |   F1-F4 строй, G следовать, ПКМ идти в точку, T нанять (%s)" % [
+		squad.size(), RES.SQUAD_LIMIT, stance,
+		FORMATIONS.describe(me.squad_formation), RES.format_cost(RES.UNIT_COST)
+	]

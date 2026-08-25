@@ -24,6 +24,7 @@ const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
 const BUILDING_SCENE := preload("res://scenes/Building.tscn")
 const CARAVAN_SCENE := preload("res://scenes/Caravan.tscn")
 const LOOT_SCENE := preload("res://scenes/Loot.tscn")
+const UNIT_SCENE := preload("res://scenes/Unit.tscn")
 const RES := preload("res://scripts/economy/resources.gd")
 
 ## Через сколько секунд после смерти игрок возвращается в мир.
@@ -226,6 +227,8 @@ func _make_spawned(data: Dictionary) -> Node:
 			node = CARAVAN_SCENE.instantiate()
 		"loot":
 			node = LOOT_SCENE.instantiate()
+		"unit":
+			node = UNIT_SCENE.instantiate()
 		_:
 			node = CORPSE_SCENE.instantiate()
 	node.name = "%s_%d" % [data["type"], int(data["id"])]
@@ -429,3 +432,46 @@ func caravans_of(owner_id: int) -> Array:
 		if child.has_method("state_text") and int(child.owner_id) == owner_id:
 			found.append(child)
 	return found
+
+
+# --- отряд -----------------------------------------------------------------
+
+## Ближайшая ДОСТРОЕННАЯ казарма игрока.
+func barracks_of(owner_id: int) -> Node3D:
+	for node in get_tree().get_nodes_in_group("building"):
+		var building := node as Node3D
+		if building == null:
+			continue
+		if int(building.kind) != RES.Building.BARRACKS:
+			continue
+		if int(building.owner_id) != owner_id or float(building.progress) < 1.0:
+			continue
+		return building
+	return null
+
+
+## Живые бойцы игрока.
+func units_of(owner_id: int) -> Array:
+	var found := []
+	for child in _spawned.get_children():
+		if child.is_in_group("unit") and int(child.owner_id) == owner_id:
+			found.append(child)
+	return found
+
+
+## Нанять бойца. Только на хосте: заявка сюда попадает уже проверенной
+## (см. player.gd::request_train_unit).
+func spawn_unit(owner_id: int, slot: int, point: Vector3) -> Node:
+	if not multiplayer.is_server():
+		return null
+	_spawn_counter += 1
+	var node := _world_spawner.spawn({
+		"type": "unit",
+		"id": _spawn_counter,
+		"owner": owner_id,
+		"slot": slot,
+		"point": point,
+	})
+	if node != null:
+		print("[отряд] игрок %d нанял мечника, слот %d" % [owner_id, slot])
+	return node

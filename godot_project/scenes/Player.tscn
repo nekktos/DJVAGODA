@@ -51,6 +51,18 @@ properties/7/replication_mode = 1
 properties/8/path = NodePath("Stock:capacity")
 properties/8/spawn = true
 properties/8/replication_mode = 1
+properties/9/path = NodePath(".:squad_formation")
+properties/9/spawn = true
+properties/9/replication_mode = 1
+properties/10/path = NodePath(".:squad_hold")
+properties/10/spawn = true
+properties/10/replication_mode = 1
+properties/11/path = NodePath(".:squad_rally")
+properties/11/spawn = true
+properties/11/replication_mode = 1
+properties/12/path = NodePath(".:squad_rally_yaw")
+properties/12/spawn = true
+properties/12/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

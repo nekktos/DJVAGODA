@@ -177,7 +177,7 @@ func _unload_at_home() -> void:
 
 
 ## Принять урон. Вызывается ТОЛЬКО хостом — так же, как у персонажей.
-func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3, dir: Vector3) -> void:
+func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
 	if not multiplayer.is_server() or not _alive:
 		return
 	health = maxf(0.0, health - amount)
