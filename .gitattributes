@@ -1,1 +1,9 @@
 * text=auto eol=lf
+
+# Нативные бинарники аддонов: ни в коем случае не нормализовать переводы строк.
+*.dll binary
+*.so  binary
+*.dylib binary
+*.exe binary
+*.pck binary
+*.zip binary
