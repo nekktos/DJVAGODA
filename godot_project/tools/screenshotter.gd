@@ -88,6 +88,12 @@ func _shots() -> Array:
 			"buildings": true,
 		},
 		{
+			"name": "15_караван_в_пути",
+			"pos": Vector3(30.0, 6.0, 63.0),
+			"look": Vector3(36.0, 1.6, 45.0),
+			"caravan": true,
+		},
+		{
 			"name": "13_ползание_без_ноги",
 			"pos": Vector3(-11.0, 1.9, 17.2),
 			"look": Vector3(-14, 0.5, 14),
@@ -125,6 +131,9 @@ func _run() -> void:
 			_stage_buildings()
 			# Ждём дольше времени стройки, иначе в кадре будет котлован.
 			await get_tree().create_timer(10.0).timeout
+		if shot.get("caravan", false):
+			_stage_caravan()
+			await get_tree().create_timer(3.0).timeout
 		if shot.get("crawl", false):
 			_stage_wounds(false, true)
 			await get_tree().create_timer(1.6).timeout
@@ -209,3 +218,19 @@ func _stage_buildings() -> void:
 	_world.spawn_building(RES.Building.BARRACKS, Vector3(52.0, 0.0, 68.0), me.peer_id)
 	me.global_position = Vector3(64.0, 2.0, 58.0)
 	me.sync_position = me.global_position
+
+
+## Отправить караван по маршруту у шахты, чтобы в кадре был он, а не пустая
+## дорога. Склад тут не нужен: проверка «куда возвращаться» — дело автотеста.
+func _stage_caravan() -> void:
+	const RES := preload("res://scripts/economy/resources.gd")
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	# Маршрут для кадра нарочно короткий и на открытом месте: у настоящей шахты
+	# караван теряется среди 70-метровых скал и в кадр не читается.
+	_world.spawn_caravan(PackedVector3Array([
+		Vector3(10.0, 0.0, 45.0),
+		Vector3(80.0, 0.0, 45.0),
+	]), me.peer_id)

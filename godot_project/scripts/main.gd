@@ -16,6 +16,7 @@ extends Node
 ##   --combattest    автопроверка боевой петли на двух пирах (headless)
 ##   --woundtest     автопроверка системы ранений и протезов (headless)
 ##   --econtest      автопроверка добычи и стройки (headless)
+##   --caravantest   автопроверка шахты, каравана и грабежа (headless)
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
@@ -99,7 +100,10 @@ func _process(_delta: float) -> void:
 					line += "   перевязка: %d%%" % int(progress * 100.0)
 				else:
 					line += "   B — перевязать (стоя на месте)"
-			if me.at_workbench():
+			var pile: Node3D = me.loot_nearby()
+			if pile != null:
+				line += "\nF — подобрать груз: %s" % pile.summary()
+			elif me.at_workbench():
 				line += "\nF — верстак: протезы и коляска"
 		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню"
 	_update_blindness()
@@ -115,8 +119,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_world.set_build_mode(true, RES.Building.BARRACKS)
 			get_viewport().set_input_as_handled()
 			return
+		if event.keycode == KEY_C:
+			_world.set_route_mode(not _world.route_controller.active)
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed(&"interact") and Net.active:
-		_toggle_bench()
+		# У кучи груза F подбирает её, у верстака открывает панель.
+		var me: Node3D = _world.local_player()
+		if me != null and me.loot_nearby() != null:
+			me.ask_collect_loot()
+		else:
+			_toggle_bench()
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed(&"toggle_camera") and Net.active:
@@ -236,6 +249,12 @@ func _apply_cmdline() -> void:
 		var probe: Node = preload("res://tools/player_probe.gd").new()
 		add_child(probe)
 		probe.start(_world)
+		needs_session = true
+
+	if args.has("--caravantest"):
+		var caravan: Node = preload("res://tools/caravan_test.gd").new()
+		add_child(caravan)
+		caravan.start(_world)
 		needs_session = true
 
 	if args.has("--econtest"):
@@ -364,6 +383,18 @@ func _build_hint() -> String:
 		parts.append("%d — %s (%s)" % [
 			i + 1, RES.BUILDING_NAMES[i], RES.format_cost(RES.BUILDING_COST[i])
 		])
+	var route: Node3D = _world.route_controller
+	if route.active:
+		return "МАРШРУТ: ЛКМ — точка (%d), Enter — отправить караван, ПКМ — отмена" % route.points().size()
 	if controller.active:
 		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
-	return "стройка: " + "   ".join(parts)
+	var line := "стройка: " + "   ".join(parts)
+	line += "   |   C — маршрут каравана   |   шахта: %s" % _world.mine.summary()
+	var mine_caravans: Array = []
+	var me: Node3D = _world.local_player()
+	if me != null:
+		mine_caravans = _world.caravans_of(me.peer_id)
+	for caravan in mine_caravans:
+		line += "
+караван: %s, здоровье %d" % [caravan.state_text(), int(caravan.health)]
+	return line

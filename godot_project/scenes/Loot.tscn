@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/economy/loot.gd" id="1_loot"]
+
+[sub_resource type="SceneReplicationConfig" id="Repl_loot"]
+properties/0/path = NodePath(".:contents")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+
+[node name="Loot" type="Node3D"]
+script = ExtResource("1_loot")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("Repl_loot")
+replication_interval = 0.5

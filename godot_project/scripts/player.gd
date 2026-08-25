@@ -802,3 +802,80 @@ func request_build(building_kind: int, point: Vector3) -> void:
 		return
 	var world := get_parent().get_parent()
 	world.spawn_building(building_kind, point, peer_id)
+
+
+# --- караван и подбор груза -----------------------------------------------
+
+## Сколько караванов игрок может держать в пути одновременно.
+const MAX_CARAVANS := 2
+## Дальше этого точку маршрута не принимаем — защита от мусора в заявке.
+const ROUTE_BOUND := 640.0
+
+
+func ask_send_caravan(points: PackedVector3Array) -> void:
+	if multiplayer.is_server():
+		request_send_caravan(points)
+	else:
+		request_send_caravan.rpc_id(1, points)
+
+
+## Заявка на отправку каравана. Хост дорисовывает начало и конец сам: караван
+## всегда выходит от склада и всегда едет к шахте. Игрок решает только путь
+## между ними (GDD раздел 8.2).
+@rpc("any_peer", "reliable")
+func request_send_caravan(points: PackedVector3Array) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner() or not health.alive:
+		return
+
+	var world := get_parent().get_parent()
+	var storage: Node3D = world.storage_of(peer_id)
+	if storage == null:
+		push_warning("Игроку %d некуда возвращать караван: нет достроенного склада" % peer_id)
+		return
+	if world.caravans_of(peer_id).size() >= MAX_CARAVANS:
+		push_warning("У игрока %d уже максимум караванов в пути" % peer_id)
+		return
+
+	var route := PackedVector3Array()
+	route.append(storage.global_position)
+	for point in points:
+		if absf(point.x) > ROUTE_BOUND or absf(point.z) > ROUTE_BOUND:
+			push_warning("Точка маршрута игрока %d вне карты, заявка отклонена" % peer_id)
+			return
+		route.append(point)
+	route.append(world.mine.global_position)
+
+	world.spawn_caravan(route, peer_id)
+
+
+func ask_collect_loot() -> void:
+	if multiplayer.is_server():
+		request_collect_loot()
+	else:
+		request_collect_loot.rpc_id(1)
+
+
+## Подобрать ближайшую кучу. Расстояние проверяет хост, а не клиент.
+@rpc("any_peer", "reliable")
+func request_collect_loot() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner() or not health.alive:
+		return
+	for node in get_tree().get_nodes_in_group("loot"):
+		var pile := node as Node3D
+		if pile == null:
+			continue
+		if pile.collect(self) > 0:
+			return
+
+
+## Есть ли рядом куча, которую можно подобрать. Для подсказки в HUD.
+func loot_nearby() -> Node3D:
+	for node in get_tree().get_nodes_in_group("loot"):
+		var pile := node as Node3D
+		if pile != null and pile.global_position.distance_to(global_position) <= pile.PICKUP_RANGE:
+			return pile
+	return null

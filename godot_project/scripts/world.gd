@@ -22,6 +22,8 @@ const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
 const PROJECTILE_SCENE := preload("res://scenes/Projectile.tscn")
 const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
 const BUILDING_SCENE := preload("res://scenes/Building.tscn")
+const CARAVAN_SCENE := preload("res://scenes/Caravan.tscn")
+const LOOT_SCENE := preload("res://scenes/Loot.tscn")
 const RES := preload("res://scripts/economy/resources.gd")
 
 ## Через сколько секунд после смерти игрок возвращается в мир.
@@ -50,6 +52,8 @@ signal camera_mode_changed(strategy: bool)
 @onready var _spawned: Node3D = $Spawned
 @onready var _world_spawner: MultiplayerSpawner = $WorldSpawner
 @onready var build_controller: Node3D = $BuildController
+@onready var route_controller: Node3D = $RouteController
+@onready var mine: Node3D = $Mine
 
 var strategy_mode := false
 
@@ -75,6 +79,8 @@ func _ready() -> void:
 	var builder := WORLD_BUILDER.new()
 	builder.build(_terrain)
 	build_controller.place_requested.connect(_on_place_requested)
+	route_controller.route_sent.connect(_on_route_sent)
+	mine.position = WORLD_BUILDER.MINE_POS
 
 
 func _process(delta: float) -> void:
@@ -216,6 +222,10 @@ func _make_spawned(data: Dictionary) -> Node:
 			node = PROJECTILE_SCENE.instantiate()
 		"building":
 			node = BUILDING_SCENE.instantiate()
+		"caravan":
+			node = CARAVAN_SCENE.instantiate()
+		"loot":
+			node = LOOT_SCENE.instantiate()
 		_:
 			node = CORPSE_SCENE.instantiate()
 	node.name = "%s_%d" % [data["type"], int(data["id"])]
@@ -339,3 +349,83 @@ func set_build_mode(on: bool, kind: int = -1) -> void:
 	if kind >= 0:
 		build_controller.select(kind)
 	build_controller.set_active(on)
+
+
+# --- караван ---------------------------------------------------------------
+
+## Игрок дорисовал маршрут и нажал Enter.
+func _on_route_sent(points: PackedVector3Array) -> void:
+	var me := local_player()
+	if me != null:
+		me.ask_send_caravan(points)
+
+
+## Прокладка маршрута живёт только в стратегической камере.
+func set_route_mode(on: bool) -> void:
+	if on and not strategy_mode:
+		return
+	if on:
+		build_controller.set_active(false)
+	route_controller.set_active(on)
+
+
+## Ближайший ДОСТРОЕННЫЙ склад игрока. Без него каравану некуда возвращаться.
+func storage_of(owner_id: int) -> Node3D:
+	for node in get_tree().get_nodes_in_group("building"):
+		var building := node as Node3D
+		if building == null:
+			continue
+		if int(building.kind) != RES.Building.STORAGE:
+			continue
+		if int(building.owner_id) != owner_id:
+			continue
+		if float(building.progress) < 1.0:
+			continue
+		return building
+	return null
+
+
+## Отправить караван. Только на хосте: маршрут сюда попадает уже проверенным
+## (см. player.gd::request_send_caravan).
+func spawn_caravan(route: PackedVector3Array, owner_id: int) -> Node:
+	if not multiplayer.is_server():
+		return null
+	_spawn_counter += 1
+	var node := _world_spawner.spawn({
+		"type": "caravan",
+		"id": _spawn_counter,
+		"route": route,
+		"owner": owner_id,
+	})
+	if node != null:
+		print("[караван] игрок %d отправил караван, точек в маршруте: %d" % [owner_id, route.size()])
+		node.destroyed.connect(_on_caravan_destroyed)
+	return node
+
+
+## Разбитый караван высыпает груз на землю: подобрать может любой
+## (DESIGN_ANSWERS.md, пункт 15).
+func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array) -> void:
+	if not multiplayer.is_server():
+		return
+	var total := 0
+	for value in cargo:
+		total += value
+	if total <= 0:
+		return
+	_spawn_counter += 1
+	_world_spawner.spawn({
+		"type": "loot",
+		"id": _spawn_counter,
+		"point": point,
+		"contents": cargo,
+	})
+
+
+## Караваны игрока, живые в этот момент.
+func caravans_of(owner_id: int) -> Array:
+	var found := []
+	for child in _spawned.get_children():
+		if child.has_method("state_text") and int(child.owner_id) == owner_id:
+			found.append(child)
+	return found

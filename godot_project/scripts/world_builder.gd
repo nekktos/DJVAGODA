@@ -20,6 +20,9 @@ const ZONE_HALF := ZONE_SIZE * 0.5
 ## Верстак у точки спавна: здесь ставят протезы и берут коляску.
 const WORKBENCH_POS := Vector3(-24.0, 0.0, 22.0)
 
+## Шахта злодея: далеко от форта, ресурсы оттуда возит караван (GDD 2.3).
+const MINE_POS := Vector3(-470.0, 0.0, 470.0)
+
 enum Zone { ELVES, EMPEROR, VILLAIN, HUMANS }
 
 const ZONE_CENTERS := {
@@ -290,7 +293,7 @@ func _build_villain(c: Vector2) -> void:
 	_box(g, Vector3(f.x + 45.0, 5.0, f.y + 30.0), Vector3(30.0, 10.0, 20.0), "wood")  # склад
 
 	# Шахта на удалении от форта — задел под маршрут каравана (GDD, этап 5).
-	var m := c + Vector2(-170.0, 170.0)
+	var m := Vector2(MINE_POS.x, MINE_POS.z)
 	# Шахта: железо и золото. Полноценная добыча с караваном — Этап 5.
 	_harvestable(_box(g, Vector3(m.x, 10.0, m.y), Vector3(50.0, 20.0, 50.0), "rock"), RES.Kind.IRON, 40)
 	_box(g, Vector3(m.x, 4.0, m.y + 26.0), Vector3(14.0, 8.0, 6.0), "dark_stone")     # вход
