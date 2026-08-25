@@ -22,9 +22,9 @@ const REMOTE_LERP := 15.0
 ## одинаков на всех пирах, поэтому стартовую позицию не нужно реплицировать.
 ## Размер массива задаёт максимум игроков в сессии — 3 (GDD: от 1 до 3).
 const SPAWN_POINTS: Array[Vector3] = [
-	Vector3(-5.0, 1.2, 6.0),
-	Vector3(0.0, 1.2, 9.0),
-	Vector3(5.0, 1.2, 6.0),
+	Vector3(-14.0, 2.0, 14.0),
+	Vector3(0.0, 2.0, 22.0),
+	Vector3(14.0, 2.0, 14.0),
 ]
 
 const SLOT_COLORS: Array[Color] = [
@@ -41,6 +41,15 @@ var peer_id := 1
 ## Номер слота 0..SPAWN_POINTS.size()-1. Выставляется хостом до add_child и
 ## приезжает к остальным пирам как часть данных спавна.
 var spawn_slot := 0
+
+## Принимает ли персонаж управление. Выключается на время стратегической
+## камеры: персонаж при этом продолжает симулироваться и оставаться уязвимым,
+## просто стоит на месте (см. DESIGN_ANSWERS.md, пункт 7).
+var control_enabled := true
+
+## Подмена ввода для автотестов проходимости (tools/walk_test.gd).
+## Пустой словарь — обычный ввод игрока.
+var scripted_input := {}
 
 ## Дебаг-ключ --bot: персонаж ходит по кругу сам, без живого игрока.
 ## Нужен, чтобы прогнать синхронизацию соло (в т.ч. headless). На геймплей не
@@ -83,7 +92,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not is_multiplayer_authority():
+	if not is_multiplayer_authority() or not control_enabled:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotation.y -= event.relative.x * MOUSE_SENS
@@ -106,6 +115,10 @@ func _physics_process(delta: float) -> void:
 ## авторитет над движением переедет на хост, сюда встанет отправка инпута по
 ## сети, а apply_input() будет вызываться на хосте без изменений.
 func _gather_input() -> Dictionary:
+	if not scripted_input.is_empty():
+		return scripted_input
+	if not control_enabled:
+		return {"move": Vector2.ZERO, "jump": false}
 	if _is_bot():
 		var t := Time.get_ticks_msec() / 1000.0
 		return {"move": Vector2(cos(t), sin(t)), "jump": false}
@@ -152,3 +165,10 @@ static func _is_bot() -> bool:
 		var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 		_bot_mode = 1 if args.has("--bot") else 0
 	return _bot_mode == 1
+
+
+## Сделать камеру этого персонажа активной. Вызывается при возврате из
+## стратегического режима; у чужих персонажей ничего не делает.
+func set_view_active(on: bool) -> void:
+	if is_multiplayer_authority():
+		_camera.current = on
