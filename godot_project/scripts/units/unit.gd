@@ -14,6 +14,7 @@ extends CharacterBody3D
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
+const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 
@@ -47,6 +48,13 @@ const STRIKE_DAMAGE := 22.0
 const STRIKE_COOLDOWN := 1.1
 ## Насколько точно надо встать в свой слот, чтобы считать себя в строю.
 const SLOT_TOLERANCE := 1.2
+
+## Расталкивание соседей: радиус действия и сила. Без него бойцы в плотном
+## строю упираются друг в друга и марш встаёт.
+const SEPARATION_RADIUS := 1.7
+const SEPARATION_FORCE := 5.0
+## Потолок горизонтальной скорости, чтобы расталкивание никого не разгоняло.
+const MAX_FLAT_SPEED := 9.0
 
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
@@ -82,11 +90,12 @@ func setup(data: Dictionary) -> void:
 func _ready() -> void:
 	add_to_group("unit")
 	collision_layer = BODY_LAYER
-	# Со статичным миром сталкиваемся, друг с другом — нет. Расстояние между
-	# бойцами задают слоты построения, а взаимные столкновения в плотном строю
-	# только тормозят марш втрое и распирают шеренгу. Игрок при этом сквозь
-	# бойцов не проходит: у него в маске слой тел остался.
-	collision_mask = 1
+	# Сталкиваемся и с миром, и с телами. Раньше взаимные столкновения были
+	# отключены, потому что бойцы упирались друг в друга и марш замедлялся
+	# втрое — но это лечило симптом не с той стороны, и бойцы проникали друг в
+	# друга. Теперь коллизии на месте, а от заклинивания спасает расталкивание
+	# (_separation): бойцы мягко разъезжаются, а не толкаются лбами.
+	collision_mask = 1 | 2
 	_build_model()
 
 
@@ -108,6 +117,8 @@ func _build_model() -> void:
 	add_child(shape)
 
 	_anim = _find_anim(_model)
+	# Ходьба должна зацикливаться — см. model_anim.gd.
+	MODEL_ANIM.make_looping(_anim)
 	for part_name in PART_ZONES.keys():
 		var mesh := _find_by_name(_model, part_name) as MeshInstance3D
 		if mesh == null:
@@ -185,19 +196,26 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 
+	var desired := Vector3.ZERO
 	if distance > stop_at:
 		var dir := to_dest.normalized()
 		var speed := BASE_SPEED * FORMATIONS.speed_scale(_formation())
-		velocity.x = dir.x * speed
-		velocity.z = dir.z * speed
+		desired = dir * speed
 		rotation.y = atan2(-dir.x, -dir.z)
 		sync_moving = true
 	else:
-		velocity.x = 0.0
-		velocity.z = 0.0
 		sync_moving = false
 		if facing_target:
 			_strike(target)
+
+	# Расталкивание работает всегда, в том числе на месте: иначе бойцы, пришедшие
+	# в соседние слоты, стоят внахлёст.
+	var push := _separation()
+	var flat := Vector3(desired.x + push.x, 0.0, desired.z + push.z)
+	if flat.length() > MAX_FLAT_SPEED:
+		flat = flat.normalized() * MAX_FLAT_SPEED
+	velocity.x = flat.x
+	velocity.z = flat.z
 
 	move_and_slide()
 	sync_position = global_position
@@ -290,3 +308,32 @@ func show_hit(point: Vector3, dir: Vector3, amount: float) -> void:
 		return
 	# В мир, а не в Spawned: за той нодой следит MultiplayerSpawner.
 	EFFECTS.blood(get_parent().get_parent(), point, dir, amount)
+
+
+## Мягкое расталкивание соседей. Чем ближе боец, тем сильнее толчок в сторону.
+## Считает хост — как и всё остальное движение юнитов.
+func _separation() -> Vector3:
+	var push := Vector3.ZERO
+	for other in get_parent().get_children():
+		if other == self or not other.is_in_group("unit"):
+			continue
+		var away: Vector3 = global_position - (other as Node3D).global_position
+		away.y = 0.0
+		var distance := away.length()
+		if distance <= 0.01 or distance >= SEPARATION_RADIUS:
+			continue
+		push += away.normalized() * (1.0 - distance / SEPARATION_RADIUS)
+	return push * SEPARATION_FORCE
+
+
+## Для автопроверок: что сейчас играет и зациклено ли оно.
+func animation_state() -> Dictionary:
+	if _anim == null:
+		return {}
+	var current: String = _anim.current_animation
+	var anim: Animation = _anim.get_animation(current) if current != "" else null
+	return {
+		"name": current,
+		"playing": _anim.is_playing(),
+		"looping": anim != null and anim.loop_mode != Animation.LOOP_NONE,
+	}

@@ -20,6 +20,7 @@ const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
+const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
@@ -170,6 +171,9 @@ func _build_model(slot: int) -> void:
 	add_child(_model)
 
 	_anim = _find_node(_model, AnimationPlayer) as AnimationPlayer
+	# Без этого ходьба играется один раз и персонаж дальше едет в позе
+	# последнего кадра — glTF приезжает с LOOP_NONE.
+	MODEL_ANIM.make_looping(_anim)
 	for part_name in PART_ZONES.keys():
 		var mesh := _find_by_name(_model, part_name) as MeshInstance3D
 		if mesh == null:
@@ -1050,3 +1054,16 @@ func cheat_answer(text: String) -> void:
 	if not _sender_is_host():
 		return
 	cheat_reply.emit(text)
+
+
+## Для автопроверок: что сейчас играет и зациклено ли оно.
+func animation_state() -> Dictionary:
+	if _anim == null:
+		return {}
+	var current: String = _anim.current_animation
+	var anim: Animation = _anim.get_animation(current) if current != "" else null
+	return {
+		"name": current,
+		"playing": _anim.is_playing(),
+		"looping": anim != null and anim.loop_mode != Animation.LOOP_NONE,
+	}

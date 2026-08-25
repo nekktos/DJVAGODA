@@ -43,6 +43,7 @@ func _run() -> void:
 	await _test_formations(me)
 	await _test_orders(me)
 	_test_modifiers()
+	await _test_spacing_and_animation(me)
 
 	if _failures == 0:
 		print("[отряд-тест] все проверки пройдены")
@@ -201,3 +202,48 @@ func _test_modifiers() -> void:
 	var column_aoe: float = FORMATIONS.damage_scale(FORMATIONS.Kind.COLUMN, true)
 	_check(loose_aoe < column_aoe * 0.5, "рассыпной строй гасит урон по площади",
 		"рассыпной x%.2f, колонна x%.2f" % [loose_aoe, column_aoe])
+
+
+## Бойцы не должны стоять внахлёст, а ходьба — не должна замирать после
+## одного проигрыша. Оба пункта нашлись на живом playtest, глазами.
+func _test_spacing_and_animation(me: Node3D) -> void:
+	var squad: Array = _units(me)
+	if squad.size() < 4:
+		_check(false, "расстояние между бойцами", "отряд слишком мал")
+		return
+
+	# Ставим командира рядом и даём построиться в самый плотный строй.
+	var barracks: Node3D = _world.barracks_of(me.peer_id)
+	if barracks != null:
+		me.teleport.rpc(barracks.global_position + Vector3(0.0, 2.0, 24.0))
+	me.request_squad_follow()
+	me.request_formation(FORMATIONS.Kind.SHIELD_WALL)
+	await get_tree().create_timer(12.0).timeout
+
+	var closest := INF
+	for i in squad.size():
+		for j in range(i + 1, squad.size()):
+			if not is_instance_valid(squad[i]) or not is_instance_valid(squad[j]):
+				continue
+			var a: Vector3 = squad[i].global_position
+			var b: Vector3 = squad[j].global_position
+			closest = minf(closest, Vector2(a.x - b.x, a.z - b.z).length())
+	_check(closest > 0.7, "бойцы не проникают друг в друга даже в стене щитов",
+		"ближайшая пара: %.2f м" % closest)
+
+	# Отправляем в поход и смотрим, играет ли ходьба и зациклена ли она.
+	me.request_squad_move(me.global_position + Vector3(70.0, 0.0, 70.0))
+	await get_tree().create_timer(3.0).timeout
+	var walking := 0
+	var looping := 0
+	for unit in squad:
+		if not is_instance_valid(unit):
+			continue
+		var state: Dictionary = unit.animation_state()
+		if state.get("playing", false) and String(state.get("name", "")) == "walk":
+			walking += 1
+		if state.get("looping", false):
+			looping += 1
+	_check(walking > 0, "на марше играет анимация ходьбы", "идут с анимацией: %d" % walking)
+	_check(looping == squad.size(), "анимация ходьбы зациклена",
+		"зациклено у %d из %d" % [looping, squad.size()])

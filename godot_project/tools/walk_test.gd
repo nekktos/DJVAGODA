@@ -92,6 +92,24 @@ func _run() -> void:
 			"OK  " if ok else "ПРОВАЛ", s.name, p.x, p.y, p.z, s.expectation
 		])
 
+	# Анимация ходьбы должна ИГРАТЬ и быть зациклена, пока персонаж идёт.
+	# Без цикла она проигрывалась один раз, и дальше персонаж ехал в позе
+	# последнего кадра — на playtest это выглядело как катающиеся пешки.
+	player.global_position = Vector3(-60.0, 2.0, 60.0)
+	player.scripted_input = {"move": Vector2(0.0, -1.0), "jump": false}
+	await get_tree().create_timer(3.0).timeout
+	var anim: Dictionary = player.animation_state()
+	player.scripted_input = {}
+
+	var walking: bool = bool(anim.get("playing", false)) and String(anim.get("name", "")) == "walk"
+	var looping: bool = bool(anim.get("looping", false))
+	if not walking:
+		failures += 1
+	if not looping:
+		failures += 1
+	print("[walk] %s | анимация ходьбы играет: %s" % ["OK  " if walking else "ПРОВАЛ", anim])
+	print("[walk] %s | анимация ходьбы зациклена: %s" % ["OK  " if looping else "ПРОВАЛ", looping])
+
 	if failures == 0:
 		print("[walk] все сценарии пройдены")
 	else:
