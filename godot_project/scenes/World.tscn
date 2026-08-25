@@ -1,0 +1,158 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
+
+[sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
+sky_top_color = Color(0.38, 0.5, 0.68, 1)
+sky_horizon_color = Color(0.66, 0.7, 0.74, 1)
+ground_bottom_color = Color(0.2, 0.2, 0.22, 1)
+ground_horizon_color = Color(0.66, 0.7, 0.74, 1)
+
+[sub_resource type="Sky" id="Sky_res"]
+sky_material = SubResource("Sky_mat")
+
+[sub_resource type="Environment" id="Env_res"]
+background_mode = 2
+sky = SubResource("Sky_res")
+ambient_light_source = 3
+reflected_light_source = 2
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="Mat_ground"]
+albedo_color = Color(0.35, 0.36, 0.38, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_step"]
+albedo_color = Color(0.55, 0.56, 0.58, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_red"]
+albedo_color = Color(0.72, 0.24, 0.22, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_green"]
+albedo_color = Color(0.28, 0.6, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_blue"]
+albedo_color = Color(0.24, 0.4, 0.72, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_yellow"]
+albedo_color = Color(0.8, 0.7, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_ground"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxShape3D" id="Shape_ground"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxMesh" id="Mesh_pillar"]
+size = Vector3(2, 6, 2)
+
+[sub_resource type="BoxShape3D" id="Shape_pillar"]
+size = Vector3(2, 6, 2)
+
+[sub_resource type="BoxMesh" id="Mesh_step"]
+size = Vector3(6, 0.6, 6)
+
+[sub_resource type="BoxShape3D" id="Shape_step"]
+size = Vector3(6, 0.6, 6)
+
+[node name="World" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_res")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.86, -0.25, 0.44, 0, 0.87, 0.49, -0.51, -0.42, 0.75, 0, 12, 0)
+shadow_enabled = true
+
+[node name="MenuCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0, 8, 22)
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("Mesh_ground")
+material_override = SubResource("Mat_ground")
+
+[node name="Col" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("Shape_ground")
+
+[node name="Markers" type="Node3D" parent="."]
+
+[node name="PillarRed" type="StaticBody3D" parent="Markers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 3, -14)
+
+[node name="Mesh" type="MeshInstance3D" parent="Markers/PillarRed"]
+mesh = SubResource("Mesh_pillar")
+material_override = SubResource("Mat_red")
+
+[node name="Col" type="CollisionShape3D" parent="Markers/PillarRed"]
+shape = SubResource("Shape_pillar")
+
+[node name="PillarGreen" type="StaticBody3D" parent="Markers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 3, -14)
+
+[node name="Mesh" type="MeshInstance3D" parent="Markers/PillarGreen"]
+mesh = SubResource("Mesh_pillar")
+material_override = SubResource("Mat_green")
+
+[node name="Col" type="CollisionShape3D" parent="Markers/PillarGreen"]
+shape = SubResource("Shape_pillar")
+
+[node name="PillarBlue" type="StaticBody3D" parent="Markers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 3, 14)
+
+[node name="Mesh" type="MeshInstance3D" parent="Markers/PillarBlue"]
+mesh = SubResource("Mesh_pillar")
+material_override = SubResource("Mat_blue")
+
+[node name="Col" type="CollisionShape3D" parent="Markers/PillarBlue"]
+shape = SubResource("Shape_pillar")
+
+[node name="PillarYellow" type="StaticBody3D" parent="Markers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 3, 14)
+
+[node name="Mesh" type="MeshInstance3D" parent="Markers/PillarYellow"]
+mesh = SubResource("Mesh_pillar")
+material_override = SubResource("Mat_yellow")
+
+[node name="Col" type="CollisionShape3D" parent="Markers/PillarYellow"]
+shape = SubResource("Shape_pillar")
+
+[node name="Steps" type="Node3D" parent="."]
+
+[node name="Step1" type="StaticBody3D" parent="Steps"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -6)
+
+[node name="Mesh" type="MeshInstance3D" parent="Steps/Step1"]
+mesh = SubResource("Mesh_step")
+material_override = SubResource("Mat_step")
+
+[node name="Col" type="CollisionShape3D" parent="Steps/Step1"]
+shape = SubResource("Shape_step")
+
+[node name="Step2" type="StaticBody3D" parent="Steps"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -11)
+
+[node name="Mesh" type="MeshInstance3D" parent="Steps/Step2"]
+mesh = SubResource("Mesh_step")
+material_override = SubResource("Mat_step")
+
+[node name="Col" type="CollisionShape3D" parent="Steps/Step2"]
+shape = SubResource("Shape_step")
+
+[node name="Step3" type="StaticBody3D" parent="Steps"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, -16)
+
+[node name="Mesh" type="MeshInstance3D" parent="Steps/Step3"]
+mesh = SubResource("Mesh_step")
+material_override = SubResource("Mat_step")
+
+[node name="Col" type="CollisionShape3D" parent="Steps/Step3"]
+shape = SubResource("Shape_step")
+
+[node name="Players" type="Node3D" parent="."]
+
+[node name="PlayerSpawner" type="MultiplayerSpawner" parent="."]
+_spawnable_scenes = PackedStringArray("res://scenes/Player.tscn")
+spawn_path = NodePath("../Players")
