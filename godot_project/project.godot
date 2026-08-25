@@ -85,6 +85,17 @@ weapon_3={
 ]
 }
 
+bandage={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":66,"script":null)
+]
+}
+interact={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":70,"script":null)
+]
+}
+
 [rendering]
 
 renderer/rendering_method="forward_plus"

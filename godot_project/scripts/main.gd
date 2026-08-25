@@ -14,6 +14,8 @@ extends Node
 ##   --perftest      замер fps в обоих режимах камеры и выход (нужно окно)
 ##   --strategytest  через 8 с уйти в стратегический режим и остаться в нём
 ##   --combattest    автопроверка боевой петли на двух пирах (headless)
+##   --woundtest     автопроверка системы ранений и протезов (headless)
+##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
 
@@ -30,6 +32,10 @@ const WEAPONS := preload("res://scripts/combat/weapons.gd")
 @onready var _join_btn: Button = $UI/Menu/Panel/VBox/JoinRow/JoinBtn
 @onready var _hud: Label = $UI/Hud/Info
 @onready var _world: Node3D = $World
+@onready var _blind_left: ColorRect = $UI/Blind/Left
+@onready var _blind_right: ColorRect = $UI/Blind/Right
+@onready var _bench: Control = $UI/Bench
+@onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
 
 
 func _ready() -> void:
@@ -41,6 +47,13 @@ func _ready() -> void:
 	_transport_opt.item_selected.connect(_on_transport_selected)
 	_ip_edit.text_submitted.connect(func(_t: String) -> void: _on_join_pressed())
 	_world.camera_mode_changed.connect(_on_camera_mode_changed)
+
+	var bench := $UI/Bench/Panel/VBox
+	bench.get_node("Wooden").pressed.connect(_on_bench_prosthetic.bind(1))
+	bench.get_node("Iron").pressed.connect(_on_bench_prosthetic.bind(2))
+	bench.get_node("Master").pressed.connect(_on_bench_prosthetic.bind(3))
+	bench.get_node("Chair").pressed.connect(_on_bench_chair)
+	bench.get_node("Close").pressed.connect(_close_bench)
 
 	if not Net.steam_available():
 		_transport_opt.set_item_disabled(1, true)
@@ -69,11 +82,27 @@ func _process(_delta: float) -> void:
 	else:
 		var me: Node3D = _world.local_player()
 		if me != null:
-			line += "   HP: %d   оружие: %s" % [int(me.health.current), WEAPONS.NAMES[me.sync_weapon]]
+			line += "   HP: %d   оружие: %s   бинтов: %d" % [
+				int(me.health.current), WEAPONS.NAMES[me.sync_weapon], me.body.bandages
+			]
+			line += "\nтело: %s" % me.body.summary()
+			if me.body.bleeding:
+				var progress: float = me.bandage_progress()
+				if progress > 0.0:
+					line += "   перевязка: %d%%" % int(progress * 100.0)
+				else:
+					line += "   B — перевязать (стоя на месте)"
+			if me.at_workbench():
+				line += "\nF — верстак: протезы и коляска"
 		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню"
+	_update_blindness()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"interact") and Net.active:
+		_toggle_bench()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"toggle_camera") and Net.active:
 		_world.toggle_camera_mode()
 		get_viewport().set_input_as_handled()
@@ -187,6 +216,18 @@ func _apply_cmdline() -> void:
 		perf.start(_world)
 		needs_session = true
 
+	if args.has("--playerprobe"):
+		var probe: Node = preload("res://tools/player_probe.gd").new()
+		add_child(probe)
+		probe.start(_world)
+		needs_session = true
+
+	if args.has("--woundtest"):
+		var wounds: Node = preload("res://tools/wound_test.gd").new()
+		add_child(wounds)
+		wounds.start(_world)
+		needs_session = true
+
 	if args.has("--combattest"):
 		var fighter: Node = preload("res://tools/combat_test.gd").new()
 		add_child(fighter)
@@ -238,3 +279,48 @@ func _arm_strategy_test() -> void:
 	await get_tree().create_timer(8.0).timeout
 	_world.set_strategy_mode(true)
 	print("[strategytest] ушёл в стратегический режим, персонаж должен остаться в мире")
+
+
+## Слепота от потери глаза: GDD раздел 4 — «слепота на половину экрана».
+## Один глаз закрывает половину, два — весь экран.
+func _update_blindness() -> void:
+	var me: Node3D = _world.local_player() if Net.active else null
+	var lost := 0
+	if me != null:
+		lost = int(me.body.eyes_lost)
+	_blind_right.visible = lost >= 1
+	_blind_left.visible = lost >= 2
+
+
+# --- верстак: протезы и коляска -------------------------------------------
+
+func _toggle_bench() -> void:
+	if _bench.visible:
+		_close_bench()
+		return
+	var me: Node3D = _world.local_player()
+	if me == null or not me.at_workbench():
+		return
+	_bench.visible = true
+	_bench_chair.text = "Встать из коляски" if me.body.in_wheelchair else "Сесть в коляску"
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_bench() -> void:
+	_bench.visible = false
+	if Net.active and not _world.strategy_mode:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _on_bench_prosthetic(tier: int) -> void:
+	var me: Node3D = _world.local_player()
+	if me != null:
+		me.ask_prosthetic(tier)
+	_close_bench()
+
+
+func _on_bench_chair() -> void:
+	var me: Node3D = _world.local_player()
+	if me != null:
+		me.ask_wheelchair(not me.body.in_wheelchair)
+	_close_bench()

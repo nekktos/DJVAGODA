@@ -29,6 +29,9 @@ const RESPAWN_DELAY := 5.0
 ## Сколько трупов держим в мире. GDD требует, чтобы труп не исчезал мгновенно,
 ## но копить их без предела нельзя.
 const CORPSE_LIMIT := 30
+## На каком расстоянии от верстака им можно пользоваться. Проверяет ХОСТ:
+## иначе клиент выдавал бы себе протезы из любой точки карты.
+const WORKBENCH_RANGE := 7.0
 
 ## Дебаг-ключ --netlog: раз в секунду печатать позиции всех персонажей — видно,
 ## доезжает ли чужое движение до этого пира.
@@ -236,17 +239,18 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	if not is_instance_valid(player):
 		return
 	player.health.revive()
+	player.body.reset()
 	player.respawn_at_slot()
 	player.set_dead.rpc(false)
 
 
 func _spawn_corpse(player: Node3D) -> void:
-	place_corpse(player.global_position, player.rotation.y, player.spawn_slot)
+	place_corpse(player.global_position, player.rotation.y, player.spawn_slot, player.body.severed_mask)
 
 
 ## Положить труп в заданной точке. Отдельным методом, потому что этим
 ## пользуются инструменты проверки (tools/screenshotter.gd).
-func place_corpse(point: Vector3, yaw: float, slot: int) -> void:
+func place_corpse(point: Vector3, yaw: float, slot: int, severed: int = 0) -> void:
 	if not multiplayer.is_server():
 		return
 	_spawn_counter += 1
@@ -256,6 +260,7 @@ func place_corpse(point: Vector3, yaw: float, slot: int) -> void:
 		"point": point,
 		"yaw": yaw,
 		"slot": slot,
+		"severed": severed,
 	})
 	if corpse != null:
 		_corpses.append(corpse)
@@ -263,3 +268,13 @@ func place_corpse(point: Vector3, yaw: float, slot: int) -> void:
 		var oldest: Node = _corpses.pop_front()
 		if is_instance_valid(oldest):
 			oldest.queue_free()
+
+
+## Где стоит верстак. Клиент по этому же значению решает, показывать ли подсказку.
+func workbench_position() -> Vector3:
+	return WORLD_BUILDER.WORKBENCH_POS
+
+
+func is_at_workbench(point: Vector3) -> bool:
+	var flat := Vector3(point.x, 0.0, point.z)
+	return flat.distance_to(workbench_position()) <= WORKBENCH_RANGE

@@ -23,6 +23,75 @@ offset_right = 980.0
 offset_bottom = 80.0
 text = "Оффлайн"
 
+[node name="Blind" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Left" type="ColorRect" parent="UI/Blind"]
+anchor_right = 0.5
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 1)
+visible = false
+
+[node name="Right" type="ColorRect" parent="UI/Blind"]
+anchor_left = 0.5
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 1)
+visible = false
+
+[node name="Bench" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="Panel" type="PanelContainer" parent="UI/Bench"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -230.0
+offset_top = -150.0
+offset_right = 230.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="UI/Bench/Panel"]
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Bench/Panel/VBox"]
+horizontal_alignment = 1
+text = "Верстак и медпункт"
+
+[node name="Note" type="Label" parent="UI/Bench/Panel/VBox"]
+autowrap_mode = 3
+text = "Протезы ставятся на все оторванные конечности сразу. Оплата и крафт появятся вместе с экономикой."
+
+[node name="Wooden" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Деревянный протез (скрафтить)"
+
+[node name="Iron" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Кованый протез (купить)"
+
+[node name="Master" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Мастерский протез (купить дорого)"
+
+[node name="Chair" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Сесть в коляску"
+
+[node name="Close" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Закрыть (F)"
+
 [node name="Menu" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0

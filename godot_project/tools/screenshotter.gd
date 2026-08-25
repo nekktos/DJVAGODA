@@ -69,6 +69,24 @@ func _shots() -> Array:
 			"look": Vector3(0, 1, 20),
 			"gore": true,
 		},
+		{
+			"name": "11_расчленение",
+			"pos": Vector3(-11.0, 1.9, 17.2),
+			"look": Vector3(-14, 1.0, 14),
+			"wounds": true,
+		},
+		{
+			"name": "12_слепота_на_половину_экрана",
+			"pos": Vector3(-11.0, 1.9, 17.2),
+			"look": Vector3(-14, 1.0, 14),
+			"blind": true,
+		},
+		{
+			"name": "13_ползание_без_ноги",
+			"pos": Vector3(-11.0, 1.9, 17.2),
+			"look": Vector3(-14, 0.5, 14),
+			"crawl": true,
+		},
 	]
 
 
@@ -90,6 +108,16 @@ func _run() -> void:
 		if shot.get("gore", false):
 			_stage_gore()
 			await get_tree().create_timer(0.4).timeout
+		if shot.get("wounds", false):
+			_stage_wounds(false)
+			# Даём оторванным частям упасть на землю.
+			await get_tree().create_timer(1.6).timeout
+		if shot.get("blind", false):
+			_stage_wounds(true)
+			await get_tree().create_timer(0.6).timeout
+		if shot.get("crawl", false):
+			_stage_wounds(false, true)
+			await get_tree().create_timer(1.6).timeout
 		if shot.get("strategy", false):
 			_world.set_strategy_mode(true)
 		else:
@@ -102,6 +130,11 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		await RenderingServer.frame_post_draw
 
+		var me: Node3D = _world.local_player()
+		print("[shot] %s | камера %s -> смотрит %s | персонаж %s" % [
+			shot["name"], _cam.global_position, _cam.global_transform.basis.z * -1.0,
+			me.global_position if me != null else Vector3.ZERO,
+		])
 		var path := "%s/%s.png" % [out_dir, shot["name"]]
 		var img := get_viewport().get_texture().get_image()
 		var err := img.save_png(path)
@@ -127,3 +160,25 @@ func _stage_gore() -> void:
 	for i in spots.size():
 		_world.place_corpse(spots[i], float(i) * 1.3, i)
 		EFFECTS.blood(_world, spots[i] + Vector3.UP * 1.0, Vector3.UP, 60.0)
+
+
+## Оторвать персонажу руку и ногу, чтобы было видно расчленение и упавшие
+## части. С take_eye — ещё и глаз, для кадра со слепотой.
+func _stage_wounds(take_eye: bool, legs: bool = false) -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	# Начинаем с чистого тела: иначе последствия предыдущего кадра переезжают
+	# в следующий и кадр показывает не то, что подписано.
+	me.body.reset()
+	me.health.revive()
+	var zones := ["arm_l", "leg_r"] if legs else ["arm_l"]
+	for zone in zones:
+		for i in 6:
+			me.body.register_hit(zone, 12.0)
+			me.health.revive()
+	if take_eye:
+		me.body.register_hit("head", 40.0)
+		me.health.revive()
+	# Кровотечение гасим: иначе персонаж умрёт прямо в кадре.
+	me.body.bleeding = false

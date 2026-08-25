@@ -15,6 +15,9 @@ const WORLD_SIZE := 1200.0
 const ZONE_SIZE := 600.0
 const ZONE_HALF := ZONE_SIZE * 0.5
 
+## Верстак у точки спавна: здесь ставят протезы и берут коляску.
+const WORKBENCH_POS := Vector3(-24.0, 0.0, 22.0)
+
 enum Zone { ELVES, EMPEROR, VILLAIN, HUMANS }
 
 const ZONE_CENTERS := {
@@ -183,6 +186,12 @@ func _build_roads() -> void:
 func _build_crossroads() -> void:
 	# Ориентир в центре карты: видно, где сходятся все четыре зоны.
 	var g := _group("Crossroads")
+	# Верстак и медпункт: здесь ставят протезы и берут коляску (Этап 3).
+	# Оплата и крафт появятся вместе с экономикой и ресурсами (Этапы 4-5),
+	# сейчас выдача бесплатная — заглушка, помеченная в коде и в README.
+	_box(g, Vector3(WORKBENCH_POS.x, 1.2, WORKBENCH_POS.z), Vector3(6.0, 2.4, 3.0), "wood")
+	_box(g, Vector3(WORKBENCH_POS.x, 2.7, WORKBENCH_POS.z), Vector3(6.6, 0.6, 3.6), "stone")
+	_cylinder(g, Vector3(WORKBENCH_POS.x - 3.6, 2.0, WORKBENCH_POS.z), 0.4, 4.0, "accent")
 	_cylinder(g, Vector3(0, 6.0, 0), 3.0, 12.0, "marble")
 	_box(g, Vector3(0, 13.0, 0), Vector3(4.0, 2.0, 4.0), "accent")
 	# Малая полоса препятствий у спавна — быстрая проверка прыжка и ступеней.

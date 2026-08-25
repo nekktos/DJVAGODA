@@ -1,31 +1,12 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/combat/health.gd" id="2_health"]
-[ext_resource type="Script" path="res://scripts/combat/hit_zone.gd" id="3_zone"]
+[ext_resource type="Script" path="res://scripts/combat/body.gd" id="3_body"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_body"]
-radius = 0.4
+radius = 0.35
 height = 1.8
-
-[sub_resource type="CapsuleMesh" id="Mesh_body"]
-radius = 0.4
-height = 1.8
-
-[sub_resource type="BoxMesh" id="Mesh_nose"]
-size = Vector3(0.22, 0.22, 0.45)
-
-[sub_resource type="BoxShape3D" id="Shape_head"]
-size = Vector3(0.36, 0.36, 0.36)
-
-[sub_resource type="BoxShape3D" id="Shape_torso"]
-size = Vector3(0.62, 0.72, 0.44)
-
-[sub_resource type="BoxShape3D" id="Shape_arm"]
-size = Vector3(0.2, 0.66, 0.26)
-
-[sub_resource type="BoxShape3D" id="Shape_leg"]
-size = Vector3(0.24, 0.72, 0.3)
 
 [sub_resource type="SceneReplicationConfig" id="Repl_player"]
 properties/0/path = NodePath(".:sync_position")
@@ -37,11 +18,32 @@ properties/1/replication_mode = 1
 properties/2/path = NodePath(".:sync_weapon")
 properties/2/spawn = true
 properties/2/replication_mode = 2
+properties/3/path = NodePath(".:sync_moving")
+properties/3/spawn = false
+properties/3/replication_mode = 2
 
 [sub_resource type="SceneReplicationConfig" id="Repl_server"]
 properties/0/path = NodePath("Health:current")
 properties/0/spawn = true
 properties/0/replication_mode = 1
+properties/1/path = NodePath("Body:severed_mask")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath("Body:prosthetics")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+properties/3/path = NodePath("Body:eyes_lost")
+properties/3/spawn = true
+properties/3/replication_mode = 1
+properties/4/path = NodePath("Body:bleeding")
+properties/4/spawn = true
+properties/4/replication_mode = 1
+properties/5/path = NodePath("Body:bandages")
+properties/5/spawn = true
+properties/5/replication_mode = 1
+properties/6/path = NodePath("Body:in_wheelchair")
+properties/6/spawn = true
+properties/6/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -52,16 +54,8 @@ script = ExtResource("1_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("Shape_body")
 
-[node name="Body" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
-mesh = SubResource("Mesh_body")
-
-[node name="Nose" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -0.42)
-mesh = SubResource("Mesh_nose")
-
 [node name="NameTag" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.25, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
 billboard = 1
 no_depth_test = true
 fixed_size = true
@@ -82,79 +76,8 @@ far = 3000.0
 [node name="Health" type="Node" parent="."]
 script = ExtResource("2_health")
 
-[node name="Zones" type="Node3D" parent="."]
-
-[node name="Head" type="Area3D" parent="Zones"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.62, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_zone")
-zone = "head"
-damage_multiplier = 2.0
-
-[node name="Col" type="CollisionShape3D" parent="Zones/Head"]
-shape = SubResource("Shape_head")
-
-[node name="Torso" type="Area3D" parent="Zones"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_zone")
-zone = "torso"
-damage_multiplier = 1.0
-
-[node name="Col" type="CollisionShape3D" parent="Zones/Torso"]
-shape = SubResource("Shape_torso")
-
-[node name="ArmL" type="Area3D" parent="Zones"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.36, 1.05, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_zone")
-zone = "arm_l"
-damage_multiplier = 0.7
-
-[node name="Col" type="CollisionShape3D" parent="Zones/ArmL"]
-shape = SubResource("Shape_arm")
-
-[node name="ArmR" type="Area3D" parent="Zones"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.36, 1.05, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_zone")
-zone = "arm_r"
-damage_multiplier = 0.7
-
-[node name="Col" type="CollisionShape3D" parent="Zones/ArmR"]
-shape = SubResource("Shape_arm")
-
-[node name="LegL" type="Area3D" parent="Zones"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.16, 0.36, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_zone")
-zone = "leg_l"
-damage_multiplier = 0.7
-
-[node name="Col" type="CollisionShape3D" parent="Zones/LegL"]
-shape = SubResource("Shape_leg")
-
-[node name="LegR" type="Area3D" parent="Zones"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, 0.36, 0)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("3_zone")
-zone = "leg_r"
-damage_multiplier = 0.7
-
-[node name="Col" type="CollisionShape3D" parent="Zones/LegR"]
-shape = SubResource("Shape_leg")
+[node name="Body" type="Node" parent="."]
+script = ExtResource("3_body")
 
 [node name="Sync" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("Repl_player")

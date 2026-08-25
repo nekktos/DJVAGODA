@@ -64,11 +64,9 @@ func _build_mesh() -> void:
 ## выпущенный снаряд.
 func _collect_exclusions() -> void:
 	var shooter := get_parent().get_parent().get_node_or_null("Players/%d" % shooter_id)
-	if shooter == null:
+	if shooter == null or not shooter.has_method("own_collision_rids"):
 		return
-	_exclude.append(shooter.get_rid())
-	for zone in shooter.get_node("Zones").get_children():
-		_exclude.append((zone as Area3D).get_rid())
+	_exclude = shooter.own_collision_rids()
 
 
 func _physics_process(delta: float) -> void:
