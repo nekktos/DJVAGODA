@@ -64,6 +64,8 @@ const HITBOX_LAYER := 4
 
 const MAX_ORIGIN_DRIFT := 4.0
 const EYE_HEIGHT := 1.5
+## Насколько опускаем модель, когда персонаж сидит на земле без ног.
+const CRAWL_MODEL_DROP := -0.45
 
 const SPAWN_POINTS: Array[Vector3] = [
 	Vector3(-14.0, 2.0, 14.0),
@@ -304,20 +306,26 @@ func _update_animation() -> void:
 	)
 	if body.in_wheelchair:
 		_play("wheelchair-move-forward" if moving else "wheelchair-sit")
+	elif body.is_crawling():
+		_play("sit")
 	else:
 		_play("walk" if moving else "idle")
 
 
-## Поза меняется вместе с состоянием тела: ползком персонаж лежит, в коляске
-## сидит. Отдельной анимации ползания в паке нет, поэтому кладём модель.
+## Поза меняется вместе с состоянием тела.
+##
+## Отдельной анимации ползания в паке Kenney нет. Готовая CC0-библиотека с
+## ползанием существует (Quaternius Universal Animation Library), но она сделана
+## под скелетный гуманоидный риг, а у Kenney скелета нет — там анимируются
+## трансформы отдельных нод. Взять её значит сменить персонажа и переделать
+## расчленение на сжатие костей, то есть переписать интеграцию Этапа 3.
+## Поэтому безногого показываем сидящим на земле — поза "sit" из того же пака.
 func _refresh_posture() -> void:
 	if _model == null:
 		return
 	if body.is_crawling() and not body.in_wheelchair:
-		_model.rotation.x = -PI * 0.42
-		_model.position.y = 0.15
+		_model.position.y = CRAWL_MODEL_DROP
 	else:
-		_model.rotation.x = 0.0
 		_model.position.y = 0.0
 	_play(_current_anim, true)
 
