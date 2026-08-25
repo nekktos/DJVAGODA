@@ -16,8 +16,13 @@ extends Node
 ##
 
 const DEFAULT_PORT := 24545
-## Всего игроков 2 (GDD, раздел 9), значит клиентов помимо хоста — один.
-const MAX_CLIENTS := 1
+## В сессии от 1 до 3 игроков, значит клиентов помимо хоста — максимум два.
+## Свободные фракции ведёт ИИ (задача следующих этапов).
+const MAX_CLIENTS := 2
+
+## Сколько ждать ответа хоста. ENet при отказе (сессия заполнена, хост не
+## запущен) сигнала не присылает вообще — без таймаута клиент висит вечно.
+const CONNECT_TIMEOUT := 8.0
 
 ## Человекочитаемый статус для меню/лога.
 signal status_changed(text: String)
@@ -28,6 +33,7 @@ signal session_ended
 
 var is_host := false
 var active := false
+var _connect_timeout_left := 0.0
 
 
 func _ready() -> void:
@@ -36,6 +42,15 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+
+
+func _process(delta: float) -> void:
+	if _connect_timeout_left <= 0.0:
+		return
+	_connect_timeout_left -= delta
+	if _connect_timeout_left <= 0.0:
+		_fail("Хост не ответил за %d с. Он запущен? Сессия не заполнена?" % int(CONNECT_TIMEOUT))
+		leave()
 
 
 ## Поднять хост. Возвращает true, если сокет удалось открыть.
@@ -71,12 +86,14 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> bool:
 	multiplayer.multiplayer_peer = peer
 	is_host = false
 	active = true
+	_connect_timeout_left = CONNECT_TIMEOUT
 	status_changed.emit("Подключаемся к %s:%d…" % [addr, port])
 	return true
 
 
 ## Закрыть сессию и вернуться в оффлайн-состояние.
 func leave() -> void:
+	_connect_timeout_left = 0.0
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
@@ -115,6 +132,7 @@ func _on_peer_disconnected(id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
+	_connect_timeout_left = 0.0
 	status_changed.emit("Подключение установлено. Ваш id — %d." % multiplayer.get_unique_id())
 	session_started.emit()
 
@@ -125,5 +143,6 @@ func _on_connection_failed() -> void:
 
 
 func _on_server_disconnected() -> void:
-	_fail("Хост закрыл сессию.")
+	# Штатное завершение, а не ошибка — в лог движка не пишем.
+	status_changed.emit("Хост закрыл сессию.")
 	leave()

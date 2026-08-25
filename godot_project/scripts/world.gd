@@ -12,6 +12,9 @@ extends Node3D
 ##
 
 const PLAYER_SCENE := preload("res://scenes/Player.tscn")
+## Скрипт нужен отдельно, чтобы читать SPAWN_POINTS без зависимости от кэша
+## глобальных классов (он строится только редактором).
+const PLAYER_SCRIPT := preload("res://scripts/player.gd")
 
 ## Дебаг-ключ --netlog: раз в секунду печатать позиции всех персонажей — видно,
 ## доезжает ли чужое движение до этого пира.
@@ -19,6 +22,7 @@ const DEBUG_LOG_INTERVAL := 1.0
 
 @onready var _players: Node3D = $Players
 @onready var _menu_camera: Camera3D = $MenuCamera
+@onready var _spawner: MultiplayerSpawner = $PlayerSpawner
 
 var _netlog := false
 var _netlog_t := 0.0
@@ -27,6 +31,9 @@ var _netlog_t := 0.0
 func _ready() -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	_netlog = args.has("--netlog")
+	# Кастомная spawn_function: даёт положить в пакет спавна произвольные данные
+	# (сейчас — номер слота, позже сюда же ляжет фракция).
+	_spawner.spawn_function = _make_player
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
@@ -81,8 +88,30 @@ func _request_spawn() -> void:
 func _spawn_player(id: int) -> void:
 	if _players.has_node(str(id)):
 		return
-	print("[world] спавню игрока %d" % id)
+	var slot := _next_free_slot()
+	if slot < 0:
+		push_warning("Сессия заполнена, игроку %d места нет." % id)
+		return
+	print("[world] спавню игрока %d в слот %d" % [id, slot])
+	_spawner.spawn({"id": id, "slot": slot})
+
+
+## Выполняется на всех пирах с одними и теми же данными, поэтому имя ноды и
+## слот совпадают везде.
+func _make_player(data: Dictionary) -> Node:
 	var player := PLAYER_SCENE.instantiate()
 	# Имя == peer id: по нему персонаж на всех пирах определяет своего авторитета.
-	player.name = str(id)
-	_players.add_child(player)
+	player.name = str(data["id"])
+	player.spawn_slot = int(data["slot"])
+	return player
+
+
+## Наименьший свободный слот. Считается только на хосте.
+func _next_free_slot() -> int:
+	var used := {}
+	for child in _players.get_children():
+		used[child.spawn_slot] = true
+	for i in PLAYER_SCRIPT.SPAWN_POINTS.size():
+		if not used.has(i):
+			return i
+	return -1
