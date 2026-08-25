@@ -21,6 +21,8 @@ const PLAYER_SCRIPT := preload("res://scripts/player.gd")
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
 const PROJECTILE_SCENE := preload("res://scenes/Projectile.tscn")
 const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
+const BUILDING_SCENE := preload("res://scenes/Building.tscn")
+const RES := preload("res://scripts/economy/resources.gd")
 
 ## Через сколько секунд после смерти игрок возвращается в мир.
 ## Временное правило (DESIGN_ANSWERS.md, пункт 10) — настоящие условия
@@ -47,6 +49,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var _spawner: MultiplayerSpawner = $PlayerSpawner
 @onready var _spawned: Node3D = $Spawned
 @onready var _world_spawner: MultiplayerSpawner = $WorldSpawner
+@onready var build_controller: Node3D = $BuildController
 
 var strategy_mode := false
 
@@ -71,6 +74,7 @@ func _ready() -> void:
 
 	var builder := WORLD_BUILDER.new()
 	builder.build(_terrain)
+	build_controller.place_requested.connect(_on_place_requested)
 
 
 func _process(delta: float) -> void:
@@ -112,6 +116,8 @@ func set_strategy_mode(on: bool, height: float = -1.0) -> void:
 	# Персонаж продолжает симулироваться и реплицироваться в обоих режимах,
 	# но в стратегическом не принимает управление: он стоит и уязвим.
 	player.control_enabled = not on
+	if not on:
+		build_controller.set_active(false)
 	if on:
 		if height > 0.0:
 			_strategy_camera.activate(player.global_position, height)
@@ -205,10 +211,13 @@ func _next_free_slot() -> int:
 ## с одинаковыми данными, поэтому имя и параметры совпадают везде.
 func _make_spawned(data: Dictionary) -> Node:
 	var node: Node
-	if data["type"] == "projectile":
-		node = PROJECTILE_SCENE.instantiate()
-	else:
-		node = CORPSE_SCENE.instantiate()
+	match String(data["type"]):
+		"projectile":
+			node = PROJECTILE_SCENE.instantiate()
+		"building":
+			node = BUILDING_SCENE.instantiate()
+		_:
+			node = CORPSE_SCENE.instantiate()
 	node.name = "%s_%d" % [data["type"], int(data["id"])]
 	node.setup(data)
 	return node
@@ -278,3 +287,55 @@ func workbench_position() -> Vector3:
 func is_at_workbench(point: Vector3) -> bool:
 	var flat := Vector3(point.x, 0.0, point.z)
 	return flat.distance_to(workbench_position()) <= WORKBENCH_RANGE
+
+
+# --- стройка ---------------------------------------------------------------
+
+## Поставить здание. Только на хосте: сюда попадают уже проверенные заявки
+## (см. player.gd::request_build — там же списывается стоимость).
+func spawn_building(kind: int, point: Vector3, owner_id: int) -> Node:
+	if not multiplayer.is_server():
+		return null
+	_spawn_counter += 1
+	var node := _world_spawner.spawn({
+		"type": "building",
+		"id": _spawn_counter,
+		"kind": kind,
+		"point": point,
+		"owner": owner_id,
+	})
+	if node != null:
+		print("[стройка] игрок %d ставит %s в %s" % [owner_id, RES.BUILDING_NAMES[kind], point])
+		node.completed.connect(_on_building_completed.bind(node))
+	return node
+
+
+## Достроенный склад поднимает владельцу потолок хранения — по GDD это
+## «главное здание, оно же склад и пункт приёма ресурсов».
+func _on_building_completed(node: Node) -> void:
+	if not multiplayer.is_server() or node == null:
+		return
+	if int(node.kind) != RES.Building.STORAGE:
+		return
+	var owner_player := _players.get_node_or_null(str(int(node.owner_id)))
+	if owner_player != null:
+		owner_player.stock.raise_capacity(RES.STORAGE_BONUS)
+		print("[стройка] склад достроен, потолок игрока %d поднят" % int(node.owner_id))
+
+
+## Клик по земле в режиме стройки: заявку отправляет свой персонаж — у него
+## есть и владелец, и запас ресурсов.
+func _on_place_requested(kind: int, point: Vector3) -> void:
+	var me := local_player()
+	if me != null:
+		me.ask_build(kind, point)
+	build_controller.set_active(false)
+
+
+## Стройка живёт только в стратегической камере.
+func set_build_mode(on: bool, kind: int = -1) -> void:
+	if on and not strategy_mode:
+		return
+	if kind >= 0:
+		build_controller.select(kind)
+	build_controller.set_active(on)

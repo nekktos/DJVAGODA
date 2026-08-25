@@ -70,7 +70,7 @@ text = "Верстак и медпункт"
 
 [node name="Note" type="Label" parent="UI/Bench/Panel/VBox"]
 autowrap_mode = 3
-text = "Протезы ставятся на все оторванные конечности сразу. Оплата и крафт появятся вместе с экономикой."
+text = "Протезы ставятся на все оторванные конечности сразу, цена — за комплект."
 
 [node name="Wooden" type="Button" parent="UI/Bench/Panel/VBox"]
 custom_minimum_size = Vector2(0, 40)

@@ -69,3 +69,16 @@ static func _burst(
 		if is_instance_valid(particles):
 			particles.queue_free()
 	)
+
+
+## Щепки и осколки при добыче. Цвет по типу ресурса, чтобы по кадру было
+## понятно, что именно добыли.
+static func chips(world: Node, point: Vector3, resource_kind: int) -> void:
+	const CHIP_COLORS := [
+		Color(0.45, 0.30, 0.16),   # дерево
+		Color(0.55, 0.55, 0.58),   # камень
+		Color(0.85, 0.70, 0.20),   # золото
+		Color(0.60, 0.62, 0.68),   # железо
+	]
+	var color: Color = CHIP_COLORS[clampi(resource_kind, 0, CHIP_COLORS.size() - 1)]
+	_burst(world, point, Vector3.UP, 18, color, 0.1, 3.5, 1.0)

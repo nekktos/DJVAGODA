@@ -1,8 +1,9 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/combat/health.gd" id="2_health"]
 [ext_resource type="Script" path="res://scripts/combat/body.gd" id="3_body"]
+[ext_resource type="Script" path="res://scripts/economy/stockpile.gd" id="4_stock"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_body"]
 radius = 0.35
@@ -44,6 +45,12 @@ properties/5/replication_mode = 1
 properties/6/path = NodePath("Body:in_wheelchair")
 properties/6/spawn = true
 properties/6/replication_mode = 1
+properties/7/path = NodePath("Stock:amounts")
+properties/7/spawn = true
+properties/7/replication_mode = 1
+properties/8/path = NodePath("Stock:capacity")
+properties/8/spawn = true
+properties/8/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -78,6 +85,9 @@ script = ExtResource("2_health")
 
 [node name="Body" type="Node" parent="."]
 script = ExtResource("3_body")
+
+[node name="Stock" type="Node" parent="."]
+script = ExtResource("4_stock")
 
 [node name="Sync" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("Repl_player")

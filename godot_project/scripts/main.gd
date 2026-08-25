@@ -15,6 +15,7 @@ extends Node
 ##   --strategytest  через 8 с уйти в стратегический режим и остаться в нём
 ##   --combattest    автопроверка боевой петли на двух пирах (headless)
 ##   --woundtest     автопроверка системы ранений и протезов (headless)
+##   --econtest      автопроверка добычи и стройки (headless)
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
@@ -23,6 +24,7 @@ const LOCAL_HINT := "Локально: порт 24545, второе окно п�
 const STEAM_HINT := "Steam: хост сообщает свой Steam ID, второй игрок вставляет его в поле."
 
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 
 @onready var _menu: Control = $UI/Menu
 @onready var _status: Label = $UI/Menu/Panel/VBox/Status
@@ -78,6 +80,10 @@ func _process(_delta: float) -> void:
 		line += "\nSteam ID для друга: %d   (F9 — скопировать)" % Net.local_steam_id()
 	if _world.strategy_mode:
 		line += "   высота: %d м" % int(_world.strategy_height())
+		var boss: Node3D = _world.local_player()
+		if boss != null:
+			line += "\nсклад: %s" % boss.stock.summary()
+		line += "\n" + _build_hint()
 		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню"
 	else:
 		var me: Node3D = _world.local_player()
@@ -85,6 +91,7 @@ func _process(_delta: float) -> void:
 			line += "   HP: %d   оружие: %s   бинтов: %d" % [
 				int(me.health.current), WEAPONS.NAMES[me.sync_weapon], me.body.bandages
 			]
+			line += "\nсклад: %s" % me.stock.summary()
 			line += "\nтело: %s" % me.body.summary()
 			if me.body.bleeding:
 				var progress: float = me.bandage_progress()
@@ -99,6 +106,15 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if Net.active and _world.strategy_mode and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_1:
+			_world.set_build_mode(true, RES.Building.STORAGE)
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_2:
+			_world.set_build_mode(true, RES.Building.BARRACKS)
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed(&"interact") and Net.active:
 		_toggle_bench()
 		get_viewport().set_input_as_handled()
@@ -222,6 +238,12 @@ func _apply_cmdline() -> void:
 		probe.start(_world)
 		needs_session = true
 
+	if args.has("--econtest"):
+		var econ: Node = preload("res://tools/economy_test.gd").new()
+		add_child(econ)
+		econ.start(_world)
+		needs_session = true
+
 	if args.has("--woundtest"):
 		var wounds: Node = preload("res://tools/wound_test.gd").new()
 		add_child(wounds)
@@ -303,6 +325,14 @@ func _toggle_bench() -> void:
 		return
 	_bench.visible = true
 	_bench_chair.text = "Встать из коляски" if me.body.in_wheelchair else "Сесть в коляску"
+	var box := $UI/Bench/Panel/VBox
+	for tier in [1, 2, 3]:
+		var names := {1: "Wooden", 2: "Iron", 3: "Master"}
+		var titles := {1: "Деревянный (скрафтить)", 2: "Кованый", 3: "Мастерский"}
+		var btn: Button = box.get_node(names[tier])
+		var cost: Array = RES.PROSTHETIC_COST[tier]
+		btn.text = "%s — %s" % [titles[tier], RES.format_cost(cost)]
+		btn.disabled = not me.stock.can_afford(cost)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -324,3 +354,16 @@ func _on_bench_chair() -> void:
 	if me != null:
 		me.ask_wheelchair(not me.body.in_wheelchair)
 	_close_bench()
+
+
+## Подсказка по стройке в стратегическом режиме: что выбрано и почём.
+func _build_hint() -> String:
+	var controller: Node3D = _world.build_controller
+	var parts := PackedStringArray()
+	for i in RES.BUILDING_NAMES.size():
+		parts.append("%d — %s (%s)" % [
+			i + 1, RES.BUILDING_NAMES[i], RES.format_cost(RES.BUILDING_COST[i])
+		])
+	if controller.active:
+		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
+	return "стройка: " + "   ".join(parts)

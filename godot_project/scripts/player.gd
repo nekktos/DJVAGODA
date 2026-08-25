@@ -19,6 +19,7 @@ extends CharacterBody3D
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 
 const MODELS := [
@@ -102,6 +103,7 @@ var _bandage_progress := 0.0
 @onready var _name_tag: Label3D = $NameTag
 @onready var health: Node = $Health
 @onready var body: Node = $Body
+@onready var stock: Node = $Stock
 
 var _model: Node3D
 var _anim: AnimationPlayer
@@ -451,7 +453,9 @@ func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
 		return
 
 	if kind == WEAPONS.Kind.SWORD:
-		_server_swing_sword(aim)
+		# Тем же ударом рубим дерево и бьём камень: отдельной кнопки добычи нет.
+		if not _server_try_harvest(aim):
+			_server_swing_sword(aim)
 	else:
 		# Снаряд создаёт и ведёт мир — он владеет спавнером снарядов.
 		projectile_requested.emit(kind, host_origin, aim, peer_id)
@@ -661,8 +665,8 @@ func ask_wheelchair(on: bool) -> void:
 
 ## Поставить протезы на все оторванные конечности. Только на хосте.
 ##
-## Оплата и крафт — заглушка: деньги и древесина появятся вместе с экономикой
-## и ресурсами (Этапы 4-5), тогда сюда встанет проверка кошелька и склада.
+## Оплата ресурсами (Этап 4): деревянный крафтится из древесины, кованый и
+## мастерский стоят золота и железа. Цена — за комплект, а не за конечность.
 @rpc("any_peer", "reliable")
 func request_prosthetic(new_tier: int) -> void:
 	if not multiplayer.is_server():
@@ -671,9 +675,23 @@ func request_prosthetic(new_tier: int) -> void:
 		return
 	if not health.alive or not at_workbench():
 		return
+	if not RES.PROSTHETIC_COST.has(new_tier):
+		return
+
+	# Считаем, есть ли что менять, до списания: платить за пустой заказ нельзя.
+	var targets := []
 	for limb in body.LIMB_KEYS.size():
-		if body.is_severed(limb):
-			body.grant_prosthetic(limb, new_tier)
+		if body.is_severed(limb) and body.tier(limb) != new_tier:
+			targets.append(limb)
+	if targets.is_empty():
+		return
+
+	var cost: Array = RES.PROSTHETIC_COST[new_tier]
+	if not stock.spend(cost):
+		push_warning("Игроку %d не хватает ресурсов на протез уровня %d" % [peer_id, new_tier])
+		return
+	for limb in targets:
+		body.grant_prosthetic(limb, new_tier)
 
 
 @rpc("any_peer", "reliable")
@@ -693,3 +711,94 @@ func _sender_is_owner() -> bool:
 	if sender == 0:
 		sender = multiplayer.get_unique_id()
 	return sender == peer_id
+
+
+# --- добыча ресурсов ------------------------------------------------------
+
+## Удар пришёлся по источнику ресурсов? Тогда это добыча, а не бой.
+## Считает ТОЛЬКО хост: он же решает, сколько начислить и исчерпался ли источник.
+##
+## Добыча руками — решение из DESIGN_ANSWERS.md, пункт 14. Наёмные рабочие
+## появятся позже, когда будет на что их нанимать.
+func _server_try_harvest(aim: Vector3) -> bool:
+	var origin := aim_origin()
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + aim * RES.HARVEST_RANGE)
+	query.collision_mask = WORLD_LAYER
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var target := hit.get("collider") as Node
+	if target == null or not target.is_in_group("harvestable"):
+		return false
+
+	var kind: int = int(target.get_meta("resource", RES.Kind.WOOD))
+	var left: int = int(target.get_meta("hits_left", 1))
+	var taken: int = stock.add(kind, RES.YIELD_PER_HIT)
+	left -= 1
+	target.set_meta("hits_left", left)
+
+	harvested.rpc(hit.get("position", origin), kind, taken)
+	if left <= 0:
+		# Источник исчерпан. Убираем его у всех: геометрия мира строится
+		# одинаково на каждом пире, поэтому путь ноды совпадает.
+		deplete_source.rpc(target.get_path())
+	return true
+
+
+## Отрисовка добычи и подсказка в лог. На игру не влияет.
+@rpc("any_peer", "call_local", "unreliable")
+func harvested(point: Vector3, kind: int, taken: int) -> void:
+	if not _sender_is_host():
+		return
+	if taken <= 0:
+		return
+	EFFECTS.chips(get_parent(), point, kind)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func deplete_source(path: NodePath) -> void:
+	if not _sender_is_host():
+		return
+	var node := get_node_or_null(path)
+	if node != null:
+		node.queue_free()
+
+
+# --- стройка --------------------------------------------------------------
+
+const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
+
+
+func ask_build(building_kind: int, point: Vector3) -> void:
+	if multiplayer.is_server():
+		request_build(building_kind, point)
+	else:
+		request_build.rpc_id(1, building_kind, point)
+
+
+## Заявка на постройку. Хост проверяет ВСЁ заново по своей копии мира: призрак
+## у клиента — только подсказка, доверять ему нельзя.
+@rpc("any_peer", "reliable")
+func request_build(building_kind: int, point: Vector3) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner() or not health.alive:
+		return
+	if not RES.BUILDING_COST.has(building_kind):
+		return
+
+	var cost: Array = RES.BUILDING_COST[building_kind]
+	if not stock.can_afford(cost):
+		push_warning("Игроку %d не хватает ресурсов на %s" % [peer_id, RES.BUILDING_NAMES[building_kind]])
+		return
+	if not BUILD_CONTROLLER.is_spot_buildable(self, point, building_kind):
+		push_warning("Игрок %d выбрал негодное место под %s" % [peer_id, RES.BUILDING_NAMES[building_kind]])
+		return
+
+	if not stock.spend(cost):
+		return
+	var world := get_parent().get_parent()
+	world.spawn_building(building_kind, point, peer_id)

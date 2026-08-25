@@ -11,6 +11,8 @@ extends RefCounted
 ##
 
 ## Карта занимает от -600 до +600 по X и Z. Зона — четверть, 600x600 м.
+const RES := preload("res://scripts/economy/resources.gd")
+
 const WORLD_SIZE := 1200.0
 const ZONE_SIZE := 600.0
 const ZONE_HALF := ZONE_SIZE * 0.5
@@ -71,7 +73,7 @@ func _add_material(key: String, color: Color) -> void:
 
 
 ## Коробка с коллизией. pos — центр коробки.
-func _box(parent: Node3D, pos: Vector3, size: Vector3, mat: String, yaw: float = 0.0) -> void:
+func _box(parent: Node3D, pos: Vector3, size: Vector3, mat: String, yaw: float = 0.0) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.transform = Transform3D(Basis(Vector3.UP, yaw), pos)
 
@@ -89,10 +91,11 @@ func _box(parent: Node3D, pos: Vector3, size: Vector3, mat: String, yaw: float =
 	body.add_child(col)
 
 	parent.add_child(body)
+	return body
 
 
 ## Цилиндр с коллизией. pos — центр цилиндра.
-func _cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, mat: String) -> void:
+func _cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, mat: String) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.position = pos
 
@@ -114,12 +117,13 @@ func _cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, mat: 
 	body.add_child(col)
 
 	parent.add_child(body)
+	return body
 
 
 ## Наклонная плита-пандус: подъём rise метров на длине run метров.
 ## Угол выходит пологим (около 8 градусов), так что CharacterBody3D по ней
 ## поднимается штатно — floor_max_angle по умолчанию 45 градусов.
-func _ramp(parent: Node3D, foot: Vector3, width: float, run: float, rise: float, mat: String) -> void:
+func _ramp(parent: Node3D, foot: Vector3, width: float, run: float, rise: float, mat: String) -> StaticBody3D:
 	var length := sqrt(run * run + rise * rise)
 	var pitch := atan2(rise, run)
 	var body := StaticBody3D.new()
@@ -141,6 +145,7 @@ func _ramp(parent: Node3D, foot: Vector3, width: float, run: float, rise: float,
 	body.add_child(col)
 
 	parent.add_child(body)
+	return body
 
 
 ## Конус (крона, крыша). Без коллизии — она уже есть у ствола или стен.
@@ -198,6 +203,8 @@ func _build_crossroads() -> void:
 	for i in 3:
 		_box(g, Vector3(30.0 + i * 12.0, 0.4 + i * 0.8, 25.0), Vector3(10.0, 0.8 + i * 1.6, 10.0), "stone")
 
+	_build_starting_resources(g)
+
 
 func _build_elves(c: Vector2) -> void:
 	var g := _group("ZoneElves")
@@ -211,7 +218,7 @@ func _build_elves(c: Vector2) -> void:
 			continue                                  # поляна вокруг поселения
 		var p := c + Vector2(cos(a), sin(a)) * r
 		var th := rng.randf_range(10.0, 20.0)
-		_cylinder(g, Vector3(p.x, th * 0.5, p.y), 1.1, th, "trunk")
+		_harvestable(_cylinder(g, Vector3(p.x, th * 0.5, p.y), 1.1, th, "trunk"), RES.Kind.WOOD)
 		_cone(g, Vector3(p.x, th + 5.0, p.y), 5.5, 12.0, "foliage")
 
 	# Поселение на сваях.
@@ -264,7 +271,7 @@ func _build_villain(c: Vector2) -> void:
 		var p := c + Vector2(cos(a), sin(a)) * r
 		var mh := rng.randf_range(24.0, 70.0)
 		var mw := rng.randf_range(30.0, 70.0)
-		_box(g, Vector3(p.x, mh * 0.5, p.y), Vector3(mw, mh, mw), "rock", rng.randf() * PI)
+		_harvestable(_box(g, Vector3(p.x, mh * 0.5, p.y), Vector3(mw, mh, mw), "rock", rng.randf() * PI), RES.Kind.STONE, 10)
 
 	# Форт: стены, донжон, казарма, склад.
 	var f := c + Vector2(0.0, -40.0)
@@ -284,7 +291,8 @@ func _build_villain(c: Vector2) -> void:
 
 	# Шахта на удалении от форта — задел под маршрут каравана (GDD, этап 5).
 	var m := c + Vector2(-170.0, 170.0)
-	_box(g, Vector3(m.x, 10.0, m.y), Vector3(50.0, 20.0, 50.0), "rock")
+	# Шахта: железо и золото. Полноценная добыча с караваном — Этап 5.
+	_harvestable(_box(g, Vector3(m.x, 10.0, m.y), Vector3(50.0, 20.0, 50.0), "rock"), RES.Kind.IRON, 40)
 	_box(g, Vector3(m.x, 4.0, m.y + 26.0), Vector3(14.0, 8.0, 6.0), "dark_stone")     # вход
 
 
@@ -312,3 +320,35 @@ func _build_humans(c: Vector2) -> void:
 		if p.distance_to(c) < 90.0:
 			continue
 		_box(g, Vector3(p.x, 0.15, p.y), Vector3(60.0, 0.3, 40.0), "foliage", rng.randf() * PI)
+
+
+## Пометить объект как источник ресурсов. Добычу считает хост, объект хранит
+## только тип ресурса и остаток ударов (см. player.gd::_server_try_harvest).
+func _harvestable(body: StaticBody3D, kind: int, hits: int = -1) -> void:
+	if body == null:
+		return
+	body.add_to_group("harvestable")
+	body.set_meta("resource", kind)
+	body.set_meta("hits_left", hits if hits > 0 else RES.SOURCE_HITS)
+
+
+## Рощица и камни у точки спавна: без них за первым деревом пришлось бы идти
+## 300 метров в зону эльфов, и петля «добыл — построил» не проверялась бы.
+func _build_starting_resources(g: Node3D) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7717
+
+	for i in 14:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(26.0, 60.0)
+		var p := Vector2(cos(a), sin(a)) * r + Vector2(0.0, 30.0)
+		var h := rng.randf_range(9.0, 15.0)
+		_harvestable(_cylinder(g, Vector3(p.x, h * 0.5, p.y), 1.1, h, "trunk"), RES.Kind.WOOD)
+		_cone(g, Vector3(p.x, h + 4.0, p.y), 5.0, 11.0, "foliage")
+
+	for i in 9:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(30.0, 65.0)
+		var p := Vector2(cos(a), sin(a)) * r + Vector2(-35.0, 5.0)
+		var s := rng.randf_range(3.0, 5.5)
+		_harvestable(_box(g, Vector3(p.x, s * 0.4, p.y), Vector3(s, s * 0.8, s), "rock", rng.randf() * PI), RES.Kind.STONE)

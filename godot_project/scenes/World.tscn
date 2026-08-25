@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/strategy_camera.gd" id="2_strategy"]
+[ext_resource type="Script" path="res://scripts/economy/build_controller.gd" id="3_build"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
 sky_top_color = Color(0.36, 0.49, 0.68, 1)
@@ -41,6 +42,9 @@ far = 3000.0
 [node name="StrategyCamera" type="Camera3D" parent="."]
 far = 3000.0
 script = ExtResource("2_strategy")
+
+[node name="BuildController" type="Node3D" parent="."]
+script = ExtResource("3_build")
 
 [node name="Terrain" type="Node3D" parent="."]
 

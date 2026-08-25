@@ -82,6 +82,12 @@ func _shots() -> Array:
 			"blind": true,
 		},
 		{
+			"name": "14_форт_стройка",
+			"pos": Vector3(96.0, 34.0, 96.0),
+			"look": Vector3(56.0, 2.0, 56.0),
+			"buildings": true,
+		},
+		{
 			"name": "13_ползание_без_ноги",
 			"pos": Vector3(-11.0, 1.9, 17.2),
 			"look": Vector3(-14, 0.5, 14),
@@ -115,6 +121,10 @@ func _run() -> void:
 		if shot.get("blind", false):
 			_stage_wounds(true)
 			await get_tree().create_timer(0.6).timeout
+		if shot.get("buildings", false):
+			_stage_buildings()
+			# Ждём дольше времени стройки, иначе в кадре будет котлован.
+			await get_tree().create_timer(10.0).timeout
 		if shot.get("crawl", false):
 			_stage_wounds(false, true)
 			await get_tree().create_timer(1.6).timeout
@@ -182,3 +192,20 @@ func _stage_wounds(take_eye: bool, legs: bool = false) -> void:
 		me.health.revive()
 	# Кровотечение гасим: иначе персонаж умрёт прямо в кадре.
 	me.body.bleeding = false
+
+
+## Поставить склад и казарму, чтобы на кадре была видна стройка, а не пустая
+## поляна. Ресурсы выдаём напрямую: проверка оплаты — дело автотеста, а не кадра.
+func _stage_buildings() -> void:
+	const RES := preload("res://scripts/economy/resources.gd")
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.body.reset()
+	me.health.revive()
+	me.stock.capacity = 9999
+	me.stock.amounts = PackedInt32Array([500, 500, 500, 500])
+	_world.spawn_building(RES.Building.STORAGE, Vector3(52.0, 0.0, 44.0), me.peer_id)
+	_world.spawn_building(RES.Building.BARRACKS, Vector3(52.0, 0.0, 68.0), me.peer_id)
+	me.global_position = Vector3(64.0, 2.0, 58.0)
+	me.sync_position = me.global_position
