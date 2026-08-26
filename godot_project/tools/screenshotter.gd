@@ -53,6 +53,12 @@ func _shots() -> Array:
 			"look": Vector3(-300, 6, -300),
 		},
 		{
+			"name": "03d_призванный_волк",
+			"pos": Vector3(-292, 3.4, -286),
+			"look": Vector3(-300, 1.4, -294),
+			"summon": true,
+		},
+		{
 			"name": "05_зона_злодея_форт",
 			"pos": Vector3(-300, 160, 640),
 			"look": Vector3(-300, 20, 260),
@@ -165,6 +171,9 @@ func _run() -> void:
 		if shot.get("capture", false):
 			_stage_capture()
 			await get_tree().create_timer(2.0).timeout
+		if shot.get("summon", false):
+			_stage_summon()
+			await get_tree().create_timer(1.2).timeout
 		if shot.has("squad"):
 			await _stage_squad(int(shot["squad"]))
 		if shot.get("crawl", false):
@@ -318,3 +327,21 @@ func _stage_capture() -> void:
 	me.body.reset()
 	me.health.revive()
 	me.teleport.rpc(_world.objective.PALACE + Vector3(0.0, 3.0, 0.0))
+
+
+## Поставить эльфа на поляну и призвать волков. Способность идёт штатным путём
+## через request_ability, чтобы в кадр попало ровно то, что увидит игрок.
+func _stage_summon() -> void:
+	const ABILITIES := preload("res://scripts/combat/abilities.gd")
+	const FACTIONS := preload("res://scripts/factions.gd")
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.faction = FACTIONS.Kind.ELVES
+	me.teleport.rpc(Vector3(-300.0, 2.0, -294.0))
+	await get_tree().physics_frame
+	for i in 2:
+		me.sync_ability_cd[ABILITIES.Kind.SUMMON] = 0.0
+		me.request_ability(ABILITIES.Kind.SUMMON)
+		me.rotation.y += 0.8
+		await get_tree().physics_frame

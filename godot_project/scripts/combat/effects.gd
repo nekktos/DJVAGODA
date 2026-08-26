@@ -82,3 +82,15 @@ static func chips(world: Node, point: Vector3, resource_kind: int) -> void:
 	]
 	var color: Color = CHIP_COLORS[clampi(resource_kind, 0, CHIP_COLORS.size() - 1)]
 	_burst(world, point, Vector3.UP, 18, color, 0.1, 3.5, 1.0)
+
+
+## Вспышка друидической способности. Цвет по виду: лечение зелёное, клич
+## золотой, призыв синеватый — чтобы по кадру было понятно, что сработало.
+static func druid(world: Node, point: Vector3, ability_kind: int) -> void:
+	const DRUID_COLORS := [
+		Color(0.35, 0.90, 0.45),   # лечение
+		Color(0.95, 0.80, 0.30),   # клич леса
+		Color(0.45, 0.65, 0.95),   # призыв
+	]
+	var color: Color = DRUID_COLORS[clampi(ability_kind, 0, DRUID_COLORS.size() - 1)]
+	_burst(world, point + Vector3.UP, Vector3.UP, 40, color, 0.22, 4.0, 1.2)

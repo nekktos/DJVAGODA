@@ -16,6 +16,7 @@ const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 
 const MODELS := [
@@ -56,6 +57,16 @@ const SEPARATION_FORCE := 5.0
 ## Потолок горизонтальной скорости, чтобы расталкивание никого не разгоняло.
 const MAX_FLAT_SPEED := 9.0
 
+## Призванный волк (Этап 8). Тот же боец, но зверь: быстрее, кусает чаще и
+## слабее, живёт минуту и растворяется. Бессрочный призыв дал бы эльфам
+## бесплатный вечный отряд, а отряд по GDD — механика злодея.
+const BEAST_HEALTH := 55.0
+const BEAST_SPEED := 7.4
+const BEAST_DAMAGE := 14.0
+const BEAST_COOLDOWN := 0.8
+const BEAST_SCALE := 0.55
+const BEAST_COLOR := Color(0.32, 0.30, 0.36)
+
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
 
@@ -69,6 +80,11 @@ signal died_on_server(unit: Node3D)
 
 var owner_id := 1
 var slot := 0
+## Зверь ли это. Приезжает в пакете спавна и потому одинаков на всех пирах —
+## реплицировать отдельно не нужно, как owner_id и slot.
+var is_beast := false
+## Сколько зверю осталось жить. Считает и обнуляет только хост.
+var life_left := 0.0
 
 var _model: Node3D
 var _anim: AnimationPlayer
@@ -85,6 +101,10 @@ func setup(data: Dictionary) -> void:
 	slot = int(data["slot"])
 	position = data["point"]
 	sync_position = position
+	is_beast = bool(data.get("beast", false))
+	if is_beast:
+		health = BEAST_HEALTH
+		life_left = ABILITIES.SUMMON_LIFETIME
 
 
 func _ready() -> void:
@@ -103,17 +123,23 @@ func _build_model() -> void:
 	var packed: PackedScene = load(MODELS[slot % MODELS.size()])
 	_model = packed.instantiate()
 	_model.name = "Model"
-	_model.scale = Vector3.ONE * MODEL_SCALE
+	# Волка среди бесплатных ассетов нет, поэтому зверь — приземистая и тёмная
+	# версия той же модели. Заглушка ровно того же сорта, что и grey-box карты:
+	# силуэт читается как «не человек», остальное подождёт художника.
+	var model_scale := MODEL_SCALE * (BEAST_SCALE if is_beast else 1.0)
+	_model.scale = Vector3(model_scale, model_scale * 0.7, model_scale * 1.5) if is_beast else Vector3.ONE * model_scale
 	# Модель смотрит в +Z, игра считает передом -Z — см. player.gd::_build_model.
 	_model.rotation.y = PI
 	add_child(_model)
+	if is_beast:
+		_tint_beast(_model)
 
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.35
-	capsule.height = 1.8
+	capsule.radius = 0.35 * (BEAST_SCALE if is_beast else 1.0)
+	capsule.height = 1.8 * (BEAST_SCALE if is_beast else 1.0)
 	shape.shape = capsule
-	shape.position = Vector3(0.0, 0.9, 0.0)
+	shape.position = Vector3(0.0, capsule.height * 0.5, 0.0)
 	add_child(shape)
 
 	_anim = _find_anim(_model)
@@ -127,7 +153,9 @@ func _build_model() -> void:
 		_parts[key] = mesh
 		HIT_ZONE.attach(mesh, key, ZONE_MULTIPLIERS.get(key, 1.0), HITBOX_LAYER)
 	# Мечник — с мечом в руке, точка хвата считается по габаритам руки.
-	WEAPON_VISUAL.attach(_parts.get("arm_r"), WEAPONS.Kind.SWORD, null)
+	# Зверь дерётся зубами: меч в лапе выглядел бы нелепо.
+	if not is_beast:
+		WEAPON_VISUAL.attach(_parts.get("arm_r"), WEAPONS.Kind.SWORD, null)
 	_play("idle")
 
 
@@ -171,6 +199,16 @@ func _physics_process(delta: float) -> void:
 	if not _alive:
 		return
 
+	# Призванный зверь живёт отмеренное время и растворяется.
+	if is_beast:
+		life_left -= delta
+		if life_left <= 0.0:
+			_alive = false
+			print("[призыв] волк игрока %d растворился" % owner_id)
+			died_on_server.emit(self)
+			queue_free()
+			return
+
 	_cooldown = maxf(0.0, _cooldown - delta)
 
 	var commander := _commander()
@@ -199,7 +237,7 @@ func _physics_process(delta: float) -> void:
 	var desired := Vector3.ZERO
 	if distance > stop_at:
 		var dir := to_dest.normalized()
-		var speed := BASE_SPEED * FORMATIONS.speed_scale(_formation())
+		var speed := BEAST_SPEED if is_beast else BASE_SPEED * FORMATIONS.speed_scale(_formation())
 		desired = dir * speed
 		rotation.y = atan2(-dir.x, -dir.z)
 		sync_moving = true
@@ -279,10 +317,10 @@ func _find_target() -> Node3D:
 func _strike(target: Node3D) -> void:
 	if _cooldown > 0.0 or target == null:
 		return
-	_cooldown = STRIKE_COOLDOWN
+	_cooldown = BEAST_COOLDOWN if is_beast else STRIKE_COOLDOWN
 	var point := target.global_position + Vector3.UP * 1.1
 	var dir := (target.global_position - global_position).normalized()
-	target.take_damage(STRIKE_DAMAGE, owner_id, "torso", point, dir)
+	target.take_damage(BEAST_DAMAGE if is_beast else STRIKE_DAMAGE, owner_id, "torso", point, dir)
 
 
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон
@@ -337,3 +375,15 @@ func animation_state() -> Dictionary:
 		"playing": _anim.is_playing(),
 		"looping": anim != null and anim.loop_mode != Animation.LOOP_NONE,
 	}
+
+
+## Перекрасить призванного зверя в тёмное. Идём по дереву модели: у ассетов
+## Kenney меши лежат на разной глубине.
+func _tint_beast(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = BEAST_COLOR
+		mat.roughness = 0.95
+		(node as MeshInstance3D).material_override = mat
+	for child in node.get_children():
+		_tint_beast(child)

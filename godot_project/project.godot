@@ -85,6 +85,22 @@ weapon_3={
 ]
 }
 
+ability_1={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":52,"script":null)
+]
+}
+ability_2={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":53,"script":null)
+]
+}
+ability_3={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":54,"script":null)
+]
+}
+
 bandage={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"device":-1,"physical_keycode":66,"script":null)

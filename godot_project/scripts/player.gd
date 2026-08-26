@@ -17,6 +17,7 @@ extends CharacterBody3D
 ##
 
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
@@ -83,6 +84,12 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 @export var sync_position: Vector3 = Vector3.ZERO
 @export var sync_yaw: float = 0.0
 @export var sync_weapon: int = 0
+## Сколько осталось действовать кличу леса, секунды. Считает и обнуляет хост,
+## клиент только читает — и для подсказки в HUD, и чтобы применить прибавку к
+## скорости у себя (движение персонажа клиент считает сам, Этап 0).
+@export var sync_buff_left: float = 0.0
+## Остаток отката по каждой способности. Ведёт хост, клиент показывает.
+@export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0])
 ## Нужен, чтобы чужие персонажи анимировались: движение у них не считается.
 @export var sync_moving: bool = false
 
@@ -225,6 +232,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if multiplayer.is_server():
 		_server_cooldown = maxf(0.0, _server_cooldown - delta)
+		_tick_abilities(delta)
 
 	_swing_left = maxf(0.0, _swing_left - delta)
 	_refresh_weapon_visual()
@@ -233,6 +241,7 @@ func _physics_process(delta: float) -> void:
 		var inp := _gather_input()
 		apply_input(inp, delta)
 		_update_attack(delta)
+		_update_abilities()
 		_update_bandage(delta, inp)
 		sync_position = global_position
 		sync_yaw = rotation.y
@@ -272,7 +281,7 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 	var move: Vector2 = inp.get("move", Vector2.ZERO)
 	var jump: bool = inp.get("jump", false)
 
-	var speed: float = body.move_speed(SPEED)
+	var speed: float = body.move_speed(SPEED) * buff_speed_scale()
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
 
 	if is_on_floor():
@@ -362,7 +371,7 @@ func _update_attack(delta: float) -> void:
 	if not _weapon_allowed(sync_weapon):
 		return
 
-	_cooldown_left = WEAPONS.COOLDOWN[sync_weapon] * body.attack_speed_scale()
+	_cooldown_left = WEAPONS.COOLDOWN[sync_weapon] * body.attack_speed_scale() * buff_attack_scale()
 	_swing_left = 0.45
 	_play("attack-melee-right" if sync_weapon == WEAPONS.Kind.SWORD else "holding-right-shoot", true)
 
@@ -393,6 +402,170 @@ func aim_origin() -> Vector3:
 func aim_direction() -> Vector3:
 	var b := Basis(Vector3.UP, rotation.y) * Basis(Vector3.RIGHT, _pitch)
 	return -b.z
+
+
+# --- способности поддержки (Этап 8) ---------------------------------------
+
+## Множитель скорости от клича леса. Клиент считает движение сам, поэтому
+## читает реплицированный остаток и применяет прибавку у себя.
+func buff_speed_scale() -> float:
+	return ABILITIES.RALLY_SPEED_SCALE if sync_buff_left > 0.0 else 1.0
+
+
+## Множитель отката атак от клича: меньше единицы — бьют чаще.
+func buff_attack_scale() -> float:
+	return ABILITIES.RALLY_ATTACK_SCALE if sync_buff_left > 0.0 else 1.0
+
+
+func ability_ready(kind: int) -> bool:
+	if kind < 0 or kind >= sync_ability_cd.size():
+		return false
+	return sync_ability_cd[kind] <= 0.0
+
+
+## Откаты и бафф тикают ТОЛЬКО на хосте, клиентам значения приезжают.
+func _tick_abilities(delta: float) -> void:
+	for i in sync_ability_cd.size():
+		if sync_ability_cd[i] > 0.0:
+			sync_ability_cd[i] = maxf(0.0, sync_ability_cd[i] - delta)
+	if sync_buff_left > 0.0:
+		sync_buff_left = maxf(0.0, sync_buff_left - delta)
+
+
+## Ввод. Клиент только просит — применяет способность хост.
+func _update_abilities() -> void:
+	if not control_enabled or not health.alive:
+		return
+
+	var wanted := -1
+	if Input.is_action_just_pressed("ability_1"):
+		wanted = ABILITIES.Kind.HEAL
+	elif Input.is_action_just_pressed("ability_2"):
+		wanted = ABILITIES.Kind.RALLY
+	elif Input.is_action_just_pressed("ability_3"):
+		wanted = ABILITIES.Kind.SUMMON
+	if wanted < 0 and scripted_input.has("ability"):
+		# Автопроверки просят способность через сценарный ввод. Забираем сразу:
+		# иначе она сработала бы каждый кадр, пока ключ лежит в словаре.
+		wanted = int(scripted_input["ability"])
+		scripted_input.erase("ability")
+	if wanted < 0:
+		return
+
+	if not FACTIONS.allows_ability(faction, wanted) or not ability_ready(wanted):
+		return
+
+	if multiplayer.is_server():
+		request_ability(wanted)
+	else:
+		request_ability.rpc_id(1, wanted)
+
+
+## Заявка на способность. Проверяет и исполняет ХОСТ — как и урон.
+@rpc("any_peer", "reliable")
+func request_ability(kind: int) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner():
+		push_warning("Пир пытался колдовать чужим персонажем %d" % peer_id)
+		return
+	if not health.alive or kind < 0 or kind >= ABILITIES.COUNT:
+		return
+	if not FACTIONS.allows_ability(faction, kind):
+		return
+	if sync_ability_cd[kind] > 0.0:
+		return
+	# Способности требуют полноценной руки — как лук (GDD раздел 4).
+	if not body.can_attack_ranged():
+		return
+
+	var done := false
+	match kind:
+		ABILITIES.Kind.HEAL:
+			done = _server_cast_heal()
+		ABILITIES.Kind.RALLY:
+			done = _server_cast_rally()
+		ABILITIES.Kind.SUMMON:
+			done = _server_cast_summon()
+	if not done:
+		return
+
+	sync_ability_cd[kind] = ABILITIES.cooldown_of(kind)
+	ability_cast.rpc(kind, global_position)
+
+
+## Лечение: поднимает здоровье и останавливает кровотечение себе и своим рядом.
+##
+## Отрубленное НЕ отрастает — на то есть протезы (GDD раздел 4). Магия закрывает
+## ровно то, что GDD называет «вылечат — жив».
+func _server_cast_heal() -> bool:
+	var healed := 0
+	for target in _allies_in_range(ABILITIES.range_of(ABILITIES.Kind.HEAL)):
+		var restored := false
+		if target.health.current < target.health.MAX_HEALTH:
+			target.health.current = minf(
+				target.health.MAX_HEALTH,
+				target.health.current + ABILITIES.HEAL_AMOUNT
+			)
+			restored = true
+		if target.body.bleeding:
+			target.body.bleeding = false
+			restored = true
+		if restored:
+			healed += 1
+	return healed > 0
+
+
+## Клич леса: временно ускоряет своих в радиусе и учащает их удары.
+func _server_cast_rally() -> bool:
+	var touched := 0
+	for target in _allies_in_range(ABILITIES.range_of(ABILITIES.Kind.RALLY)):
+		target.sync_buff_left = ABILITIES.RALLY_DURATION
+		touched += 1
+	return touched > 0
+
+
+## Призыв волка. Волк — тот же боец, что и мечник злодея, но зверь: быстрее,
+## слабее и живёт минуту. Ходит за призвавшим и бьёт чужих — логика следования
+## и поиска цели у бойцов уже есть, дублировать её незачем.
+func _server_cast_summon() -> bool:
+	var world := get_parent().get_parent()
+	if not world.has_method("spawn_unit"):
+		return false
+
+	var pack: Array = world.units_of(peer_id)
+	var beasts := 0
+	for unit in pack:
+		if "is_beast" in unit and unit.is_beast:
+			beasts += 1
+	if beasts >= ABILITIES.SUMMON_LIMIT:
+		return false
+
+	var offset := Basis(Vector3.UP, rotation.y) * Vector3(0.0, 0.0, -ABILITIES.range_of(ABILITIES.Kind.SUMMON))
+	return world.spawn_unit(peer_id, pack.size(), global_position + offset, true) != null
+
+
+## Свои рядом: сам эльф и игроки его стороны. Бойцы лечению не подлежат — у них
+## нет ни ранений, ни кровотечения, только здоровье.
+func _allies_in_range(radius: float) -> Array:
+	var result := []
+	for other in get_parent().get_children():
+		if not ("faction" in other) or not ("health" in other):
+			continue
+		if int(other.faction) != faction or not other.health.alive:
+			continue
+		if global_position.distance_to(other.global_position) > radius:
+			continue
+		result.append(other)
+	return result
+
+
+## Показ вспышки. На игру не влияет — только картинка.
+@rpc("any_peer", "call_local", "unreliable")
+func ability_cast(kind: int, point: Vector3) -> void:
+	if not _sender_is_host():
+		return
+	EFFECTS.druid(_effects_root(), point, kind)
 
 
 ## Перевязка: держать клавишу, стоя на месте. Расходует бинт (DESIGN_ANSWERS,

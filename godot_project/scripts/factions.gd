@@ -12,6 +12,7 @@ extends RefCounted
 ##
 
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const ABILITIES := preload("res://scripts/combat/abilities.gd")
 
 enum Kind { VILLAIN, ELVES, GUARD }
 
@@ -38,6 +39,16 @@ const WEAPON_SETS := {
 	Kind.ELVES: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW],
 	Kind.GUARD: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW],
 }
+
+## Способности поддержки. Друидический уклон — только у эльфов (GDD 8.4):
+## лечение, бафф и призыв животных. У злодея своя магия, но атакующая, и она
+## живёт в WEAPON_SETS; страже магия не положена вовсе.
+const ABILITY_SETS := {
+	Kind.VILLAIN: [],
+	Kind.ELVES: [ABILITIES.Kind.HEAL, ABILITIES.Kind.RALLY, ABILITIES.Kind.SUMMON],
+	Kind.GUARD: [],
+}
+
 
 ## Сколько бойцов сторона получает на старте.
 const STARTING_SQUAD := [0, 0, 0]
@@ -75,12 +86,28 @@ static func default_weapon(faction: int) -> int:
 	return int(set[0]) if set.size() > 0 else WEAPONS.Kind.SWORD
 
 
+static func allows_ability(faction: int, ability: int) -> bool:
+	var set: Array = ABILITY_SETS.get(clampi(faction, 0, COUNT - 1), [])
+	return set.has(ability)
+
+
+static func has_abilities(faction: int) -> bool:
+	return not ABILITY_SETS.get(clampi(faction, 0, COUNT - 1), []).is_empty()
+
+
 static func name_of(faction: int) -> String:
 	return NAMES[clampi(faction, 0, COUNT - 1)]
 
 
 static func goal_of(faction: int) -> String:
 	return GOALS[clampi(faction, 0, COUNT - 1)]
+
+
+static func abilities_text(faction: int) -> String:
+	var parts := PackedStringArray()
+	for ability in ABILITY_SETS.get(clampi(faction, 0, COUNT - 1), []):
+		parts.append(ABILITIES.name_of(ability))
+	return ", ".join(parts)
 
 
 static func weapons_text(faction: int) -> String:

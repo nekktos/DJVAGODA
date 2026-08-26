@@ -21,6 +21,7 @@ extends Node
 ##   --slicetest     автопроверка вертикального среза (headless)
 ##   --consoletest   автопроверка консольных команд (headless)
 ##   --foresttest    автопроверка impostor-леса (headless)
+##   --elftest       автопроверка магии поддержки эльфов (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -30,6 +31,7 @@ const LOCAL_HINT := "Локально: порт 24545, второе окно п�
 const STEAM_HINT := "Steam: хост сообщает свой Steam ID, второй игрок вставляет его в поле."
 
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
@@ -123,6 +125,9 @@ func _process(delta: float) -> void:
 					line += "   перевязка: %d%%" % int(progress * 100.0)
 				else:
 					line += "   B — перевязать (стоя на месте)"
+			if FACTIONS.has_abilities(me.faction):
+				line += "
+" + _abilities_hint(me)
 			var pile: Node3D = me.loot_nearby()
 			if pile != null:
 				line += "\nF — подобрать груз: %s" % pile.summary()
@@ -304,6 +309,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--elftest"):
+		var elf_test: Node = preload("res://tools/elf_test.gd").new()
+		add_child(elf_test)
+		elf_test.start(_world)
+		needs_session = true
 
 	if args.has("--foresttest"):
 		var forest_test: Node = preload("res://tools/forest_test.gd").new()
@@ -590,3 +601,21 @@ func _on_console_submitted(line: String) -> void:
 		_console_player = me
 		me.cheat_reply.connect(_console_print)
 	me.ask_cheat(line)
+
+
+## Строка способностей друида: что готово, что на откате, сколько держится клич.
+## Показываем только тем сторонам, у которых магия поддержки есть (эльфы).
+func _abilities_hint(me: Node3D) -> String:
+	var parts := PackedStringArray()
+	for kind in ABILITIES.COUNT:
+		if not FACTIONS.allows_ability(me.faction, kind):
+			continue
+		var left: float = me.sync_ability_cd[kind]
+		if left > 0.0:
+			parts.append("%d %s (%.0f с)" % [kind + 4, ABILITIES.name_of(kind), ceil(left)])
+		else:
+			parts.append("%d %s" % [kind + 4, ABILITIES.name_of(kind)])
+	var line := "магия: " + "   ".join(parts)
+	if me.sync_buff_left > 0.0:
+		line += "   клич действует ещё %.0f с" % ceil(me.sync_buff_left)
+	return line

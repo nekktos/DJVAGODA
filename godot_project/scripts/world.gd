@@ -492,7 +492,7 @@ func units_of(owner_id: int) -> Array:
 
 ## Нанять бойца. Только на хосте: заявка сюда попадает уже проверенной
 ## (см. player.gd::request_train_unit).
-func spawn_unit(owner_id: int, slot: int, point: Vector3) -> Node:
+func spawn_unit(owner_id: int, slot: int, point: Vector3, beast: bool = false) -> Node:
 	if not multiplayer.is_server():
 		return null
 	_spawn_counter += 1
@@ -502,9 +502,13 @@ func spawn_unit(owner_id: int, slot: int, point: Vector3) -> Node:
 		"owner": owner_id,
 		"slot": slot,
 		"point": point,
+		"beast": beast,
 	})
 	if node != null:
-		print("[отряд] игрок %d нанял мечника, слот %d" % [owner_id, slot])
+		if beast:
+			print("[призыв] игрок %d призвал волка, слот %d" % [owner_id, slot])
+		else:
+			print("[отряд] игрок %d нанял мечника, слот %d" % [owner_id, slot])
 	return node
 
 
