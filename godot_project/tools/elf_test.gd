@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка магии поддержки эльфов (Этап 8). Работает headless.
 ##
@@ -14,37 +14,27 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const UNIT := preload("res://scripts/units/unit.gd")
 
 var _world: Node3D
-var _failures := 0
-## Счётчик выполненных проверок: при ошибке загрузки скрипта нода деградирует до
-## базового типа, вызовы тихо падают, и без него тест рапортует успех, ничего
-## не проверив. Ровно на это напоролся forest_test.
-var _ran := 0
-const EXPECTED_CHECKS := 18
 
 
 func start(world: Node3D) -> void:
+	tag = "эльфы"
+	expected_host = 18
+	expected_client = 4
 	_world = world
 	_run.call_deferred()
-
-
-func _check(ok: bool, label: String, detail: String) -> void:
-	_ran += 1
-	if not ok:
-		_failures += 1
-	print("[эльфы] %s | %s: %s" % ["OK  " if ok else "ПРОВАЛ", label, detail])
 
 
 func _run() -> void:
 	await get_tree().create_timer(3.0).timeout
 	var me: Node3D = _world.local_player()
 	if me == null:
-		print("[эльфы] ПРОВАЛ: персонаж не заспавнен")
-		get_tree().quit(1)
+		fail("персонаж не заспавнен")
+		finish()
 		return
 
 	if not multiplayer.is_server():
 		await _run_client(me)
-		get_tree().quit(1 if _failures > 0 else 0)
+		finish()
 		return
 
 	_test_faction_access(me)
@@ -52,31 +42,23 @@ func _run() -> void:
 	await _test_rally(me)
 	await _test_summon(me)
 	await _test_cheat_guard(me)
-
-	if _ran < EXPECTED_CHECKS:
-		print("[эльфы] ПРОВАЛ: выполнилось проверок %d из %d — часть кода не отработала" % [_ran, EXPECTED_CHECKS])
-		_failures += 1
-	if _failures == 0:
-		print("[эльфы] все проверки пройдены (%d)" % _ran)
-	else:
-		print("[эльфы] провалено проверок: %d из %d" % [_failures, _ran])
 	if not multiplayer.get_peers().is_empty():
 		# Под занавес вешаем клич и держим: клиенту надо на чём-то проверить, что
 		# бафф и откаты хоста реально доезжают по сети.
 		me.sync_ability_cd[ABILITIES.Kind.RALLY] = 0.0
 		me.request_ability(ABILITIES.Kind.RALLY)
 		await get_tree().create_timer(8.0).timeout
-	get_tree().quit(1 if _failures > 0 else 0)
+	finish()
 
 
 ## Магия поддержки — только у эльфов. У злодея своя, но атакующая, и она в
 ## оружии; страже магия не положена вовсе.
 func _test_faction_access(me: Node3D) -> void:
-	_check(FACTIONS.has_abilities(FACTIONS.Kind.ELVES), "магия поддержки у эльфов есть",
+	check(FACTIONS.has_abilities(FACTIONS.Kind.ELVES), "магия поддержки у эльфов есть",
 		FACTIONS.abilities_text(FACTIONS.Kind.ELVES))
-	_check(not FACTIONS.has_abilities(FACTIONS.Kind.VILLAIN), "у злодея её нет", "пусто")
-	_check(not FACTIONS.has_abilities(FACTIONS.Kind.GUARD), "у стражи её нет", "пусто")
-	_check(int(me.faction) == FACTIONS.Kind.ELVES, "тест идёт за эльфов",
+	check(not FACTIONS.has_abilities(FACTIONS.Kind.VILLAIN), "у злодея её нет", "пусто")
+	check(not FACTIONS.has_abilities(FACTIONS.Kind.GUARD), "у стражи её нет", "пусто")
+	check(int(me.faction) == FACTIONS.Kind.ELVES, "тест идёт за эльфов",
 		FACTIONS.name_of(me.faction))
 
 
@@ -91,12 +73,12 @@ func _test_heal(me: Node3D) -> void:
 	me.request_ability(ABILITIES.Kind.HEAL)
 	await get_tree().physics_frame
 
-	_check(me.health.current > before, "лечение подняло здоровье",
+	check(me.health.current > before, "лечение подняло здоровье",
 		"%d -> %d" % [int(before), int(me.health.current)])
-	_check(not me.body.bleeding, "кровотечение остановлено", "bleeding=false")
-	_check(me.body.severed_mask == severed_before, "отрубленное не отросло",
+	check(not me.body.bleeding, "кровотечение остановлено", "bleeding=false")
+	check(me.body.severed_mask == severed_before, "отрубленное не отросло",
 		"маска не изменилась")
-	_check(me.sync_ability_cd[ABILITIES.Kind.HEAL] > 0.0, "лечение ушло на откат",
+	check(me.sync_ability_cd[ABILITIES.Kind.HEAL] > 0.0, "лечение ушло на откат",
 		"%.0f с" % me.sync_ability_cd[ABILITIES.Kind.HEAL])
 
 	# Повторный вызов на откате не должен пройти.
@@ -104,7 +86,7 @@ func _test_heal(me: Node3D) -> void:
 	me.health.apply_damage(20.0, 0)
 	me.request_ability(ABILITIES.Kind.HEAL)
 	await get_tree().physics_frame
-	_check(me.health.current < health_before, "на откате лечение не срабатывает",
+	check(me.health.current < health_before, "на откате лечение не срабатывает",
 		"HP %d" % int(me.health.current))
 
 
@@ -114,16 +96,16 @@ func _test_rally(me: Node3D) -> void:
 	me.request_ability(ABILITIES.Kind.RALLY)
 	await get_tree().physics_frame
 
-	_check(me.sync_buff_left > 0.0, "клич повесил бафф", "%.0f с" % me.sync_buff_left)
-	_check(me.buff_speed_scale() > speed_before, "скорость выросла",
+	check(me.sync_buff_left > 0.0, "клич повесил бафф", "%.0f с" % me.sync_buff_left)
+	check(me.buff_speed_scale() > speed_before, "скорость выросла",
 		"%.2f -> %.2f" % [speed_before, me.buff_speed_scale()])
-	_check(me.buff_attack_scale() < 1.0, "откат атак сократился",
+	check(me.buff_attack_scale() < 1.0, "откат атак сократился",
 		"%.2f" % me.buff_attack_scale())
 
 	# Бафф обязан истекать сам: вечное ускорение сломало бы баланс.
 	me.sync_buff_left = 0.05
 	await get_tree().create_timer(0.4).timeout
-	_check(me.sync_buff_left == 0.0 and me.buff_speed_scale() == 1.0, "бафф истёк сам",
+	check(me.sync_buff_left == 0.0 and me.buff_speed_scale() == 1.0, "бафф истёк сам",
 		"остаток %.2f" % me.sync_buff_left)
 
 
@@ -134,17 +116,17 @@ func _test_summon(me: Node3D) -> void:
 	await get_tree().physics_frame
 
 	var beasts := _beasts_of(int(me.peer_id))
-	_check(beasts.size() == 1, "волк призван", "зверей: %d" % beasts.size())
+	check(beasts.size() == 1, "волк призван", "зверей: %d" % beasts.size())
 	if beasts.is_empty():
-		_check(false, "у волка параметры зверя", "волка нет")
-		_check(false, "волк живёт не вечно", "волка нет")
-		_check(false, "предел призыва соблюдён", "волка нет")
+		check(false, "у волка параметры зверя", "волка нет")
+		check(false, "волк живёт не вечно", "волка нет")
+		check(false, "предел призыва соблюдён", "волка нет")
 		return
 
 	var wolf: Node3D = beasts[0]
-	_check(wolf.is_beast and wolf.health <= UNIT.BEAST_HEALTH,
+	check(wolf.is_beast and wolf.health <= UNIT.BEAST_HEALTH,
 		"у волка параметры зверя", "HP %d" % int(wolf.health))
-	_check(wolf.life_left > 0.0 and wolf.life_left <= ABILITIES.SUMMON_LIFETIME,
+	check(wolf.life_left > 0.0 and wolf.life_left <= ABILITIES.SUMMON_LIFETIME,
 		"волк живёт не вечно", "осталось %.0f с" % wolf.life_left)
 
 	# Добиваем до предела и просим ещё одного сверх него.
@@ -155,7 +137,7 @@ func _test_summon(me: Node3D) -> void:
 	me.sync_ability_cd[ABILITIES.Kind.SUMMON] = 0.0
 	me.request_ability(ABILITIES.Kind.SUMMON)
 	await get_tree().physics_frame
-	_check(_beasts_of(int(me.peer_id)).size() == ABILITIES.SUMMON_LIMIT,
+	check(_beasts_of(int(me.peer_id)).size() == ABILITIES.SUMMON_LIMIT,
 		"предел призыва соблюдён", "зверей: %d" % _beasts_of(int(me.peer_id)).size())
 
 
@@ -169,7 +151,7 @@ func _test_cheat_guard(me: Node3D) -> void:
 	me.body.severed_mask = 0b0011
 	me.request_ability(ABILITIES.Kind.HEAL)
 	await get_tree().physics_frame
-	_check(me.health.current == before, "без рук колдовать нельзя",
+	check(me.health.current == before, "без рук колдовать нельзя",
 		"HP не изменилось: %d" % int(me.health.current))
 	me.body.severed_mask = 0
 
@@ -185,19 +167,19 @@ func _beasts_of(owner: int) -> Array:
 ## Клиент проверяет, что откаты и бафф хоста доезжают по сети, а сам он колдовать
 ## чужим персонажем не может.
 func _run_client(me: Node3D) -> void:
-	_check(not FACTIONS.has_abilities(me.faction) or me.sync_ability_cd.size() == ABILITIES.COUNT,
+	check(not FACTIONS.has_abilities(me.faction) or me.sync_ability_cd.size() == ABILITIES.COUNT,
 		"откаты приехали к клиенту", "%d значений" % me.sync_ability_cd.size())
 
 	var host_player: Node3D = _world.get_node_or_null("Players/1")
 	if host_player == null:
-		_check(false, "персонаж хоста виден клиенту", "не найден")
+		check(false, "персонаж хоста виден клиенту", "не найден")
 		return
-	_check(true, "персонаж хоста виден клиенту", "найден")
+	check(true, "персонаж хоста виден клиенту", "найден")
 
 	# Ждём, пока хост доберётся до финального клича.
 	await get_tree().create_timer(6.0).timeout
-	_check(host_player.sync_buff_left > 0.0, "бафф хоста доехал до клиента",
+	check(host_player.sync_buff_left > 0.0, "бафф хоста доехал до клиента",
 		"осталось %.1f с" % host_player.sync_buff_left)
-	_check(host_player.sync_ability_cd[ABILITIES.Kind.RALLY] > 0.0,
+	check(host_player.sync_ability_cd[ABILITIES.Kind.RALLY] > 0.0,
 		"откат хоста доехал до клиента",
 		"клич на откате %.1f с" % host_player.sync_ability_cd[ABILITIES.Kind.RALLY])

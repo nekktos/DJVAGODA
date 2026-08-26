@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка impostor-леса (Этап 8). Работает headless.
 ##
@@ -12,24 +12,14 @@ const FOREST := preload("res://scripts/forest.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 
 var _world: Node3D
-var _failures := 0
-## Сколько проверок реально выполнилось. Нужен, потому что при ошибке загрузки
-## скрипта нода деградирует до базового типа, вызовы тихо падают, и тест без
-## этого счётчика рапортует успех, не проверив ничего.
-var _ran := 0
-const EXPECTED_CHECKS := 20
 
 
 func start(world: Node3D) -> void:
+	tag = "лес"
+	expected_host = 20
+	expected_client = 2
 	_world = world
 	_run.call_deferred()
-
-
-func _check(ok: bool, label: String, detail: String) -> void:
-	_ran += 1
-	if not ok:
-		_failures += 1
-	print("[лес] %s | %s: %s" % ["OK  " if ok else "ПРОВАЛ", label, detail])
 
 
 func _run() -> void:
@@ -37,13 +27,13 @@ func _run() -> void:
 	var me: Node3D = _world.local_player()
 	var forest: Node = _world.forest
 	if me == null or forest == null:
-		print("[лес] ПРОВАЛ: нет персонажа или леса")
-		get_tree().quit(1)
+		fail("персонаж или лес не готовы")
+		finish()
 		return
 
 	if not multiplayer.is_server():
 		await _run_client(forest)
-		get_tree().quit(1 if _failures > 0 else 0)
+		finish()
 		return
 
 	_test_generation(forest)
@@ -51,25 +41,17 @@ func _run() -> void:
 	await _test_near_becomes_solid(me, forest)
 	await _test_hysteresis(me, forest)
 	await _test_felling(me, forest)
-
-	if _ran < EXPECTED_CHECKS:
-		print("[лес] ПРОВАЛ: выполнилось проверок %d из %d — часть кода не отработала" % [_ran, EXPECTED_CHECKS])
-		_failures += 1
-	if _failures == 0:
-		print("[лес] все проверки пройдены (%d)" % _ran)
-	else:
-		print("[лес] провалено проверок: %d из %d" % [_failures, _ran])
 	# Если рядом есть клиент, он проверяет репликацию рубки и ему нужно время.
 	# Хост, закрывшись раньше, обрывает ему сессию и валит его тест.
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(9.0).timeout
-	get_tree().quit(1 if _failures > 0 else 0)
+	finish()
 
 
 ## Лес построен целиком и в границах зоны, поляна под поселение свободна.
 func _test_generation(forest: Node) -> void:
 	var count: int = forest.tree_count()
-	_check(count == FOREST.TREE_COUNT, "плотность леса", "%d деревьев" % count)
+	check(count == FOREST.TREE_COUNT, "плотность леса", "%d деревьев" % count)
 
 	var centre := Vector2(-300.0, -300.0)
 	var outside := 0
@@ -81,8 +63,8 @@ func _test_generation(forest: Node) -> void:
 			outside += 1
 		if d < 70.0:
 			in_clearing += 1
-	_check(outside == 0, "деревья в границах зоны", "за границей: %d" % outside)
-	_check(in_clearing == 0, "поляна под поселением свободна", "в поляне: %d" % in_clearing)
+	check(outside == 0, "деревья в границах зоны", "за границей: %d" % outside)
+	check(in_clearing == 0, "поляна под поселением свободна", "в поляне: %d" % in_clearing)
 
 
 ## Пока рядом никого нет, объёмных деревьев быть не должно — только билборды.
@@ -95,9 +77,9 @@ func _test_far_is_impostor(forest: Node) -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	forest.refresh_lod()
-	_check(forest.near_count() == 0, "далеко от леса — только билборды",
+	check(forest.near_count() == 0, "далеко от леса — только билборды",
 		"объёмных: %d" % forest.near_count())
-	_check(forest.impostor_visible(0), "билборд дерева 0 виден", "да")
+	check(forest.impostor_visible(0), "билборд дерева 0 виден", "да")
 
 
 ## Рядом с игроком дерево становится объёмным и обзаводится коллизией.
@@ -107,10 +89,10 @@ func _test_near_becomes_solid(me: Node3D, forest: Node) -> void:
 	await get_tree().physics_frame
 	forest.refresh_lod()
 
-	_check(forest.is_near(0), "дерево рядом стало объёмным", "near=%s" % forest.is_near(0))
-	_check(forest.is_solid(0), "у него есть коллизия", "solid=%s" % forest.is_solid(0))
-	_check(not forest.impostor_visible(0), "билборд при этом спрятан", "скрыт")
-	_check(forest.near_count() > 0 and forest.near_count() < FOREST.TREE_COUNT,
+	check(forest.is_near(0), "дерево рядом стало объёмным", "near=%s" % forest.is_near(0))
+	check(forest.is_solid(0), "у него есть коллизия", "solid=%s" % forest.is_solid(0))
+	check(not forest.impostor_visible(0), "билборд при этом спрятан", "скрыт")
+	check(forest.near_count() > 0 and forest.near_count() < FOREST.TREE_COUNT,
 		"объёмными стали не все", "объёмных: %d из %d" % [forest.near_count(), FOREST.TREE_COUNT])
 
 
@@ -124,16 +106,16 @@ func _test_hysteresis(me: Node3D, forest: Node) -> void:
 	me.global_position = target + Vector3(between, 2.0, 0.0)
 	await get_tree().physics_frame
 	forest.refresh_lod()
-	_check(forest.is_solid(0), "в зоне гистерезиса дерево осталось твёрдым",
+	check(forest.is_solid(0), "в зоне гистерезиса дерево осталось твёрдым",
 		"на %.0f м, вход %.0f, выход %.0f" % [between, FOREST.SOLID_RADIUS, FOREST.SOLID_RELEASE])
 
 	# А за радиусом выхода — обязано отпустить и вернуться в билборд.
 	me.global_position = target + Vector3(FOREST.VISUAL_RELEASE + 20.0, 2.0, 0.0)
 	await get_tree().physics_frame
 	forest.refresh_lod()
-	_check(not forest.is_near(0), "за радиусом выхода вернулось в билборд",
+	check(not forest.is_near(0), "за радиусом выхода вернулось в билборд",
 		"near=%s" % forest.is_near(0))
-	_check(forest.impostor_visible(0), "билборд снова виден", "да")
+	check(forest.impostor_visible(0), "билборд снова виден", "да")
 
 
 ## Рубка: счётчик ударов, падение дерева и исчезновение из обоих слоёв.
@@ -145,30 +127,30 @@ func _test_felling(me: Node3D, forest: Node) -> void:
 	forest.refresh_lod()
 
 	var start: int = forest.hits_left(index)
-	_check(start == RES.SOURCE_HITS, "запас ударов у дерева", "%d" % start)
+	check(start == RES.SOURCE_HITS, "запас ударов у дерева", "%d" % start)
 
 	var left: int = forest.hit_tree(index)
-	_check(left == start - 1, "удар уменьшает счётчик", "осталось %d" % left)
+	check(left == start - 1, "удар уменьшает счётчик", "осталось %d" % left)
 
 	while forest.hit_tree(index) > 0:
 		pass
 	forest.fell_tree.rpc(index)
 	await get_tree().physics_frame
 
-	_check(forest.is_felled(index), "дерево срублено", "да")
-	_check(not forest.is_near(index), "объёмное дерево убрано", "near=%s" % forest.is_near(index))
-	_check(not forest.impostor_visible(index), "билборд убран", "скрыт")
-	_check(forest.felled_indices().has(index), "попало в список для догрузки",
+	check(forest.is_felled(index), "дерево срублено", "да")
+	check(not forest.is_near(index), "объёмное дерево убрано", "near=%s" % forest.is_near(index))
+	check(not forest.impostor_visible(index), "билборд убран", "скрыт")
+	check(forest.felled_indices().has(index), "попало в список для догрузки",
 		"срублено всего: %d" % forest.felled_count())
 
 	# Повторный вызов не должен ломать состояние: пакет может прийти дважды.
 	forest.fell_tree.rpc(index)
 	await get_tree().physics_frame
-	_check(forest.felled_count() == 1, "повторная команда не задваивает",
+	check(forest.felled_count() == 1, "повторная команда не задваивает",
 		"срублено: %d" % forest.felled_count())
 
 	# Срубленное дерево нельзя ударить ещё раз.
-	_check(forest.hit_tree(index) == -1, "срубленное дерево не бьётся", "-1")
+	check(forest.hit_tree(index) == -1, "срубленное дерево не бьётся", "-1")
 
 
 ## Развести всех игроков по одной далёкой точке. Разброс, чтобы не толкались.
@@ -183,9 +165,9 @@ func _teleport_everyone(point: Vector3) -> void:
 ## Клиентская половина: лес детерминирован, значит совпадает с хостом,
 ## а рубка хоста доезжает по сети.
 func _run_client(forest: Node) -> void:
-	_check(forest.tree_count() == FOREST.TREE_COUNT, "лес построен и на клиенте",
+	check(forest.tree_count() == FOREST.TREE_COUNT, "лес построен и на клиенте",
 		"%d деревьев" % forest.tree_count())
 	# Ждём, пока хост дойдёт до проверки рубки.
 	await get_tree().create_timer(7.0).timeout
-	_check(forest.felled_count() > 0, "рубка хоста доехала до клиента",
+	check(forest.felled_count() > 0, "рубка хоста доехала до клиента",
 		"срублено: %d" % forest.felled_count())

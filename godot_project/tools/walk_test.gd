@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка проходимости grey-box карты. Работает headless — физика в нём
 ## считается, окно не нужно.
@@ -32,6 +32,9 @@ var _world: Node3D
 
 
 func start(world: Node3D) -> void:
+	tag = "walk"
+	expected_host = 6
+	expected_client = 6
 	_world = world
 	_run.call_deferred()
 
@@ -71,11 +74,10 @@ func _run() -> void:
 	await get_tree().create_timer(1.0).timeout
 	var player: Node3D = _world.local_player()
 	if player == null:
-		print("[walk] ПРОВАЛ: персонаж не заспавнен")
-		get_tree().quit(1)
+		fail("персонаж не заспавнен")
+		finish()
 		return
 
-	var failures := 0
 	for s in _scenarios():
 		player.global_position = s.start
 		player.velocity = Vector3.ZERO
@@ -86,10 +88,8 @@ func _run() -> void:
 
 		var p: Vector3 = player.global_position
 		var ok: bool = s.check.call(p)
-		if not ok:
-			failures += 1
-		print("[walk] %s | %s | итог (%.1f, %.1f, %.1f) | ожидалось: %s" % [
-			"OK  " if ok else "ПРОВАЛ", s.name, p.x, p.y, p.z, s.expectation
+		check(ok, s.name, "итог (%.1f, %.1f, %.1f), ожидалось: %s" % [
+			p.x, p.y, p.z, s.expectation
 		])
 
 	# Анимация ходьбы должна ИГРАТЬ и быть зациклена, пока персонаж идёт.
@@ -103,15 +103,6 @@ func _run() -> void:
 
 	var walking: bool = bool(anim.get("playing", false)) and String(anim.get("name", "")) == "walk"
 	var looping: bool = bool(anim.get("looping", false))
-	if not walking:
-		failures += 1
-	if not looping:
-		failures += 1
-	print("[walk] %s | анимация ходьбы играет: %s" % ["OK  " if walking else "ПРОВАЛ", anim])
-	print("[walk] %s | анимация ходьбы зациклена: %s" % ["OK  " if looping else "ПРОВАЛ", looping])
-
-	if failures == 0:
-		print("[walk] все сценарии пройдены")
-	else:
-		print("[walk] провалено сценариев: %d" % failures)
-	get_tree().quit(1 if failures > 0 else 0)
+	check(walking, "анимация ходьбы играет", str(anim))
+	check(looping, "анимация ходьбы зациклена", str(looping))
+	finish()

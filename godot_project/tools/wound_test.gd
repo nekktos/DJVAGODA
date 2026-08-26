@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка системы ранений и протезов (Этап 3). Работает headless.
 ##
@@ -14,26 +14,22 @@ extends Node
 const BODY := preload("res://scripts/combat/body.gd")
 
 var _world: Node3D
-var _failures := 0
 
 
 func start(world: Node3D) -> void:
+	tag = "раны"
+	expected_host = 23
+	expected_client = 4
 	_world = world
 	_run.call_deferred()
-
-
-func _check(ok: bool, label: String, detail: String) -> void:
-	if not ok:
-		_failures += 1
-	print("[раны] %s | %s: %s" % ["OK  " if ok else "ПРОВАЛ", label, detail])
 
 
 func _run() -> void:
 	await get_tree().create_timer(3.0).timeout
 	var me: Node3D = _world.local_player()
 	if me == null:
-		print("[раны] ПРОВАЛ: персонаж не заспавнен")
-		get_tree().quit(1)
+		fail("персонаж не заспавнен")
+		finish()
 		return
 
 	if not multiplayer.is_server():
@@ -41,7 +37,7 @@ func _run() -> void:
 		# репликацию надо на нём, а не на своём целом теле.
 		var host_player: Node3D = _world.get_node("Players").get_node_or_null("1")
 		await _run_client(host_player)
-		get_tree().quit()
+		finish()
 		return
 
 	var body: Node = me.body
@@ -54,13 +50,8 @@ func _run() -> void:
 	await _test_prosthetics(me, body, health)
 	await _test_wheelchair(me, body, health)
 
-	if _failures == 0:
-		print("[раны] хост: все проверки пройдены")
-	else:
-		print("[раны] хост: провалено проверок: %d" % _failures)
-
 	await _showcase(me, body, health)
-	get_tree().quit(1 if _failures > 0 else 0)
+	finish()
 
 
 ## Финальное состояние держим долго и не трогаем: короткие всплески между
@@ -100,17 +91,17 @@ func _test_arm(me: Node3D, body: Node, health: Node) -> void:
 	await _reset(me, body, health)
 
 	await _sever(body, health, "arm_r")
-	_check(body.is_severed(BODY.Limb.ARM_R), "отрыв правой руки", "severed_mask=%d" % body.severed_mask)
-	_check(body.bleeding, "кровотечение началось", "bleeding=%s" % body.bleeding)
-	_check(body.can_attack_ranged(), "вторая рука ещё работает", "лук доступен")
+	check(body.is_severed(BODY.Limb.ARM_R), "отрыв правой руки", "severed_mask=%d" % body.severed_mask)
+	check(body.bleeding, "кровотечение началось", "bleeding=%s" % body.bleeding)
+	check(body.can_attack_ranged(), "вторая рука ещё работает", "лук доступен")
 
 	await _sever(body, health, "arm_l")
-	_check(not body.can_attack_melee(), "без обеих рук бить нечем", "меч недоступен")
+	check(not body.can_attack_melee(), "без обеих рук бить нечем", "меч недоступен")
 
 	# Перевязка расходует бинт и останавливает кровь (DESIGN_ANSWERS, пункт 11).
 	var before: int = body.bandages
 	var used: bool = body.apply_bandage()
-	_check(used and not body.bleeding and body.bandages == before - 1,
+	check(used and not body.bleeding and body.bandages == before - 1,
 		"перевязка бинтом", "бинтов было %d, стало %d, кровотечение=%s" % [before, body.bandages, body.bleeding])
 
 
@@ -121,13 +112,13 @@ func _test_bleeding_death(me: Node3D, body: Node, health: Node) -> void:
 	body.bleeding = true
 	await get_tree().create_timer(3.0).timeout
 	var after: float = health.current
-	_check(after < 99.0, "кровопотеря снимает здоровье", "через 3 с здоровье %.0f" % after)
+	check(after < 99.0, "кровопотеря снимает здоровье", "через 3 с здоровье %.0f" % after)
 
 	# Без перевязки должно добить насмерть.
 	while health.alive and health.current > 0.0:
 		health.apply_damage(20.0, 0)
 		await get_tree().process_frame
-	_check(not health.alive, "смерть от кровопотери без перевязки", "здоровье %.0f" % health.current)
+	check(not health.alive, "смерть от кровопотери без перевязки", "здоровье %.0f" % health.current)
 
 	# Смерть запускает респавн, а тот через RESPAWN_DELAY делает body.reset().
 	# Если не дождаться, он обнулит состояние посреди следующего сценария.
@@ -138,28 +129,28 @@ func _test_legs(me: Node3D, body: Node, health: Node) -> void:
 	await _reset(me, body, health)
 	await _sever(body, health, "leg_r")
 	var one: float = body.move_speed(6.0)
-	_check(body.is_crawling() and is_equal_approx(one, BODY.CRAWL_SPEED_ONE),
+	check(body.is_crawling() and is_equal_approx(one, BODY.CRAWL_SPEED_ONE),
 		"без одной ноги — ползание", "скорость %.2f м/с" % one)
 
 	await _sever(body, health, "leg_l")
 	var both: float = body.move_speed(6.0)
-	_check(both < one and is_equal_approx(both, BODY.CRAWL_SPEED_BOTH),
+	check(both < one and is_equal_approx(both, BODY.CRAWL_SPEED_BOTH),
 		"без двух ног — ползание медленнее", "скорость %.2f м/с" % both)
-	_check(is_equal_approx(body.jump_velocity(5.5), 0.0), "ползком не прыгают", "прыжок %.1f" % body.jump_velocity(5.5))
+	check(is_equal_approx(body.jump_velocity(5.5), 0.0), "ползком не прыгают", "прыжок %.1f" % body.jump_velocity(5.5))
 
 
 func _test_eyes(me: Node3D, body: Node, health: Node) -> void:
 	await _reset(me, body, health)
 	health.revive()
 	body.register_hit("head", BODY.EYE_THRESHOLD)
-	_check(body.eyes_lost == 1 and is_equal_approx(body.blindness(), 0.5),
+	check(body.eyes_lost == 1 and is_equal_approx(body.blindness(), 0.5),
 		"потеря глаза — слепота на половину экрана", "глаз потеряно %d" % body.eyes_lost)
 
 	health.revive()
 	body.register_hit("head", BODY.EYE_THRESHOLD)
-	_check(body.eyes_lost == 2 and is_equal_approx(body.blindness(), 1.0),
+	check(body.eyes_lost == 2 and is_equal_approx(body.blindness(), 1.0),
 		"второй глаз — полная слепота", "глаз потеряно %d" % body.eyes_lost)
-	_check(health.alive, "потеря глаз не убивает", "здоровье %.0f" % health.current)
+	check(health.alive, "потеря глаз не убивает", "здоровье %.0f" % health.current)
 
 
 func _test_prosthetics(me: Node3D, body: Node, health: Node) -> void:
@@ -172,7 +163,7 @@ func _test_prosthetics(me: Node3D, body: Node, health: Node) -> void:
 	body.grant_prosthetic(BODY.Limb.LEG_L, 1)
 	body.grant_prosthetic(BODY.Limb.LEG_R, 1)
 	var wooden: float = body.move_speed(6.0)
-	_check(wooden > crawl and wooden < 6.0,
+	check(wooden > crawl and wooden < 6.0,
 		"деревянный протез быстрее ползания, но медленнее живых ног",
 		"ползание %.2f, дерево %.2f, живые 6.00" % [crawl, wooden])
 
@@ -182,7 +173,7 @@ func _test_prosthetics(me: Node3D, body: Node, health: Node) -> void:
 	health.revive()
 	var before_chafe: float = health.current
 	await get_tree().create_timer(BODY.CHAFE_INTERVAL + 1.0).timeout
-	_check(health.current < before_chafe,
+	check(health.current < before_chafe,
 		"плохо подогнанный протез травмирует",
 		"здоровье %.1f -> %.1f" % [before_chafe, health.current])
 
@@ -191,7 +182,7 @@ func _test_prosthetics(me: Node3D, body: Node, health: Node) -> void:
 	body.grant_prosthetic(BODY.Limb.LEG_R, 3)
 	var master: float = body.move_speed(6.0)
 	var master_jump: float = body.jump_velocity(5.5)
-	_check(master > 6.0 and master_jump > 5.5,
+	check(master > 6.0 and master_jump > 5.5,
 		"мастерский протез лучше живых ног",
 		"бег %.2f (живые 6.00), прыжок %.2f (живой 5.50)" % [master, master_jump])
 
@@ -199,7 +190,7 @@ func _test_prosthetics(me: Node3D, body: Node, health: Node) -> void:
 	health.revive()
 	var steady: float = health.current
 	await get_tree().create_timer(BODY.CHAFE_INTERVAL + 1.0).timeout
-	_check(is_equal_approx(health.current, steady),
+	check(is_equal_approx(health.current, steady),
 		"хороший протез не травмирует", "здоровье держится %.1f" % health.current)
 
 	# Рука: деревянная годится только для ближнего боя.
@@ -208,12 +199,12 @@ func _test_prosthetics(me: Node3D, body: Node, health: Node) -> void:
 	await _sever(body, health, "arm_r")
 	body.grant_prosthetic(BODY.Limb.ARM_L, 1)
 	body.grant_prosthetic(BODY.Limb.ARM_R, 1)
-	_check(body.can_attack_melee() and not body.can_attack_ranged(),
+	check(body.can_attack_melee() and not body.can_attack_ranged(),
 		"деревянная рука — только ближний бой",
 		"меч=%s, лук=%s" % [body.can_attack_melee(), body.can_attack_ranged()])
 
 	body.grant_prosthetic(BODY.Limb.ARM_R, 3)
-	_check(body.can_attack_ranged() and body.attack_speed_scale() < 1.0,
+	check(body.can_attack_ranged() and body.attack_speed_scale() < 1.0,
 		"мастерская рука возвращает лук и бьёт быстрее",
 		"кулдаун x%.2f" % body.attack_speed_scale())
 
@@ -224,13 +215,13 @@ func _test_wheelchair(me: Node3D, body: Node, health: Node) -> void:
 	await _sever(body, health, "leg_r")
 
 	var seated: bool = body.set_wheelchair(true)
-	_check(seated and body.in_wheelchair, "пересадка в коляску", "in_wheelchair=%s" % body.in_wheelchair)
-	_check(is_equal_approx(body.move_speed(6.0), BODY.WHEELCHAIR_SPEED),
+	check(seated and body.in_wheelchair, "пересадка в коляску", "in_wheelchair=%s" % body.in_wheelchair)
+	check(is_equal_approx(body.move_speed(6.0), BODY.WHEELCHAIR_SPEED),
 		"в коляске быстрее, чем ползком", "скорость %.2f м/с" % body.move_speed(6.0))
-	_check(is_equal_approx(body.jump_velocity(5.5), 0.0), "из коляски не прыгают", "прыжок 0")
+	check(is_equal_approx(body.jump_velocity(5.5), 0.0), "из коляски не прыгают", "прыжок 0")
 
 	await _reset(me, body, health)
-	_check(not body.set_wheelchair(true), "со здоровыми ногами коляска не нужна", "отказано")
+	check(not body.set_wheelchair(true), "со здоровыми ногами коляска не нужна", "отказано")
 
 
 # --- клиент: проверяет, что состояние тела доехало по сети -----------------
@@ -260,9 +251,9 @@ func _run_client(watched: Node3D) -> void:
 			if t > 0:
 				seen_prosthetic = true
 
-	_check(seen_severed, "клиент увидел отрыв конечности у хоста", "severed доехал")
-	_check(seen_eyes, "клиент увидел потерю глаза у хоста", "eyes_lost доехал")
-	_check(seen_prosthetic, "клиент увидел протез у хоста", "prosthetics доехали")
-	_check(seen_wheelchair, "клиент увидел коляску у хоста", "in_wheelchair доехал")
-	if _failures == 0:
-		print("[раны] клиент: состояние тела реплицируется полностью")
+	check(seen_severed, "клиент увидел отрыв конечности у хоста", "severed доехал")
+	check(seen_eyes, "клиент увидел потерю глаза у хоста", "eyes_lost доехал")
+	check(seen_prosthetic, "клиент увидел протез у хоста", "prosthetics доехали")
+	check(seen_wheelchair, "клиент увидел коляску у хоста", "in_wheelchair доехал")
+	if failures() == 0:
+		note("клиент: состояние тела реплицируется полностью")

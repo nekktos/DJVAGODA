@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка экономики (Этап 4): добыча ресурсов и стройка. Работает headless.
 ##
@@ -8,31 +8,27 @@ extends Node
 const RES := preload("res://scripts/economy/resources.gd")
 
 var _world: Node3D
-var _failures := 0
 
 
 func start(world: Node3D) -> void:
+	tag = "эконом"
+	expected_host = 12
+	expected_client = 2
 	_world = world
 	_run.call_deferred()
-
-
-func _check(ok: bool, label: String, detail: String) -> void:
-	if not ok:
-		_failures += 1
-	print("[эконом] %s | %s: %s" % ["OK  " if ok else "ПРОВАЛ", label, detail])
 
 
 func _run() -> void:
 	await get_tree().create_timer(3.0).timeout
 	var me: Node3D = _world.local_player()
 	if me == null:
-		print("[эконом] ПРОВАЛ: персонаж не заспавнен")
-		get_tree().quit(1)
+		fail("персонаж не заспавнен")
+		finish()
 		return
 
 	if not multiplayer.is_server():
 		await _run_client(me)
-		get_tree().quit(1 if _failures > 0 else 0)
+		finish()
 		return
 
 	await _test_harvest(me, RES.Kind.WOOD, "рубка дерева")
@@ -41,11 +37,7 @@ func _run() -> void:
 	await _test_build(me)
 	await _test_prosthetic_cost(me)
 
-	if _failures == 0:
-		print("[эконом] все проверки пройдены")
-	else:
-		print("[эконом] провалено проверок: %d" % _failures)
-	get_tree().quit(1 if _failures > 0 else 0)
+	finish()
 
 
 ## Найти ближайший к точке источник нужного ресурса.
@@ -66,7 +58,7 @@ func _nearest_source(kind: int, from: Vector3) -> Node3D:
 func _test_harvest(me: Node3D, kind: int, label: String) -> void:
 	var source := _nearest_source(kind, me.global_position)
 	if source == null:
-		_check(false, label, "источник не найден на карте")
+		check(false, label, "источник не найден на карте")
 		return
 
 	# Встаём у КРАЯ источника, а не в двух метрах от его центра: горы у злодея
@@ -93,20 +85,20 @@ func _test_harvest(me: Node3D, kind: int, label: String) -> void:
 	me.scripted_input = {}
 	var after: int = me.stock.get_amount(kind)
 
-	_check(after > before, label, "%s: %d -> %d" % [RES.NAMES[kind], before, after])
+	check(after > before, label, "%s: %d -> %d" % [RES.NAMES[kind], before, after])
 
 
 func _test_capacity(me: Node3D) -> void:
 	var before: int = me.stock.capacity
 	me.stock.raise_capacity(RES.STORAGE_BONUS)
-	_check(me.stock.capacity == before + RES.STORAGE_BONUS,
+	check(me.stock.capacity == before + RES.STORAGE_BONUS,
 		"склад поднимает потолок хранения", "%d -> %d" % [before, me.stock.capacity])
 
 	# Сверх потолка не влезает.
 	me.stock.capacity = 10
 	me.stock.amounts = PackedInt32Array([10, 0, 0, 0])
 	var taken: int = me.stock.add(RES.Kind.WOOD, 50)
-	_check(taken == 0 and me.stock.get_amount(RES.Kind.WOOD) == 10,
+	check(taken == 0 and me.stock.get_amount(RES.Kind.WOOD) == 10,
 		"сверх потолка не принимается", "влезло %d" % taken)
 
 
@@ -129,7 +121,7 @@ func _test_build(me: Node3D) -> void:
 	var before: int = _buildings().size()
 	me.request_build(RES.Building.STORAGE, spot)
 	await get_tree().create_timer(0.4).timeout
-	_check(_buildings().size() == before, "без ресурсов склад не ставится", "построек %d" % _buildings().size())
+	check(_buildings().size() == before, "без ресурсов склад не ставится", "построек %d" % _buildings().size())
 
 	# С ресурсами — ставится, и стоимость списывается.
 	await _give(me, 200, 200, 200, 200)
@@ -137,15 +129,15 @@ func _test_build(me: Node3D) -> void:
 	me.request_build(RES.Building.STORAGE, spot)
 	await get_tree().create_timer(0.4).timeout
 	var placed: bool = _buildings().size() == before + 1
-	_check(placed, "склад поставлен", "построек %d" % _buildings().size())
-	_check(me.stock.get_amount(RES.Kind.WOOD) < wood_before,
+	check(placed, "склад поставлен", "построек %d" % _buildings().size())
+	check(me.stock.get_amount(RES.Kind.WOOD) < wood_before,
 		"стоимость списана", "дерево %d -> %d" % [wood_before, me.stock.get_amount(RES.Kind.WOOD)])
 
 	# Второй склад вплотную к первому не влезает.
 	var packed: int = _buildings().size()
 	me.request_build(RES.Building.STORAGE, spot + Vector3(2.0, 0.0, 2.0))
 	await get_tree().create_timer(0.4).timeout
-	_check(_buildings().size() == packed, "вплотную к соседнему зданию не ставится",
+	check(_buildings().size() == packed, "вплотную к соседнему зданию не ставится",
 		"построек %d" % _buildings().size())
 
 	# На перепаде высот нельзя. Берём край плато императора: он ровно на
@@ -155,13 +147,13 @@ func _test_build(me: Node3D) -> void:
 	var on_slope: int = _buildings().size()
 	me.request_build(RES.Building.BARRACKS, slope)
 	await get_tree().create_timer(0.4).timeout
-	_check(_buildings().size() == on_slope, "на неровном месте не ставится",
+	check(_buildings().size() == on_slope, "на неровном месте не ставится",
 		"построек %d" % _buildings().size())
 
 	# Достроенный склад поднимает потолок.
 	var cap_before: int = me.stock.capacity
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.STORAGE] + 1.5).timeout
-	_check(me.stock.capacity > cap_before, "достроенный склад поднял потолок",
+	check(me.stock.capacity > cap_before, "достроенный склад поднял потолок",
 		"%d -> %d" % [cap_before, me.stock.capacity])
 
 
@@ -180,7 +172,7 @@ func _test_prosthetic_cost(me: Node3D) -> void:
 	await _give(me, 0, 0, 0, 0)
 	me.request_prosthetic(1)
 	await get_tree().process_frame
-	_check(me.body.tier(0 if me.body.is_severed(0) else 1) == 0,
+	check(me.body.tier(0 if me.body.is_severed(0) else 1) == 0,
 		"без ресурсов протез не выдают", "уровень протеза 0")
 
 	await _give(me, 200, 200, 200, 200)
@@ -188,7 +180,7 @@ func _test_prosthetic_cost(me: Node3D) -> void:
 	me.request_prosthetic(1)
 	await get_tree().process_frame
 	var limb := 0 if me.body.is_severed(0) else 1
-	_check(me.body.tier(limb) == 1 and me.stock.get_amount(RES.Kind.WOOD) < wood_before,
+	check(me.body.tier(limb) == 1 and me.stock.get_amount(RES.Kind.WOOD) < wood_before,
 		"деревянный протез крафтится за древесину",
 		"уровень %d, дерево %d -> %d" % [me.body.tier(limb), wood_before, me.stock.get_amount(RES.Kind.WOOD)])
 
@@ -207,11 +199,11 @@ func _run_client(me: Node3D) -> void:
 	var before: int = _buildings().size()
 	host_player.request_build.rpc_id(1, RES.Building.STORAGE, Vector3(90.0, 0.0, 90.0))
 	await get_tree().create_timer(1.5).timeout
-	_check(_buildings().size() == before,
+	check(_buildings().size() == before,
 		"клиент не может строить чужим персонажем", "построек %d" % _buildings().size())
 
 	# Атака 2: выписать себе ресурсы локально. Репликация обязана затереть.
 	me.stock.amounts = PackedInt32Array([9999, 9999, 9999, 9999])
 	await get_tree().create_timer(1.5).timeout
 	var wood: int = me.stock.get_amount(RES.Kind.WOOD)
-	_check(wood < 9999, "подделка ресурсов затёрта хостом", "дерева стало %d" % wood)
+	check(wood < 9999, "подделка ресурсов затёрта хостом", "дерева стало %d" % wood)

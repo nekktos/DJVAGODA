@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка боевой петли на двух пирах. Работает headless.
 ##
@@ -18,6 +18,9 @@ var _world: Node3D
 
 
 func start(world: Node3D) -> void:
+	tag = "бой-тест"
+	expected_host = 4
+	expected_client = 2
 	_world = world
 	_run.call_deferred()
 
@@ -27,15 +30,15 @@ func _run() -> void:
 	var mine: Node3D = _world.local_player()
 	var other := _find_other(mine)
 	if mine == null or other == null:
-		print("[бой-тест] ПРОВАЛ: нужны два игрока в сессии")
-		get_tree().quit(1)
+		fail("нужны два игрока в сессии")
+		finish()
 		return
 
 	if multiplayer.is_server():
 		await _run_host(mine, other)
 	else:
 		await _run_client(mine, other)
-	get_tree().quit()
+	finish()
 
 
 func _find_other(mine: Node3D) -> Node3D:
@@ -48,7 +51,6 @@ func _find_other(mine: Node3D) -> Node3D:
 # --- хост: бьёт и проверяет, что урон прошёл ------------------------------
 
 func _run_host(mine: Node3D, other: Node3D) -> void:
-	var failures := 0
 	for kind in [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.SPELL]:
 		other.health.revive()
 		await get_tree().process_frame
@@ -63,16 +65,12 @@ func _run_host(mine: Node3D, other: Node3D) -> void:
 		await get_tree().create_timer(0.6).timeout
 
 		var after: float = other.health.current
-		var ok := after < before
-		if not ok:
-			failures += 1
-		print("[бой-тест] %s | %s: здоровье цели %.0f -> %.0f" % [
-			"OK  " if ok else "ПРОВАЛ", WEAPONS.NAMES[kind], before, after
-		])
+		check(after < before, WEAPONS.NAMES[kind],
+			"здоровье цели %.0f -> %.0f" % [before, after])
 
 	# Убить цель и убедиться, что она вернулась в мир после респавна.
 	if not is_instance_valid(other):
-		print("[бой-тест] смерть и респавн: пропущено, цель ушла из сессии")
+		fail("смерть и респавн: цель ушла из сессии")
 		return
 	other.health.revive()
 	await get_tree().process_frame
@@ -81,19 +79,11 @@ func _run_host(mine: Node3D, other: Node3D) -> void:
 	var died: bool = not other.health.alive
 	await get_tree().create_timer(6.0).timeout
 	if not is_instance_valid(other):
-		print("[бой-тест] смерть и респавн: пропущено, цель ушла из сессии")
+		fail("смерть и респавн: цель ушла из сессии")
 		return
 	var revived: bool = other.health.alive and other.health.current > 99.0
-	if not died or not revived:
-		failures += 1
-	print("[бой-тест] %s | смерть и респавн: умер=%s, вернулся=%s" % [
-		"OK  " if (died and revived) else "ПРОВАЛ", died, revived
-	])
-
-	if failures == 0:
-		print("[бой-тест] хост: все проверки пройдены")
-	else:
-		print("[бой-тест] хост: провалено проверок: %d" % failures)
+	check(died and revived, "смерть и респавн",
+		"умер=%s, вернулся=%s" % [died, revived])
 
 
 ## Поставить себя на нужной дистанции от цели и повернуться к ней лицом.
@@ -120,7 +110,7 @@ func _run_client(mine: Node3D, _other: Node3D) -> void:
 	for i in 11:
 		await get_tree().create_timer(1.0).timeout
 		if not is_instance_valid(mine):
-			print("[бой-тест] клиент: сессия закончилась раньше проверки")
+			fail("клиент: сессия закончилась раньше проверки")
 			return
 		if mine.health.current < 100.0:
 			seen_damage = true
@@ -138,10 +128,9 @@ func _run_client(mine: Node3D, _other: Node3D) -> void:
 	var after_cheat: float = mine.health.current
 	var cheat_blocked := after_cheat <= 100.0
 
-	print("[бой-тест] %s | клиент видел урон: %s" % ["OK  " if seen_damage else "ПРОВАЛ", seen_damage])
-	print("[бой-тест] %s | подделка здоровья затёрта: выставил 500, стало %.0f" % [
-		"OK  " if cheat_blocked else "ПРОВАЛ", after_cheat
-	])
+	check(seen_damage, "клиент видел урон", str(seen_damage))
+	check(cheat_blocked, "подделка здоровья затёрта",
+		"выставил 500, стало %.0f" % after_cheat)
 
 	# Досиживаем до конца сценариев хоста, иначе его цель исчезнет из сессии
 	# посреди проверки смерти и респавна.

@@ -1,4 +1,4 @@
-extends Node
+extends "res://tools/test_base.gd"
 ##
 ## Автопроверка каравана (Этап 5). Работает headless.
 ##
@@ -12,19 +12,14 @@ extends Node
 const RES := preload("res://scripts/economy/resources.gd")
 
 var _world: Node3D
-var _failures := 0
 
 
 func start(world: Node3D) -> void:
+	tag = "караван-тест"
+	expected_host = 9
+	expected_client = 1
 	_world = world
 	_run.call_deferred()
-
-
-func _check(ok: bool, label: String, detail: String) -> void:
-	if not ok:
-		_failures += 1
-	print("[караван-тест] %s | %s: %s" % ["OK  " if ok else "ПРОВАЛ", label, detail])
-
 
 func _caravans(me: Node3D) -> Array:
 	return _world.caravans_of(me.peer_id)
@@ -38,8 +33,8 @@ func _run() -> void:
 	await get_tree().create_timer(3.0).timeout
 	var me: Node3D = _world.local_player()
 	if me == null:
-		print("[караван-тест] ПРОВАЛ: персонаж не заспавнен")
-		get_tree().quit(1)
+		fail("персонаж не заспавнен")
+		finish()
 		return
 
 	await _test_needs_storage(me)
@@ -47,11 +42,7 @@ func _run() -> void:
 	await _test_delivery(me)
 	await _test_raid(me)
 
-	if _failures == 0:
-		print("[караван-тест] все проверки пройдены")
-	else:
-		print("[караван-тест] провалено проверок: %d" % _failures)
-	get_tree().quit(1 if _failures > 0 else 0)
+	finish()
 
 
 func _test_needs_storage(me: Node3D) -> void:
@@ -60,7 +51,7 @@ func _test_needs_storage(me: Node3D) -> void:
 	await get_tree().process_frame
 	me.request_send_caravan(PackedVector3Array())
 	await get_tree().create_timer(0.5).timeout
-	_check(_caravans(me).is_empty(), "без достроенного склада караван не отправляется",
+	check(_caravans(me).is_empty(), "без достроенного склада караван не отправляется",
 		"караванов %d" % _caravans(me).size())
 
 
@@ -68,7 +59,7 @@ func _test_needs_storage(me: Node3D) -> void:
 func _build_storage(me: Node3D) -> void:
 	me.request_build(RES.Building.STORAGE, Vector3(-380.0, 0.0, 400.0))
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.STORAGE] + 1.5).timeout
-	_check(_world.storage_of(me.peer_id) != null, "склад достроен и найден",
+	check(_world.storage_of(me.peer_id) != null, "склад достроен и найден",
 		"склад %s" % ("есть" if _world.storage_of(me.peer_id) != null else "нет"))
 
 
@@ -83,7 +74,7 @@ func _test_delivery(me: Node3D) -> void:
 	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
 	await get_tree().create_timer(0.5).timeout
 	var sent: bool = _caravans(me).size() == 1
-	_check(sent, "караван отправлен по нарисованному маршруту", "караванов %d" % _caravans(me).size())
+	check(sent, "караван отправлен по нарисованному маршруту", "караванов %d" % _caravans(me).size())
 	if not sent:
 		return
 
@@ -99,10 +90,10 @@ func _test_delivery(me: Node3D) -> void:
 		if me.stock.get_amount(RES.Kind.IRON) > iron_before:
 			break
 
-	_check(loaded, "караван погрузился на шахте", "гружёным вышел обратно")
-	_check(me.stock.get_amount(RES.Kind.IRON) > iron_before,
+	check(loaded, "караван погрузился на шахте", "гружёным вышел обратно")
+	check(me.stock.get_amount(RES.Kind.IRON) > iron_before,
 		"груз доставлен на склад", "железо %d -> %d" % [iron_before, me.stock.get_amount(RES.Kind.IRON)])
-	_check(_world.mine.stored[RES.Kind.IRON] < 200,
+	check(_world.mine.stored[RES.Kind.IRON] < 200,
 		"шахта отдала накопленное", "осталось железа %d" % _world.mine.stored[RES.Kind.IRON])
 
 
@@ -111,7 +102,7 @@ func _test_raid(me: Node3D) -> void:
 	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
 	await get_tree().create_timer(0.5).timeout
 	if _caravans(me).is_empty():
-		_check(false, "караван для перехвата отправлен", "не отправился")
+		check(false, "караван для перехвата отправлен", "не отправился")
 		return
 	var caravan: Node3D = _caravans(me)[0]
 
@@ -123,20 +114,20 @@ func _test_raid(me: Node3D) -> void:
 		if caravan.state == caravan.State.TO_HOME:
 			break
 	if not is_instance_valid(caravan) or caravan.state != caravan.State.TO_HOME:
-		_check(false, "караван вышел с грузом", "не дождались")
+		check(false, "караван вышел с грузом", "не дождались")
 		return
 
 	var carried := 0
 	for value in caravan.cargo:
 		carried += value
-	_check(carried > 0, "караван везёт груз", "единиц %d" % carried)
+	check(carried > 0, "караван везёт груз", "единиц %d" % carried)
 
 	var loot_before: int = _loot().size()
 	var point: Vector3 = caravan.global_position
 	# Разбиваем: караван — уязвимая цель по GDD.
 	caravan.take_damage(9999.0, 2, "cargo", point, Vector3.FORWARD)
 	await get_tree().create_timer(0.6).timeout
-	_check(_loot().size() > loot_before, "разбитый караван высыпал груз",
+	check(_loot().size() > loot_before, "разбитый караван высыпал груз",
 		"куч на земле %d" % _loot().size())
 
 	# Подбирает любой, кто подошёл.
@@ -149,5 +140,5 @@ func _test_raid(me: Node3D) -> void:
 	var before: int = me.stock.get_amount(RES.Kind.GOLD)
 	me.request_collect_loot()
 	await get_tree().create_timer(0.3).timeout
-	_check(me.stock.get_amount(RES.Kind.GOLD) > before, "груз подобран с земли",
+	check(me.stock.get_amount(RES.Kind.GOLD) > before, "груз подобран с земли",
 		"золото %d -> %d" % [before, me.stock.get_amount(RES.Kind.GOLD)])

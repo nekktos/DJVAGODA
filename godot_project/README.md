@@ -25,6 +25,7 @@
 | `tools/perf_test.gd` | замер fps в обоих режимах камеры |
 | `tools/screenshotter.gd` | съёмка карты с набора ракурсов в PNG |
 | `tools/combat_test.gd` | автопроверка боевой петли на двух пирах |
+| `tools/test_base.gd` | общий каркас автопроверок: счётчик выполненных проверок |
 | `tools/forest_test.gd` | автопроверка impostor-леса |
 | `tools/elf_test.gd` | автопроверка магии поддержки эльфов |
 | `tools/trade_test.gd` | автопроверка торговли и снаряжения |
