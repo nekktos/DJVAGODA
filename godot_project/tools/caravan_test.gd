@@ -46,8 +46,11 @@ func _run() -> void:
 
 
 func _test_needs_storage(me: Node3D) -> void:
-	me.stock.capacity = 99999
-	me.stock.amounts = PackedInt32Array([500, 500, 500, 500])
+	me.stock.grant([500, 500, 500, 500])
+	# Потолок держим выше выданного: иначе карман полон, и проверка «груз с
+	# разбитого каравана можно подобрать» падала бы не потому, что подбор сломан,
+	# а потому, что подбирать некуда.
+	me.stock.set_carried_capacity(2000)
 	await get_tree().process_frame
 	me.request_send_caravan(PackedVector3Array())
 	await get_tree().create_timer(0.5).timeout

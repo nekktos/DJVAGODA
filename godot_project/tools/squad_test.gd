@@ -44,8 +44,7 @@ func _run() -> void:
 
 
 func _test_hiring(me: Node3D) -> void:
-	me.stock.capacity = 99999
-	me.stock.amounts = PackedInt32Array([999, 999, 999, 999])
+	me.stock.grant([999, 999, 999, 999])
 	await get_tree().process_frame
 
 	# Без казармы нанимать негде.
@@ -67,7 +66,7 @@ func _test_hiring(me: Node3D) -> void:
 		"золото %d -> %d" % [gold_before, me.stock.get_amount(RES.Kind.GOLD)])
 
 	# Потолок отряда.
-	me.stock.amounts = PackedInt32Array([999, 999, 999, 999])
+	me.stock.grant([999, 999, 999, 999])
 	for i in RES.SQUAD_LIMIT + 4:
 		me.request_train_unit()
 		await get_tree().create_timer(0.1).timeout

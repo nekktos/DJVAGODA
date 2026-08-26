@@ -79,3 +79,17 @@ func summary() -> String:
 	for i in RES.COUNT:
 		parts.append("%s %d" % [RES.SHORT[i], get_amount(i)])
 	return "%s  (потолок %d)" % [" ".join(parts), capacity]
+
+
+## Снять одно значение одного ресурса. Только на хосте. Возвращает, сколько
+## реально сняли. Нужен кошельку (wallet.gd), который тратит из двух запасов
+## по очереди и потому не может пользоваться spend() с полной стоимостью.
+func take(kind: int, value: int) -> int:
+	if not multiplayer.is_server() or kind < 0 or kind >= RES.COUNT or value <= 0:
+		return 0
+	var copy := amounts.duplicate()
+	var taken: int = mini(copy[kind], value)
+	copy[kind] -= taken
+	amounts = copy
+	changed.emit()
+	return taken

@@ -171,7 +171,9 @@ func _unload_at_home() -> void:
 		return
 	var delivered := 0
 	for kind in RES.COUNT:
-		delivered += owner_player.stock.add(kind, cargo[kind])
+		# Караван разгружается СРАЗУ В СКЛАД: он для того и едет, а не чтобы
+		# набить карманы игроку (GDD раздел 2.3).
+		delivered += owner_player.stock.add_stored(kind, cargo[kind])
 	print("[караван] доставлено на склад игрока %d: %d единиц" % [owner_id, delivered])
 	cargo = PackedInt32Array([0, 0, 0, 0])
 

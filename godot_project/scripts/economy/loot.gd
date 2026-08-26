@@ -17,6 +17,9 @@ const PICKUP_RANGE := 3.5
 const LIFETIME := 240.0
 
 @export var contents: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
+## Уровень снаряжения, выпавший с убитого (Этап 10, шаг 1). 0 — снаряжения в
+## куче нет, это обычный груз каравана.
+@export var gear: int = 0
 
 var _taken := false
 
@@ -24,6 +27,7 @@ var _taken := false
 func setup(data: Dictionary) -> void:
 	position = data["point"]
 	contents = data["contents"]
+	gear = int(data.get("gear", 0))
 
 
 func _ready() -> void:
@@ -57,10 +61,19 @@ func collect(player: Node3D) -> int:
 	var total := 0
 	for kind in RES.COUNT:
 		total += player.stock.add(kind, contents[kind])
-	if total <= 0:
+
+	# Снаряжение с трупа достаётся тому, у кого оно хуже. Своё лучшее на худшее
+	# не меняем — иначе подобрать чужую кучу значило бы понизить себя.
+	var took_gear := false
+	if gear > int(player.gear_tier):
+		player.gear_tier = gear
+		took_gear = true
+
+	if total <= 0 and not took_gear:
 		return 0
 	_taken = true
-	print("[груз] игрок %d подобрал %d единиц" % [int(player.peer_id), total])
+	print("[груз] игрок %d подобрал %d единиц%s"
+		% [int(player.peer_id), total, ", снаряжение уровня %d" % gear if took_gear else ""])
 	queue_free()
 	return total
 

@@ -24,6 +24,7 @@ extends Node
 ##   --elftest       автопроверка магии поддержки эльфов (headless)
 ##   --tradetest     автопроверка торговли и снаряжения (headless)
 ##   --guardtest     автопроверка приказов командира стражи (headless)
+##   --deathtest     автопроверка смерти, респавна и мародёрства (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -335,6 +336,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--deathtest"):
+		var death_test: Node = preload("res://tools/death_test.gd").new()
+		add_child(death_test)
+		death_test.start(_world)
+		needs_session = true
 
 	if args.has("--guardtest"):
 		var guard_test: Node = preload("res://tools/guard_test.gd").new()

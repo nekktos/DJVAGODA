@@ -97,16 +97,15 @@ func _test_capacity(me: Node3D) -> void:
 		"склад поднимает потолок хранения", "%d -> %d" % [before, me.stock.capacity])
 
 	# Сверх потолка не влезает.
-	me.stock.capacity = 10
-	me.stock.amounts = PackedInt32Array([10, 0, 0, 0])
+	me.stock.grant([10, 0, 0, 0])
+	me.stock.set_carried_capacity(10)
 	var taken: int = me.stock.add(RES.Kind.WOOD, 50)
 	check(taken == 0 and me.stock.get_amount(RES.Kind.WOOD) == 10,
 		"сверх потолка не принимается", "влезло %d" % taken)
 
 
 func _give(me: Node3D, wood: int, stone: int, gold: int, iron: int) -> void:
-	me.stock.capacity = 9999
-	me.stock.amounts = PackedInt32Array([wood, stone, gold, iron])
+	me.stock.grant([wood, stone, gold, iron])
 	await get_tree().process_frame
 
 
@@ -205,7 +204,7 @@ func _run_client(me: Node3D) -> void:
 		"клиент не может строить чужим персонажем", "построек %d" % _buildings().size())
 
 	# Атака 2: выписать себе ресурсы локально. Репликация обязана затереть.
-	me.stock.amounts = PackedInt32Array([9999, 9999, 9999, 9999])
+	me.stock.grant([9999, 9999, 9999, 9999])
 	await get_tree().create_timer(1.5).timeout
 	var wood: int = me.stock.get_amount(RES.Kind.WOOD)
 	check(wood < 9999, "подделка ресурсов затёрта хостом", "дерева стало %d" % wood)

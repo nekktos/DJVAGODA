@@ -271,8 +271,7 @@ func _stage_buildings() -> void:
 		return
 	me.body.reset()
 	me.health.revive()
-	me.stock.capacity = 9999
-	me.stock.amounts = PackedInt32Array([500, 500, 500, 500])
+	me.stock.grant([500, 500, 500, 500])
 	_world.spawn_building(RES.Building.STORAGE, Vector3(52.0, 0.0, 44.0), me.peer_id)
 	_world.spawn_building(RES.Building.BARRACKS, Vector3(52.0, 0.0, 68.0), me.peer_id)
 	me.global_position = Vector3(64.0, 2.0, 58.0)

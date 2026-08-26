@@ -28,6 +28,13 @@ const UNIT_SCENE := preload("res://scenes/Unit.tscn")
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 
+## На каком расстоянии от своего склада ресурсы «при себе» перекладываются в
+## него сами. Отдельной кнопки нет намеренно: вклад должен быть очевидным
+## следствием возвращения на базу, а не ещё одним действием, которое забывают.
+const DEPOSIT_RANGE := 14.0
+## Как часто хост проверяет, не стоит ли кто у своего склада.
+const DEPOSIT_INTERVAL := 1.0
+
 ## Через сколько секунд после смерти игрок возвращается в мир.
 ## Временное правило (DESIGN_ANSWERS.md, пункт 10) — настоящие условия
 ## респавна решаются вместе с кампаниями.
@@ -71,6 +78,7 @@ var _netlog := false
 var _spawn_counter := 0
 var _corpses: Array[Node] = []
 var _netlog_t := 0.0
+var _deposit_t := 0.0
 
 
 func _ready() -> void:
@@ -100,6 +108,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_tick_deposit(delta)
 	if not _netlog or not Net.active:
 		return
 	_netlog_t += delta
@@ -113,6 +122,34 @@ func _process(delta: float) -> void:
 			child.name, "*" if child.is_multiplayer_authority() else "", p.x, p.y, p.z
 		])
 	print("[world] id=%d | %s" % [Net.local_id(), " ".join(parts)])
+
+
+## Вклад: стоящий у своего достроенного склада перекладывает в него всё, что
+## нёс при себе. Считает ТОЛЬКО хост — он же владеет казной.
+##
+## Отдельной кнопки нет намеренно: вклад должен быть очевидным следствием
+## возвращения на базу, а не ещё одним действием, которое забывают нажать.
+func _tick_deposit(delta: float) -> void:
+	if not multiplayer.is_server():
+		return
+	_deposit_t += delta
+	if _deposit_t < DEPOSIT_INTERVAL:
+		return
+	_deposit_t = 0.0
+
+	for child in _players.get_children():
+		if not ("faction" in child) or not child.health.alive:
+			continue
+		if child.stock.carried_total() <= 0:
+			continue
+		var storage := storage_of(int(child.peer_id))
+		if storage == null:
+			continue
+		if child.global_position.distance_to(storage.global_position) > DEPOSIT_RANGE:
+			continue
+		var moved: int = child.stock.deposit()
+		if moved > 0:
+			print("[склад] игрок %d сложил %d единиц" % [int(child.peer_id), moved])
 
 
 # --- камера ----------------------------------------------------------------
@@ -294,15 +331,47 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	objective.report_death(int(player.faction), faction_of(killer_id))
 	commander.report_kill(killer_id, int(player.faction))
 	_spawn_corpse(player)
+	_drop_belongings(player)
 	player.set_dead.rpc(true)
 
 	await get_tree().create_timer(RESPAWN_DELAY).timeout
 	if not is_instance_valid(player):
 		return
+	# Здоровье возвращаем, РАНЕНИЯ — НЕТ (GDD раздел 4.1). Раньше здесь стоял
+	# body.reset(), и это подрывало весь Этап 3: умереть и встать целым было
+	# дешевле и быстрее, чем идти за протезом.
 	player.health.revive()
-	player.body.reset()
 	player.respawn_at_slot()
 	player.set_dead.rpc(false)
+
+
+## Смерть роняет всё, что персонаж нёс на себе: ресурсы при себе и купленный
+## уровень снаряжения. Поднять может любой, кто подошёл, включая убийцу —
+## ровно как груз разбитого каравана (GDD раздел 4.1).
+##
+## Базовое оружие не теряется никогда: без меча персонаж перестал бы быть
+## персонажем. Теряется только купленный апгрейд.
+func _drop_belongings(player: Node3D) -> void:
+	var lost: PackedInt32Array = player.stock.drop_carried()
+	var gear: int = int(player.gear_tier)
+	player.gear_tier = 0
+
+	var total := 0
+	for value in lost:
+		total += value
+	if total <= 0 and gear <= 0:
+		return
+
+	_spawn_counter += 1
+	_world_spawner.spawn({
+		"type": "loot",
+		"id": _spawn_counter,
+		"point": player.global_position + Vector3.UP * 0.6,
+		"contents": lost,
+		"gear": gear,
+	})
+	print("[смерть] с игрока %d выпало %d единиц и снаряжение уровня %d"
+		% [int(player.peer_id), total, gear])
 
 
 func _spawn_corpse(player: Node3D) -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/strategy_camera.gd" id="2_strategy"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/commander.gd" id="8_commander"]
 [ext_resource type="Script" path="res://scripts/economy/treasury.gd" id="9_treasury"]
 [ext_resource type="Script" path="res://scripts/economy/stockpile.gd" id="10_stock"]
+[ext_resource type="Script" path="res://scripts/economy/wallet.gd" id="11_wallet"]
 
 [sub_resource type="SceneReplicationConfig" id="Repl_objective"]
 properties/0/path = NodePath(".:palace_owner")
@@ -26,24 +27,42 @@ properties/3/spawn = true
 properties/3/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="Repl_treasury"]
-properties/0/path = NodePath("0:amounts")
+properties/0/path = NodePath("0/Carried:amounts")
 properties/0/spawn = true
 properties/0/replication_mode = 1
-properties/1/path = NodePath("0:capacity")
+properties/1/path = NodePath("0/Carried:capacity")
 properties/1/spawn = true
 properties/1/replication_mode = 1
-properties/2/path = NodePath("1:amounts")
+properties/2/path = NodePath("0/Stored:amounts")
 properties/2/spawn = true
 properties/2/replication_mode = 1
-properties/3/path = NodePath("1:capacity")
+properties/3/path = NodePath("0/Stored:capacity")
 properties/3/spawn = true
 properties/3/replication_mode = 1
-properties/4/path = NodePath("2:amounts")
+properties/4/path = NodePath("1/Carried:amounts")
 properties/4/spawn = true
 properties/4/replication_mode = 1
-properties/5/path = NodePath("2:capacity")
+properties/5/path = NodePath("1/Carried:capacity")
 properties/5/spawn = true
 properties/5/replication_mode = 1
+properties/6/path = NodePath("1/Stored:amounts")
+properties/6/spawn = true
+properties/6/replication_mode = 1
+properties/7/path = NodePath("1/Stored:capacity")
+properties/7/spawn = true
+properties/7/replication_mode = 1
+properties/8/path = NodePath("2/Carried:amounts")
+properties/8/spawn = true
+properties/8/replication_mode = 1
+properties/9/path = NodePath("2/Carried:capacity")
+properties/9/spawn = true
+properties/9/replication_mode = 1
+properties/10/path = NodePath("2/Stored:amounts")
+properties/10/spawn = true
+properties/10/replication_mode = 1
+properties/11/path = NodePath("2/Stored:capacity")
+properties/11/spawn = true
+properties/11/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="Repl_mine"]
 properties/0/path = NodePath(".:stored")
@@ -121,12 +140,30 @@ script = ExtResource("8_commander")
 script = ExtResource("9_treasury")
 
 [node name="0" type="Node" parent="Treasury"]
+script = ExtResource("11_wallet")
+
+[node name="Carried" type="Node" parent="Treasury/0"]
+script = ExtResource("10_stock")
+
+[node name="Stored" type="Node" parent="Treasury/0"]
 script = ExtResource("10_stock")
 
 [node name="1" type="Node" parent="Treasury"]
+script = ExtResource("11_wallet")
+
+[node name="Carried" type="Node" parent="Treasury/1"]
+script = ExtResource("10_stock")
+
+[node name="Stored" type="Node" parent="Treasury/1"]
 script = ExtResource("10_stock")
 
 [node name="2" type="Node" parent="Treasury"]
+script = ExtResource("11_wallet")
+
+[node name="Carried" type="Node" parent="Treasury/2"]
+script = ExtResource("10_stock")
+
+[node name="Stored" type="Node" parent="Treasury/2"]
 script = ExtResource("10_stock")
 
 [node name="Sync" type="MultiplayerSynchronizer" parent="Treasury"]
