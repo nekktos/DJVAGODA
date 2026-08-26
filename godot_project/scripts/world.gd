@@ -74,6 +74,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var forest: Node3D = $Forest
 @onready var commander: Node3D = $Commander
 @onready var treasury: Node = $Treasury
+@onready var diplomacy: Node = $Diplomacy
 
 var strategy_mode := false
 
@@ -358,6 +359,7 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
+	diplomacy.on_kill(int(player.faction), faction_of(killer_id), bool(player.is_leader))
 	# Гибель стража может провалить его решающий удар; гибель вожака — засчитать
 	# чужой. Порядок важен: сперва снимаем провал, потом засчитываем победителю.
 	commander.report_guard_death(player)
@@ -496,10 +498,12 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1, pre
 
 ## Постройка разрушена. Для стражи это половина условия поражения (GDD раздел 7):
 ## сломлена она, только когда пал командир И снесена казарма.
-func _on_building_destroyed(_building: Node3D) -> void:
+func _on_building_destroyed(building: Node3D, killer_id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	objective.check_victories()
+	if building != null and "faction" in building:
+		diplomacy.on_building_destroyed(int(building.faction), faction_of(killer_id))
 
 
 ## Достроенный склад поднимает владельцу потолок хранения — по GDD это
@@ -593,6 +597,7 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 	# Приказ стражи «перехватить караван» засчитывается тут же: командир сам
 	# решит, его ли это караван и тот ли игрок его разбил.
 	commander.report_caravan_destroyed(killer_id, faction_of(caravan_owner))
+	diplomacy.on_caravan_destroyed(faction_of(caravan_owner), faction_of(killer_id))
 	var total := 0
 	for value in cargo:
 		total += value

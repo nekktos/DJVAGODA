@@ -943,10 +943,39 @@ func at_trader() -> bool:
 	return world.is_at_trader(global_position)
 
 
+## Кому принадлежит лавка. Она стоит в поселении эльфов, значит хозяева — они
+## (GDD раздел 9.2: цена зависит от отношения покупателя к владельцу лавки).
+func trader_faction() -> int:
+	return FACTIONS.Kind.ELVES
+
+
+func _diplomacy() -> Node:
+	var world := get_parent().get_parent()
+	return world.get_node_or_null("Diplomacy") if world != null else null
+
+
+## Обслужит ли лавка этого покупателя. Ниже порога вражды — нет.
+func trade_allowed() -> bool:
+	var dip := _diplomacy()
+	return dip == null or dip.trade_allowed(faction, trader_faction())
+
+
+## Цена с учётом отношения к хозяевам лавки.
+func trade_cost(base: Array) -> Array:
+	var dip := _diplomacy()
+	return base if dip == null else dip.adjust_cost(base, faction, trader_faction())
+
+
 ## Цена следующего уровня снаряжения. Пустой массив — покупать больше нечего.
 func next_gear_cost() -> Array:
 	var next := gear_tier + 1
-	return RES.GEAR_COST.get(next, [])
+	if not RES.GEAR_COST.has(next):
+		return []
+	return trade_cost(RES.GEAR_COST[next])
+
+
+func bandage_cost() -> Array:
+	return trade_cost(RES.BANDAGE_COST)
 
 
 func ask_trade(what: int) -> void:
@@ -977,7 +1006,10 @@ func request_trade(what: int) -> void:
 func _server_buy_bandages() -> void:
 	if body.bandages >= RES.BANDAGE_LIMIT:
 		return
-	if not stock.spend(RES.BANDAGE_COST):
+	if not trade_allowed():
+		push_warning("Лавка не обслуживает игрока %d: война" % peer_id)
+		return
+	if not stock.spend(bandage_cost()):
 		return
 	body.bandages = mini(RES.BANDAGE_LIMIT, body.bandages + RES.BANDAGE_PACK)
 	print("[торг] игрок %d купил бинты, стало %d" % [peer_id, body.bandages])
@@ -987,7 +1019,10 @@ func _server_buy_gear() -> void:
 	var next := gear_tier + 1
 	if not RES.GEAR_COST.has(next):
 		return
-	if not stock.spend(RES.GEAR_COST[next]):
+	if not trade_allowed():
+		push_warning("Лавка не обслуживает игрока %d: война" % peer_id)
+		return
+	if not stock.spend(next_gear_cost()):
 		return
 	gear_tier = next
 	print("[торг] игрок %d купил снаряжение: %s" % [peer_id, WEAPONS.gear_name(gear_tier)])
@@ -1427,3 +1462,56 @@ func become_spectator() -> void:
 	var world := get_parent().get_parent()
 	if world != null and world.has_method("set_strategy_mode"):
 		world.set_strategy_mode(true)
+
+
+# --- перемирие (Этап 10, шаг 4, GDD раздел 9.4) ---------------------------
+
+## Ближайший живой игрок другой стороны в радиусе жеста. null — предлагать некому.
+func truce_target() -> Node3D:
+	var dip := _diplomacy()
+	if dip == null:
+		return null
+	var best: Node3D = null
+	var best_d: float = dip.TRUCE_RANGE
+	for other in get_parent().get_children():
+		if other == self or not ("faction" in other) or not ("health" in other):
+			continue
+		if int(other.faction) == faction or not other.health.alive:
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d < best_d:
+			best_d = d
+			best = other
+	return best
+
+
+func ask_truce() -> void:
+	if multiplayer.is_server():
+		request_truce()
+	else:
+		request_truce.rpc_id(1)
+
+
+## Предложить перемирие ближайшему игроку другой стороны.
+##
+## Отдельного «принять» нет намеренно: встречное предложение той же пары и есть
+## согласие. Так жест остаётся жестом, а не превращается в переговоры с UI.
+@rpc("any_peer", "reliable")
+func request_truce() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner() or not health.alive:
+		return
+	var target := truce_target()
+	if target == null:
+		return
+	var dip := _diplomacy()
+	if dip == null:
+		return
+	var text: String = dip.offer_truce(faction, int(target.faction))
+	if text.is_empty():
+		return
+	print("[дипломатия] %s" % text)
+	var objective: Node3D = get_parent().get_parent().get_node_or_null("Objective")
+	if objective != null:
+		objective.announce.rpc(text)

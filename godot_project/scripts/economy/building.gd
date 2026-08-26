@@ -22,7 +22,7 @@ const HITBOX_LAYER := 4
 ## Достроено (на любом пире, после репликации).
 signal completed
 ## Разрушено. Эмитится ТОЛЬКО на хосте — он решает судьбу постройки.
-signal destroyed_on_server(building: Node3D)
+signal destroyed_on_server(building: Node3D, killer_id: int)
 
 ## Реплицируемое состояние.
 @export var progress: float = 0.0
@@ -103,7 +103,7 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 	if health > 0.0:
 		return
 	print("[стройка] %s игрока %d разрушена игроком %d" % [label(), owner_id, attacker_id])
-	destroyed_on_server.emit(self)
+	destroyed_on_server.emit(self, attacker_id)
 	queue_free()
 
 

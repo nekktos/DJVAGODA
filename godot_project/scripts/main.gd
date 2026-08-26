@@ -26,6 +26,7 @@ extends Node
 ##   --guardtest     автопроверка приказов командира стражи (headless)
 ##   --deathtest     автопроверка смерти, респавна и мародёрства (headless)
 ##   --victorytest   автопроверка условий победы и командования (headless)
+##   --diptest       автопроверка репутации и дипломатии (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -151,6 +152,12 @@ func _process(delta: float) -> void:
 					ORDERS.name_of(me.order_kind),
 					ORDERS.progress_text(me.order_kind, me.order_progress),
 				]
+			var truce: Node3D = me.truce_target()
+			if truce != null:
+				line += "\nY — предложить перемирие: %s (сейчас %s)" % [
+					FACTIONS.name_of(truce.faction),
+					_world.diplomacy.label_of(me.faction, truce.faction),
+				]
 			var pile: Node3D = me.loot_nearby()
 			if pile != null:
 				line += "\nF — подобрать груз: %s" % pile.summary()
@@ -195,6 +202,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _try_squad_move_order():
 			get_viewport().set_input_as_handled()
 			return
+	if event.is_action_pressed(&"truce") and Net.active and not _world.strategy_mode:
+		var who: Node3D = _world.local_player()
+		if who != null and who.truce_target() != null:
+			who.ask_truce()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"interact") and Net.active:
 		# У кучи груза F подбирает её, у верстака и лавки открывает панель.
 		var me: Node3D = _world.local_player()
@@ -340,6 +353,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--diptest"):
+		var dip_test: Node = preload("res://tools/diplomacy_test.gd").new()
+		add_child(dip_test)
+		dip_test.start(_world)
+		needs_session = true
 
 	if args.has("--victorytest"):
 		var victory_test: Node = preload("res://tools/victory_test.gd").new()
@@ -701,21 +720,32 @@ func _toggle_trader() -> void:
 
 func _refresh_trader(me: Node3D) -> void:
 	var box := $UI/Trader/Panel/VBox
-	box.get_node("Stock").text = "склад: %s\nснаряжение: %s" % [
-		me.stock.summary(), WEAPONS.gear_name(me.gear_tier)
+	# Отношение к хозяевам лавки показываем прямо здесь: от него зависят и цены,
+	# и то, обслужат ли вообще (GDD раздел 9.2).
+	box.get_node("Stock").text = "склад: %s\nснаряжение: %s   лавка эльфов, отношение: %s" % [
+		me.stock.summary(), WEAPONS.gear_name(me.gear_tier),
+		_world.diplomacy.label_of(me.faction, me.trader_faction())
 	]
 
 	var bandages: Button = box.get_node("Bandages")
-	if me.body.bandages >= RES.BANDAGE_LIMIT:
+	var allowed: bool = me.trade_allowed()
+	if not allowed:
+		bandages.text = "Лавка не обслуживает: война"
+		bandages.disabled = true
+	elif me.body.bandages >= RES.BANDAGE_LIMIT:
 		bandages.text = "Бинты — сумка полна (%d)" % RES.BANDAGE_LIMIT
 		bandages.disabled = true
 	else:
-		bandages.text = "Бинты, %d шт — %s" % [RES.BANDAGE_PACK, RES.format_cost(RES.BANDAGE_COST)]
-		bandages.disabled = not me.stock.can_afford(RES.BANDAGE_COST)
+		var cost_b: Array = me.bandage_cost()
+		bandages.text = "Бинты, %d шт — %s" % [RES.BANDAGE_PACK, RES.format_cost(cost_b)]
+		bandages.disabled = not me.stock.can_afford(cost_b)
 
 	var gear: Button = box.get_node("Gear")
 	var cost: Array = me.next_gear_cost()
-	if cost.is_empty():
+	if not allowed:
+		gear.text = "Лавка не обслуживает: война"
+		gear.disabled = true
+	elif cost.is_empty():
 		gear.text = "Снаряжение — лучше нет"
 		gear.disabled = true
 	else:
