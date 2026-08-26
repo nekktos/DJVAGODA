@@ -52,20 +52,22 @@ Write-Host "`n=== macOS ==="
 & $Godot --headless --path $project $mode "macOS" (Join-Path $build "macos\DzhvaGoda.zip")
 if ($LASTEXITCODE -ne 0) { Write-Error "Экспорт под macOS не удался"; exit 1 }
 
-# Инструкцию кладём ВНУТРЬ архива macOS, рядом с .app, а не отдельным файлом:
-# иначе тестер скачает приложение, упрётся в Gatekeeper и не найдёт, где
-# написано, как его обойти.
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$macZip = Join-Path $build "macos\DzhvaGoda.zip"
-$archive = [System.IO.Compression.ZipFile]::Open($macZip, [System.IO.Compression.ZipArchiveMode]::Update)
-[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $readme, "README-PLAYTEST.md") | Out-Null
-$archive.Dispose()
+# Архив, который выдал Godot, НЕ ТРОГАЕМ. Внутри него у DzhvaGoda.app/Contents/
+# MacOS/DzhvaGoda стоит бит запуска (-rwxr-xr-x, хост unx). Любая перезапись
+# через System.IO.Compression сбрасывает права в -rw---- и меняет хост на fat:
+# .NET Framework игнорирует ExternalAttributes при записи, проверено. Тестер
+# после такого получает .app, который не запускается вовсе.
+#
+# Поэтому инструкцию кладём не внутрь, а РЯДОМ, и заворачиваем оба файла во
+# внешний архив: внутренний .zip для него просто байты, права переживают.
+# Цена — тестер распаковывает дважды; это написано первой строкой инструкции.
+Copy-Item $readme (Join-Path $build "macos\README-PLAYTEST.md") -Force
 
 # Итоговые архивы для раздачи.
 $winZip = Join-Path $build "DzhvaGoda-$version-windows.zip"
 Compress-Archive -Path (Join-Path $build "windows\*") -DestinationPath $winZip -Force
-Move-Item $macZip (Join-Path $build "DzhvaGoda-$version-macos.zip") -Force
+$macOut = Join-Path $build "DzhvaGoda-$version-macos.zip"
+Compress-Archive -Path (Join-Path $build "macos\*") -DestinationPath $macOut -Force
 
 Write-Host "`n=== Готово ==="
 Get-ChildItem $build -Filter "*.zip" | ForEach-Object {
@@ -73,3 +75,4 @@ Get-ChildItem $build -Filter "*.zip" | ForEach-Object {
 }
 Write-Host "`nПапка: $build"
 Write-Host "Обе сборки НЕ подписаны. Инструкция по обходу Gatekeeper лежит внутри архивов."
+Write-Host "В архиве macOS лежат README и вложенный DzhvaGoda.zip — распаковывать дважды."

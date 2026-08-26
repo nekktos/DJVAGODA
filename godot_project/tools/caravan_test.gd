@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 9
+	expected_host = 13
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -39,6 +39,7 @@ func _run() -> void:
 
 	await _test_needs_storage(me)
 	await _build_storage(me)
+	await _test_enter_key(me)
 	await _test_delivery(me)
 	await _test_raid(me)
 
@@ -145,3 +146,55 @@ func _test_raid(me: Node3D) -> void:
 	await get_tree().create_timer(0.3).timeout
 	check(me.stock.get_amount(RES.Kind.GOLD) > before, "груз подобран с земли",
 		"золото %d -> %d" % [before, me.stock.get_amount(RES.Kind.GOLD)])
+
+
+## Отправка каравана ЧЕРЕЗ КЛАВИШУ, а не вызовом хостовой функции напрямую.
+##
+## Это дыра, которую вскрыл живой тестер: все прежние проверки дёргали
+## request_send_caravan сами и потому не замечали, доходит ли до неё нажатие
+## Enter. У тестера маршрут рисовался, а караван не выезжал — и ни одна
+## автопроверка этого не видела.
+func _test_enter_key(me: Node3D) -> void:
+	_world.set_strategy_mode(true)
+	_world.set_route_mode(true)
+	await get_tree().process_frame
+	check(_world.route_controller.active, "режим прокладки маршрута включился",
+		"active=%s" % _world.route_controller.active)
+
+	# Воспроизводим то, что делал живой тестер: инструкция для playtest велит
+	# сверяться через консоль, значит консоль открывалась и закрывалась. Поле
+	# ввода консоли — LineEdit, и если после закрытия оно удержало фокус, все
+	# нажатия Enter уходят в него, а не в игру.
+	var main := _world.get_parent()
+	main._toggle_console()
+	await get_tree().process_frame
+	main._toggle_console()
+	await get_tree().process_frame
+	var focused: Control = get_viewport().gui_get_focus_owner()
+	note("фокус после закрытия консоли: %s" % ("нет" if focused == null else focused.name))
+	check(focused == null, "закрытая консоль отпустила фокус",
+		"фокус у %s" % ("никого" if focused == null else focused.name))
+
+	var before: int = _caravans(me).size()
+
+	var press := InputEventKey.new()
+	press.keycode = KEY_ENTER
+	press.pressed = true
+	Input.parse_input_event(press)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	check(not _world.route_controller.active, "Enter закрыл режим прокладки",
+		"active=%s" % _world.route_controller.active)
+	check(_caravans(me).size() > before, "Enter отправил караван",
+		"караванов %d -> %d" % [before, _caravans(me).size()])
+
+	# Убираем за собой: следующая проверка считает караваны штучно, и лишний
+	# из этой проверки ломал бы её.
+	for caravan in _caravans(me):
+		caravan.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	_world.set_strategy_mode(false)
+	await get_tree().process_frame

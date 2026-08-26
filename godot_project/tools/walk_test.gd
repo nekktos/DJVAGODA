@@ -33,14 +33,24 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "walk"
-	expected_host = 6
-	expected_client = 6
+	expected_host = 7
+	expected_client = 7
 	_world = world
 	_run.call_deferred()
 
 
 func _scenarios() -> Array:
 	return [
+		# Вход во дворец. Раньше дворец был монолитным кубом, точка захвата лежала
+		# внутри камня, и условие победы злодея было невыполнимо — это нашёл живой
+		# тестер, а ни одна автопроверка не видела. Теперь проверяем именно то,
+		# что он делал: дойти до точки захвата.
+		Scenario.new(
+			"вход во дворец через ворота",
+			Vector3(300.0, 7.0, -250.0), Vector2(0.0, -1.0), 14.0,
+			"дошёл до точки захвата (ближе 30 м от центра дворца)",
+			func(p: Vector3) -> bool: return Vector2(p.x, p.z).distance_to(Vector2(300.0, -300.0)) < 30.0
+		),
 		Scenario.new(
 			"пандус на плато императора",
 			Vector3(300.0, 2.0, -55.0), Vector2(0.0, -1.0), 16.0,

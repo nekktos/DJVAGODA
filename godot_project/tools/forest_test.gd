@@ -160,6 +160,16 @@ func _teleport_everyone(point: Vector3) -> void:
 		if child.has_method("teleport"):
 			child.teleport.rpc(point + Vector3(i * 4.0, 0.0, 0.0))
 		i += 1
+	# Бойцы тоже держат деревья объёмными, и это правильно: гарнизон
+	# свободной стороны стоит на базе эльфов, то есть прямо в лесу, и
+	# без коллизии ходил бы сквозь стволы. Уводим и их — здесь
+	# проверяется дальний LOD, а не гарнизон.
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if unit is Node3D:
+			unit.global_position = point + Vector3(i * 4.0, 0.0, 0.0)
+			if "sync_position" in unit:
+				unit.sync_position = unit.global_position
+			i += 1
 
 
 ## Клиентская половина: лес детерминирован, значит совпадает с хостом,

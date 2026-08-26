@@ -31,6 +31,22 @@ func _ready() -> void:
 
 
 func _build_figure() -> void:
+	# Тело для столкновений. Раньше распорядитель был голой сеткой без
+	# коллизии: удары и огненные шары пролетали насквозь, ни попадания,
+	# ни отдачи. Живой тестер решил, что NPC бессмертный из-за бага.
+	# Теперь он хотя бы твёрдый: удар в него упирается, а не проходит
+	# сквозь пустоту. Здоровья у него по-прежнему нет — он распорядитель,
+	# а не боец, и убивать его пока нечем и незачем.
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.6
+	capsule.height = 2.0
+	shape.shape = capsule
+	shape.position = Vector3(0.0, 1.4, 0.0)
+	body.add_child(shape)
+	add_child(body)
+
 	# Помост, чтобы фигуру было видно и она не терялась на фоне мрамора.
 	var stand := MeshInstance3D.new()
 	var box := BoxMesh.new()

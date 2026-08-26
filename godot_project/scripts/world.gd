@@ -569,6 +569,12 @@ func set_route_mode(on: bool) -> void:
 		return
 	if on:
 		build_controller.set_active(false)
+		# Снимаем фокус с любого элемента интерфейса. Сфокусированные Button и
+		# LineEdit съедают Enter в фазе GUI, до _unhandled_input, и отправка
+		# каравана молча не срабатывает. Живой тестер сообщил ровно это:
+		# маршрут рисуется, Enter не отправляет. Причину по одному его логу
+		# восстановить не вышло, поэтому убираем весь класс причин сразу.
+		get_viewport().gui_release_focus()
 	route_controller.set_active(on)
 
 

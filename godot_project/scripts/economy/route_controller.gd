@@ -56,16 +56,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			_add_point()
+			# Двойной щелчок — отправить. Это второй путь отправки, помимо
+			# Enter, и он принципиально другой: мышиное событие нельзя
+			# перехватить клавиатурным фокусом. Если Enter где-то снова
+			# застрянет, караван всё равно уедет.
+			if event.double_click and not _points.is_empty():
+				_send()
+			else:
+				_add_point()
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			set_active(false)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-			route_sent.emit(_points)
-			set_active(false)
+		# physical_keycode, а НЕ keycode: keycode зависит от раскладки, и на
+		# русской управление отвалилось бы целиком. Сам Enter от раскладки не
+		# зависит — читаем его так же просто ради единообразия.
+		var key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+		if key == KEY_ENTER or key == KEY_KP_ENTER:
+			_send()
 			get_viewport().set_input_as_handled()
+
+
+## Отправить нарисованный маршрут. Один код на все способы отправки.
+func _send() -> void:
+	print("[маршрут] отправка каравана, точек: %d" % _points.size())
+	route_sent.emit(_points)
+	set_active(false)
 
 
 func _add_point() -> void:

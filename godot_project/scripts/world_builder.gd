@@ -259,8 +259,31 @@ func _build_emperor(c: Vector2) -> void:
 		for sz in [-1.0, 1.0]:
 			_cylinder(g, Vector3(c.x + sx * w, 16.0, c.y + sz * w), 9.0, 20.0, "marble")
 
-	# Дворец.
-	_box(g, Vector3(c.x, 18.0, c.y), Vector3(90.0, 24.0, 60.0), "marble")
+	# Дворец. Раньше это был МОНОЛИТНЫЙ куб, и точка захвата, лежащая в его
+	# центре, оказывалась внутри камня — условие победы злодея было физически
+	# невыполнимо. Живой тестер обошёл здание кругом и не нашёл входа.
+	#
+	# Теперь это коробка из стен с воротами с юга, со стороны центра карты:
+	# внутрь можно войти, и точка захвата достижима.
+	var pw := 45.0                                   # полуширина по X
+	var pd := 30.0                                   # полуглубина по Z
+	var ph := 24.0                                   # высота стен
+	var wall := 4.0                                  # толщина стены
+	var gate := 16.0                                 # полуширина проёма ворот
+
+	# Задняя и боковые стены.
+	_box(g, Vector3(c.x, 6.0 + ph * 0.5, c.y - pd), Vector3(pw * 2.0, ph, wall), "marble")
+	_box(g, Vector3(c.x - pw, 6.0 + ph * 0.5, c.y), Vector3(wall, ph, pd * 2.0), "marble")
+	_box(g, Vector3(c.x + pw, 6.0 + ph * 0.5, c.y), Vector3(wall, ph, pd * 2.0), "marble")
+	# Передняя стена с воротами: два простенка и перемычка над проёмом.
+	var jamb := (pw - gate) * 0.5
+	for side in [-1.0, 1.0]:
+		_box(g, Vector3(c.x + side * (gate + jamb), 6.0 + ph * 0.5, c.y + pd),
+			Vector3(jamb * 2.0, ph, wall), "marble")
+	_box(g, Vector3(c.x, 6.0 + ph - 3.0, c.y + pd), Vector3(gate * 2.0, 6.0, wall), "marble")
+	# Крыша: без неё дворец просматривается и простреливается сверху.
+	_box(g, Vector3(c.x, 6.0 + ph + 1.0, c.y), Vector3(pw * 2.0, 2.0, pd * 2.0), "marble")
+
 	_box(g, Vector3(c.x, 33.0, c.y), Vector3(60.0, 6.0, 40.0), "marble")
 	_cylinder(g, Vector3(c.x, 44.0, c.y), 12.0, 28.0, "marble")
 	_cone(g, Vector3(c.x, 62.0, c.y), 15.0, 14.0, "accent")

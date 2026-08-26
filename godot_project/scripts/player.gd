@@ -915,7 +915,7 @@ func request_prosthetic(new_tier: int) -> void:
 
 	var cost: Array = RES.PROSTHETIC_COST[new_tier]
 	if not stock.spend(cost):
-		push_warning("Игроку %d не хватает ресурсов на протез уровня %d" % [peer_id, new_tier])
+		_refuse("не хватает ресурсов на протез")
 		return
 	for limb in targets:
 		body.grant_prosthetic(limb, new_tier)
@@ -1015,7 +1015,7 @@ func _server_buy_bandages() -> void:
 	if body.bandages >= RES.BANDAGE_LIMIT:
 		return
 	if not trade_allowed():
-		push_warning("Лавка не обслуживает игрока %d: война" % peer_id)
+		_refuse("лавка закрыта: отношения слишком плохи")
 		return
 	if not stock.spend(bandage_cost()):
 		return
@@ -1028,7 +1028,7 @@ func _server_buy_gear() -> void:
 	if not RES.GEAR_COST.has(next):
 		return
 	if not trade_allowed():
-		push_warning("Лавка не обслуживает игрока %d: война" % peer_id)
+		_refuse("лавка закрыта: отношения слишком плохи")
 		return
 	if not stock.spend(next_gear_cost()):
 		return
@@ -1123,10 +1123,10 @@ func request_build(building_kind: int, point: Vector3) -> void:
 
 	var cost: Array = RES.BUILDING_COST[building_kind]
 	if not stock.can_afford(cost):
-		push_warning("Игроку %d не хватает ресурсов на %s" % [peer_id, RES.BUILDING_NAMES[building_kind]])
+		_refuse("не хватает ресурсов на %s — нужно %s" % [RES.BUILDING_NAMES[building_kind], RES.format_cost(RES.BUILDING_COST[building_kind])])
 		return
 	if not BUILD_CONTROLLER.is_spot_buildable(self, point, building_kind):
-		push_warning("Игрок %d выбрал негодное место под %s" % [peer_id, RES.BUILDING_NAMES[building_kind]])
+		_refuse("здесь строить нельзя: %s не встанет на этом месте" % RES.BUILDING_NAMES[building_kind])
 		return
 
 	if not stock.spend(cost):
@@ -1163,17 +1163,17 @@ func request_send_caravan(points: PackedVector3Array) -> void:
 	var world := get_parent().get_parent()
 	var storage: Node3D = world.storage_of(peer_id)
 	if storage == null:
-		push_warning("Игроку %d некуда возвращать караван: нет достроенного склада" % peer_id)
+		_refuse("каравану некуда возвращаться: сначала дострой склад")
 		return
 	if world.caravans_of(peer_id).size() >= MAX_CARAVANS:
-		push_warning("У игрока %d уже максимум караванов в пути" % peer_id)
+		_refuse("больше караванов в пути держать нельзя, дождись возврата")
 		return
 
 	var route := PackedVector3Array()
 	route.append(storage.global_position)
 	for point in points:
 		if absf(point.x) > ROUTE_BOUND or absf(point.z) > ROUTE_BOUND:
-			push_warning("Точка маршрута игрока %d вне карты, заявка отклонена" % peer_id)
+			_refuse("точка маршрута вне карты, караван не отправлен")
 			return
 		route.append(point)
 	route.append(world.mine.global_position)
@@ -1287,6 +1287,35 @@ func request_squad_follow() -> void:
 
 
 ## Нанять мечника. Нужна достроенная казарма и ресурсы (Этап 4).
+## --- видимые отказы --------------------------------------------------------
+##
+## Живой тестер за пятнадцать минут четыре раза нажал «нанять» и три раза
+## «построить казарму». Каждый раз хост отказывал по делу — не хватало
+## ресурсов, не было казармы, — и каждый раз писал причину ТОЛЬКО в лог.
+## На экране не менялось ничего, и человек решил, что игра сломана. Отказ,
+## который видит один лог, для игрока неотличим от бага.
+##
+## Причину отказа считает хост (он один знает состояние мира) и отправляет её
+## тому пиру, чью заявку отклонил.
+
+## Хост отклонил заявку: показать причину владельцу персонажа.
+signal refused(reason: String)
+
+
+## Отказать по заявке. Вызывает ТОЛЬКО хост, вместо голого push_warning.
+func _refuse(reason: String) -> void:
+	push_warning("Игрок %d: %s" % [peer_id, reason])
+	if peer_id == Net.local_id():
+		refused.emit(reason)
+	else:
+		_show_refusal.rpc_id(peer_id, reason)
+
+
+@rpc("authority", "reliable")
+func _show_refusal(reason: String) -> void:
+	refused.emit(reason)
+
+
 @rpc("any_peer", "reliable")
 func request_train_unit() -> void:
 	if not Net.hosting() or not _sender_is_owner():
@@ -1296,14 +1325,14 @@ func request_train_unit() -> void:
 	var world := get_parent().get_parent()
 	var barracks: Node3D = world.barracks_of(peer_id)
 	if barracks == null:
-		push_warning("Игроку %d негде нанимать: нет достроенной казармы" % peer_id)
+		_refuse("нанимать негде: сначала построй казарму (клавиша 2)")
 		return
 	var squad: Array = world.units_of(peer_id)
 	if squad.size() >= RES.SQUAD_LIMIT:
-		push_warning("У игрока %d отряд уже полон" % peer_id)
+		_refuse("отряд уже полон")
 		return
 	if not stock.spend(RES.UNIT_COST):
-		push_warning("Игроку %d не хватает ресурсов на мечника" % peer_id)
+		_refuse("не хватает ресурсов на мечника — нужно %s" % RES.format_cost(RES.UNIT_COST))
 		return
 	# Разводим по спирали: если спавнить всех в одну точку, капсулы влезают друг
 	# в друга и CharacterBody3D потом не может их расцепить.

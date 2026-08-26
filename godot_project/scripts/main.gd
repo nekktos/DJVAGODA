@@ -114,6 +114,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_tick_announce(delta)
+	_tick_refusal(delta)
 	if not Net.active:
 		_hud.text = "Оффлайн   сборка: %s" % ProjectSettings.get_setting("application/config/version", "?")
 		return
@@ -136,7 +137,7 @@ func _process(delta: float) -> void:
 			line += "\nсклад: %s" % boss.stock.summary()
 		line += "\n" + _build_hint()
 		line += "\n" + _squad_hint()
-		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню"
+		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню" + _refusal_line()
 	else:
 		var me: Node3D = _world.local_player()
 		if me != null:
@@ -173,33 +174,37 @@ func _process(delta: float) -> void:
 				line += "\nF — командир: %s" % _order_hint(me)
 			elif me.at_workbench():
 				line += "\nF — верстак: протезы и коляска"
-		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню"
+		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню" + _refusal_line()
 	_update_blindness()
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Net.active and _world.strategy_mode and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_1:
+		# Игровые клавиши читаем по ФИЗИЧЕСКОЙ позиции, а не по символу: keycode
+		# зависит от раскладки, и на русской раскладке управление отваливалось бы
+		# целиком. Для игры важно, какая клавиша нажата, а не что на ней написано.
+		var key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+		if key == KEY_1:
 			_world.set_build_mode(true, RES.Building.STORAGE)
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_2:
+		if key == KEY_2:
 			_world.set_build_mode(true, RES.Building.BARRACKS)
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_C:
+		if key == KEY_C:
 			_world.set_route_mode(not _world.route_controller.active)
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode >= KEY_F1 and event.keycode <= KEY_F4:
-			_squad_order("formation", event.keycode - KEY_F1)
+		if key >= KEY_F1 and key <= KEY_F4:
+			_squad_order("formation", key - KEY_F1)
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_G:
+		if key == KEY_G:
 			_squad_order("follow", 0)
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_T:
+		if key == KEY_T:
 			_squad_order("train", 0)
 			get_viewport().set_input_as_handled()
 			return
@@ -229,7 +234,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# Тильда открывает консоль. Ловим до всего остального, чтобы она работала
 	# и в меню, и в бою.
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_QUOTELEFT:
+	if event is InputEventKey and event.pressed and not event.echo and _physical(event) == KEY_QUOTELEFT:
 		_toggle_console()
 		get_viewport().set_input_as_handled()
 		return
@@ -243,11 +248,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_mouse()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_F10:
+		if _physical(event) == KEY_F10:
 			if Net.active:
 				Net.leave()
 			get_viewport().set_input_as_handled()
-		elif event.keycode == KEY_F9:
+		elif _physical(event) == KEY_F9:
 			_copy_steam_id()
 			get_viewport().set_input_as_handled()
 
@@ -575,11 +580,18 @@ func _build_hint() -> String:
 		])
 	var route: Node3D = _world.route_controller
 	if route.active:
-		return "МАРШРУТ: ЛКМ — точка (%d), Enter — отправить караван, ПКМ — отмена" % route.points().size()
+		return "МАРШРУТ: ЛКМ — точка (%d), Enter ИЛИ двойной ЛКМ — отправить караван, ПКМ — отмена" % route.points().size()
 	if controller.active:
 		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
 	var line := "стройка: " + "   ".join(parts)
 	line += "   |   C — маршрут каравана   |   шахта: %s" % _world.mine.summary()
+	# Железо в мире добывается ТОЛЬКО шахтой и попадает на склад ТОЛЬКО
+	# караваном. Живой тестер этого не нашёл, упёрся в казарму и бросил
+	# сессию — поэтому пишем прямо, пока железа нет.
+	var boss: Node3D = _world.local_player()
+	if boss != null and boss.stock.get_amount(RES.Kind.IRON) <= 0:
+		line += "\nЖЕЛЕЗО берётся только из шахты: построй склад (1), нажми C, отметь маршрут до шахты и отправь караван"
+
 	var mine_caravans: Array = []
 	var me: Node3D = _world.local_player()
 	if me != null:
@@ -661,6 +673,48 @@ func _objective_hint(me: Node3D) -> String:
 			FACTIONS.name_of(me.faction), FACTIONS.goal_of(me.faction), line
 		]
 	return line
+
+
+# --- видимые отказы --------------------------------------------------------
+#
+# Хост отклоняет заявку и присылает причину (см. player.gd::_refuse). Раньше
+# причина уходила только в лог: тестер жал «нанять», ничего не происходило, и
+# он делал вывод, что игра сломана. Держим последнюю причину на экране
+# несколько секунд — этого хватает, чтобы связать нажатие с отказом.
+
+## Сколько секунд причина висит на экране.
+const REFUSAL_SHOWN := 5.0
+
+var _refusal := ""
+var _refusal_left := 0.0
+## Персонаж, чьи отказы сейчас слушаем. Пересоединяем при респавне.
+var _refusal_player: Node3D = null
+
+
+func _tick_refusal(delta: float) -> void:
+	var me: Node3D = _world.local_player() if Net.active else null
+	if _refusal_player != me:
+		if _refusal_player != null and is_instance_valid(_refusal_player):
+			_refusal_player.refused.disconnect(_on_refused)
+		_refusal_player = me
+		if me != null:
+			me.refused.connect(_on_refused)
+	if _refusal_left <= 0.0:
+		return
+	_refusal_left -= delta
+	if _refusal_left <= 0.0:
+		_refusal = ""
+
+
+func _on_refused(reason: String) -> void:
+	_refusal = reason
+	_refusal_left = REFUSAL_SHOWN
+
+
+func _refusal_line() -> String:
+	if _refusal.is_empty():
+		return ""
+	return "\n>>> " + _refusal
 
 
 # --- консоль для playtest -------------------------------------------------
@@ -866,7 +920,7 @@ func _on_report() -> void:
 ## Короткая строка про текущий приказ — для подсказки у командира и в HUD.
 func _order_hint(me: Node3D) -> String:
 	if int(me.faction) != FACTIONS.Kind.GUARD:
-		return "он говорит только со стражей"
+		return "распорядитель стражи — не боец: он говорит только со стражей, убить его нельзя"
 	if me.order_kind < 0:
 		return "получить приказ"
 	return "%s (%s)" % [
@@ -885,3 +939,13 @@ func _on_promote() -> void:
 	await get_tree().create_timer(0.25).timeout
 	if _commander_ui.visible and is_instance_valid(me):
 		_refresh_commander(me)
+
+
+## Физическая клавиша, а не символ на ней. keycode зависит от раскладки: на
+## русской раскладке сравнение с KEY_C или KEY_T не сработает никогда, и всё
+## управление в стратегическом режиме отвалится молча.
+##
+## Отступаем к keycode только там, где физического кода нет вовсе — так бывает
+## у экранных клавиатур и некоторых эмуляторов ввода.
+func _physical(event: InputEventKey) -> int:
+	return event.physical_keycode if event.physical_keycode != 0 else event.keycode
