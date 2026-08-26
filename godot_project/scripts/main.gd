@@ -25,6 +25,7 @@ extends Node
 ##   --tradetest     автопроверка торговли и снаряжения (headless)
 ##   --guardtest     автопроверка приказов командира стражи (headless)
 ##   --deathtest     автопроверка смерти, респавна и мародёрства (headless)
+##   --victorytest   автопроверка условий победы и командования (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -93,6 +94,7 @@ func _ready() -> void:
 
 	var commander := $UI/Commander/Panel/VBox
 	commander.get_node("Report").pressed.connect(_on_report)
+	commander.get_node("Promote").pressed.connect(_on_promote)
 	commander.get_node("Close").pressed.connect(_close_commander)
 
 	if not Net.steam_available():
@@ -337,6 +339,12 @@ func _apply_cmdline() -> void:
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
 
+	if args.has("--victorytest"):
+		var victory_test: Node = preload("res://tools/victory_test.gd").new()
+		add_child(victory_test)
+		victory_test.start(_world)
+		needs_session = true
+
 	if args.has("--deathtest"):
 		var death_test: Node = preload("res://tools/death_test.gd").new()
 		add_child(death_test)
@@ -474,18 +482,27 @@ func _toggle_bench() -> void:
 		_close_bench()
 		return
 	var me: Node3D = _world.local_player()
-	if me == null or not me.at_workbench():
+	if me == null:
 		return
+	# Панель открывается ГДЕ УГОДНО: деревянный протез крафтится в поле, и без
+	# этого раненому пришлось бы ползти через полкарты к верстаку.
+	# Кованый и мастерский по-прежнему только у верстака.
+	var at_bench: bool = me.at_workbench()
 	_bench.visible = true
 	_bench_chair.text = "Встать из коляски" if me.body.in_wheelchair else "Сесть в коляску"
+	_bench_chair.disabled = not at_bench
 	var box := $UI/Bench/Panel/VBox
+	box.get_node("Title").text = "Верстак и медпункт" if at_bench else "Полевой ремонт"
+	box.get_node("Note").text = ("Протезы ставятся на все оторванные конечности сразу, цена — за комплект."
+		if at_bench else
+		"В поле можно скрафтить только деревянный протез. Кованый и мастерский — у верстака.")
 	for tier in [1, 2, 3]:
 		var names := {1: "Wooden", 2: "Iron", 3: "Master"}
 		var titles := {1: "Деревянный (скрафтить)", 2: "Кованый", 3: "Мастерский"}
 		var btn: Button = box.get_node(names[tier])
 		var cost: Array = RES.PROSTHETIC_COST[tier]
 		btn.text = "%s — %s" % [titles[tier], RES.format_cost(cost)]
-		btn.disabled = not me.stock.can_afford(cost)
+		btn.disabled = not me.stock.can_afford(cost) or (tier > 1 and not at_bench)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -744,6 +761,14 @@ func _refresh_commander(me: Node3D) -> void:
 	var progress: Label = box.get_node("Progress")
 	var reward: Label = box.get_node("Reward")
 	var report: Button = box.get_node("Report")
+	var promote: Button = box.get_node("Promote")
+	promote.disabled = not _world.commander.can_promote(me)
+	if not promote.disabled:
+		promote.text = "Принять командование"
+	elif me.is_leader:
+		promote.text = "Ты уже командир"
+	else:
+		promote.text = "Командование занято"
 
 	if int(me.faction) != FACTIONS.Kind.GUARD:
 		order.text = "Командир говорит только со стражей дворца."
@@ -798,3 +823,15 @@ func _order_hint(me: Node3D) -> String:
 		ORDERS.name_of(me.order_kind),
 		ORDERS.progress_text(me.order_kind, me.order_progress),
 	]
+
+
+## Принять командование стражей. Решает хост, панель перечитываем следующим
+## кадром — как и доклад.
+func _on_promote() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.ask_promotion()
+	await get_tree().create_timer(0.25).timeout
+	if _commander_ui.visible and is_instance_valid(me):
+		_refresh_commander(me)

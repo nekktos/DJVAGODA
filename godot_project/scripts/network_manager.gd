@@ -20,10 +20,14 @@ extends Node
 
 enum Transport { ENET, STEAM }
 
+const FACTIONS := preload("res://scripts/factions.gd")
+
 const DEFAULT_PORT := 24545
-## В сессии от 1 до 3 игроков, значит клиентов помимо хоста — максимум два.
-## Свободные фракции ведёт ИИ (задача следующих этапов).
-const MAX_CLIENTS := 2
+## Вместимость сессии складывается из слотов сторон (FACTIONS.SLOTS): злодей
+## один, у эльфов и стражи по пять. Клиентов, соответственно, на одного меньше.
+## Свободные слоты позже займёт ИИ (задача следующих этапов).
+static func max_clients() -> int:
+	return FACTIONS.total_slots() - 1
 
 ## Тестовый AppID Valve (Spacewar). Свой понадобится только к релизу в Steam.
 const DEV_APP_ID := 480
@@ -86,7 +90,7 @@ func host_game(port: int = DEFAULT_PORT) -> bool:
 			return false
 	else:
 		var enet := ENetMultiplayerPeer.new()
-		var err := enet.create_server(port, MAX_CLIENTS)
+		var err := enet.create_server(port, max_clients())
 		if err != OK:
 			_fail("Не удалось открыть порт %d (код %d). Порт занят другим процессом?" % [port, err])
 			return false
@@ -213,7 +217,7 @@ func _fail(text: String) -> void:
 func _on_peer_connected(id: int) -> void:
 	# Steam-хост, в отличие от ENet, не умеет ограничивать число клиентов сам,
 	# поэтому лимит держим здесь — для обоих транспортов одинаково.
-	if multiplayer.is_server() and multiplayer.get_peers().size() > MAX_CLIENTS:
+	if multiplayer.is_server() and multiplayer.get_peers().size() > max_clients():
 		status_changed.emit("Игрок %d отклонён: сессия заполнена." % id)
 		if multiplayer.multiplayer_peer.has_method("disconnect_peer"):
 			multiplayer.multiplayer_peer.disconnect_peer(id)

@@ -28,6 +28,14 @@ const SPAWN := {
 	Kind.GUARD: Vector3(300.0, 8.0, -240.0),
 }
 
+## Сколько игроков помещается на сторону.
+##
+## Злодей ОДИН по определению: он один человек с личной армией, а не отряд
+## равных. У эльфов и стражи это партизанский отряд и караул — их естественно
+## больше одного.
+const SLOTS := [1, 5, 5]
+
+
 ## Стратегический режим — только у злодея.
 const HAS_STRATEGY := [true, false, false]
 ## Стройка и наём отряда — тоже пока только у него.
@@ -80,6 +88,18 @@ const GOALS := [
 
 static func starting_capacity(faction: int) -> int:
 	return STARTING_CAPACITY[clampi(faction, 0, COUNT - 1)]
+
+
+static func slots(faction: int) -> int:
+	return SLOTS[clampi(faction, 0, COUNT - 1)]
+
+
+## Сколько игроков вмещает сессия целиком.
+static func total_slots() -> int:
+	var sum := 0
+	for n in SLOTS:
+		sum += int(n)
+	return sum
 
 
 static func has_strategy(faction: int) -> bool:

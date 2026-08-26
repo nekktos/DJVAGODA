@@ -74,6 +74,9 @@ properties/15/replication_mode = 1
 properties/16/path = NodePath(".:orders_done")
 properties/16/spawn = true
 properties/16/replication_mode = 1
+properties/17/path = NodePath(".:is_leader")
+properties/17/spawn = true
+properties/17/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

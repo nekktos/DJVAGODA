@@ -227,3 +227,45 @@ func _notify(guard: Node3D, text: String) -> void:
 		objective.announced.emit(text)
 	else:
 		objective.announce.rpc_id(int(guard.peer_id), text)
+
+
+# --- повышение до командира стражи -----------------------------------------
+
+## Есть ли у стражи живой командир прямо сейчас.
+## Мёртвый не считается: его смерть окончательна, и место освобождается.
+func guard_has_leader() -> bool:
+	for guard in _guards():
+		if guard.is_leader and guard.health.alive:
+			return true
+	return false
+
+
+## Можно ли этому стражу принять командование.
+## Клиент считает то же самое для кнопки, решает всё равно хост.
+func can_promote(guard: Node3D) -> bool:
+	if guard == null or int(guard.faction) != FACTIONS.Kind.GUARD:
+		return false
+	if not guard.health.alive or guard.is_leader:
+		return false
+	return not guard_has_leader()
+
+
+## Принять командование. Пока это простое согласие NPC; по замыслу здесь будет
+## цепочка квестов, и повышение станет её наградой.
+##
+## Вместе с командованием страж получает стратегический режим, стройку и наём
+## (GDD раздел 2.2) — и окончательную смерть: командир не возрождается.
+func promote(guard: Node3D) -> String:
+	if not multiplayer.is_server():
+		return ""
+	if not in_range(guard.global_position):
+		return ""
+	if not can_promote(guard):
+		return "Командовать сейчас некому и незачем."
+	guard.is_leader = true
+	var text := "Страж %d принял командование" % int(guard.peer_id)
+	print("[командир] %s" % text)
+	var objective: Node3D = get_parent().get_node_or_null("Objective")
+	if objective != null:
+		objective.announce.rpc(text)
+	return text

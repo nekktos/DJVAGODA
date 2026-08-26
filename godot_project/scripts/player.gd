@@ -95,6 +95,12 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 @export var order_kind: int = -1
 @export var order_progress: int = 0
 @export var orders_done: int = 0
+## Вожак стороны. У злодея это врождённое, страж становится им по повышению
+## у NPC на базе (GDD раздел 2.2).
+##
+## Вожак не возрождается: его смерть окончательна. Обычные эльфы и стражники
+## возвращаются в мир как раньше.
+@export var is_leader: bool = false
 @export var sync_buff_left: float = 0.0
 ## Остаток отката по каждой способности. Ведёт хост, клиент показывает.
 @export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0])
@@ -874,9 +880,17 @@ func request_prosthetic(new_tier: int) -> void:
 		return
 	if not _sender_is_owner():
 		return
-	if not health.alive or not at_workbench():
+	if not health.alive:
 		return
 	if not RES.PROSTHETIC_COST.has(new_tier):
+		return
+	# Деревянный протез крафтится ГДЕ УГОДНО: он и по GDD «крафтится сам» из
+	# древесины. Верстак нужен только для кованого и мастерского.
+	#
+	# Без этого послабления ранения, пережившие респавн (шаг 1), означали бы
+	# ползти 6-8 минут через полкарты к единственному верстаку — самый вероятный
+	# способ превратить смерть в «умер и вышел из игры».
+	if new_tier > 1 and not at_workbench():
 		return
 
 	# Считаем, есть ли что менять, до списания: платить за пустой заказ нельзя.
@@ -1269,12 +1283,14 @@ func _select_weapon(kind: int) -> void:
 
 ## Есть ли у стороны стратегический режим. Только у злодея
 ## (DESIGN_ANSWERS.md, пункт 19).
+## Стратегический режим есть у злодея по рождению и у стража, которого повысили
+## до командира (GDD раздел 2.2). Вместе с ним приходят стройка и наём.
 func has_strategy() -> bool:
-	return FACTIONS.has_strategy(faction)
+	return FACTIONS.has_strategy(faction) or is_leader
 
 
 func can_build() -> bool:
-	return FACTIONS.can_build(faction)
+	return FACTIONS.can_build(faction) or is_leader
 
 
 # --- консоль для playtest -------------------------------------------------
@@ -1367,3 +1383,25 @@ func request_report() -> void:
 	if commander == null:
 		return
 	commander.report(self)
+
+
+func ask_promotion() -> void:
+	if multiplayer.is_server():
+		request_promotion()
+	else:
+		request_promotion.rpc_id(1)
+
+
+## Заявка на командование. Решает ХОСТ: он же проверяет сторону, расстояние и
+## то, что живого командира сейчас нет.
+@rpc("any_peer", "reliable")
+func request_promotion() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner():
+		push_warning("Пир пытался принять командование чужим персонажем %d" % peer_id)
+		return
+	var commander: Node3D = get_parent().get_parent().get_node_or_null("Commander")
+	if commander == null:
+		return
+	commander.promote(self)

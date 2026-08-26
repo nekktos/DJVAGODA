@@ -22,6 +22,13 @@ const CAPTURE_SECONDS := 20.0
 ## Насколько быстро прогресс откатывается, когда точку бросили.
 const DECAY_PER_SECOND := 0.06
 
+## Чем именно победила сторона (GDD раздел 7). Порядок — как в FACTIONS.Kind.
+const VICTORY_TEXT := [
+	"дворец захвачен",
+	"злодей и стража сломлены",
+	"злодей убит",
+]
+
 signal announced(text: String)
 
 ## Реплицируемое состояние.
@@ -30,6 +37,12 @@ signal announced(text: String)
 @export var contested: bool = false
 ## Кто сейчас захватывает. -1 — никто.
 @export var claimant: int = -1
+## Кто из сторон уже объявлен победившим. Байт на сторону, чтобы не объявлять
+## одно и то же дважды.
+@export var victors: PackedByteArray = PackedByteArray([0, 0, 0])
+## Пал ли вожак стороны. Вожак — злодей по рождению и повышенный командир
+## стражи; их смерть окончательна.
+@export var leader_down: PackedByteArray = PackedByteArray([0, 0, 0])
 
 var _seen_owner := FACTIONS.Kind.GUARD
 
@@ -81,6 +94,67 @@ func _capture(faction: int) -> void:
 	var text := "Дворец захвачен: %s" % FACTIONS.name_of(faction)
 	print("[цель] %s" % text)
 	announce.rpc(text)
+	check_victories()
+
+
+
+# --- условия победы (Этап 10, шаг 2, GDD раздел 7) -------------------------
+
+
+## Вожак пал. Зовёт мир, когда окончательно умирает злодей или командир стражи.
+func report_leader_down(faction: int, killer_faction: int) -> void:
+	if not multiplayer.is_server():
+		return
+	if faction < 0 or faction >= FACTIONS.COUNT or leader_down[faction] == 1:
+		return
+	leader_down[faction] = 1
+	var text := "%s: вожак пал" % FACTIONS.name_of(faction)
+	if killer_faction >= 0:
+		text += " (%s)" % FACTIONS.name_of(killer_faction)
+	print("[цель] %s" % text)
+	announce.rpc(text)
+	check_victories()
+
+
+func leader_is_down(faction: int) -> bool:
+	return faction >= 0 and faction < FACTIONS.COUNT and leader_down[faction] == 1
+
+
+## Сторона считается сломленной, если её вожак пал ИЛИ за неё никто не играет.
+##
+## Второе — прямое требование GDD раздела 7: пока ИИ фракций нет, пустующая
+## сторона считается условием, выполненным автоматически, иначе победа эльфов
+## недостижима в сессии на двоих.
+func faction_is_broken(faction: int) -> bool:
+	if leader_is_down(faction):
+		return true
+	var players: Array = get_parent().players_of(faction)
+	return players.is_empty()
+
+
+## Проверить условия победы всех сторон. Только на хосте.
+##
+## Победа НЕ обрывает партию (GDD раздел 7): она объявляется всем, и дальше
+## сессия живёт как песочница — злодей после захвата дворца может добивать
+## эльфов, и наоборот.
+func check_victories() -> void:
+	if not multiplayer.is_server():
+		return
+	_maybe_declare(FACTIONS.Kind.VILLAIN, palace_owner == FACTIONS.Kind.VILLAIN)
+	_maybe_declare(FACTIONS.Kind.GUARD, leader_is_down(FACTIONS.Kind.VILLAIN))
+	_maybe_declare(
+		FACTIONS.Kind.ELVES,
+		leader_is_down(FACTIONS.Kind.VILLAIN) and faction_is_broken(FACTIONS.Kind.GUARD)
+	)
+
+
+func _maybe_declare(faction: int, condition_met: bool) -> void:
+	if not condition_met or victors[faction] == 1:
+		return
+	victors[faction] = 1
+	var text := "ПОБЕДА: %s — %s" % [FACTIONS.name_of(faction), VICTORY_TEXT[faction]]
+	print("[цель] %s" % text)
+	announce.rpc(text)
 
 
 ## Какие стороны сейчас стоят в точке. Считает хост.
@@ -110,16 +184,6 @@ func announce(text: String) -> void:
 	if sender != 0 and sender != 1:
 		return
 	announced.emit(text)
-
-
-## Кого-то убили. Хост решает, значит ли это результат партии.
-func report_death(victim_faction: int, killer_faction: int) -> void:
-	if not multiplayer.is_server():
-		return
-	if victim_faction == FACTIONS.Kind.VILLAIN and killer_faction == FACTIONS.Kind.GUARD:
-		announce.rpc("Стража убила злодея")
-	elif victim_faction == FACTIONS.Kind.VILLAIN:
-		announce.rpc("Злодей пал от рук: %s" % FACTIONS.name_of(killer_faction))
 
 
 func status_text() -> String:

@@ -257,6 +257,9 @@ func _spawn_player(id: int, wanted_faction: int = 0) -> void:
 		# Сигналы нужны только хосту: и снаряды, и смерть считает он.
 		node.death_reported.connect(_on_player_death)
 		node.projectile_requested.connect(_on_projectile_requested)
+		# Злодей — вожак по рождению: он один человек с личной армией. Страж
+		# становится вожаком повышением у NPC, эльфы — никогда.
+		node.is_leader = FACTIONS.has_strategy(faction)
 		# Стартовый запас больше не выдаётся персонажу: он лежит в казне фракции
 		# и разложен там ещё до появления игроков (treasury.gd).
 
@@ -328,11 +331,19 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
-	objective.report_death(int(player.faction), faction_of(killer_id))
 	commander.report_kill(killer_id, int(player.faction))
 	_spawn_corpse(player)
 	_drop_belongings(player)
 	player.set_dead.rpc(true)
+
+	# Вожак не возвращается. Злодей — один человек с личной армией, командир
+	# стражи — тот, кто заслужил место: их смерть окончательна и является
+	# условием победы противника (GDD раздел 7). Рядовые эльфы и стражники
+	# возрождаются как раньше.
+	if player.is_leader:
+		print("[смерть] вожак %s пал окончательно" % player.name)
+		objective.report_leader_down(int(player.faction), faction_of(killer_id))
+		return
 
 	await get_tree().create_timer(RESPAWN_DELAY).timeout
 	if not is_instance_valid(player):
@@ -628,14 +639,21 @@ func faction_of(peer: int) -> int:
 
 
 ## Выдать сторону: запрошенную, если свободна, иначе первую свободную.
+## Выдать сторону: запрошенную, если в ней есть место, иначе первую свободную.
+##
+## Сторона больше не уникальна — у эльфов и стражи по нескольку слотов
+## (FACTIONS.SLOTS). Уникален только злодей.
 func _assign_faction(wanted: int) -> int:
-	var taken := taken_factions()
-	if wanted >= 0 and wanted < FACTIONS.COUNT and not taken.has(wanted):
+	if wanted >= 0 and wanted < FACTIONS.COUNT and _has_room(wanted):
 		return wanted
 	for i in FACTIONS.COUNT:
-		if not taken.has(i):
+		if _has_room(i):
 			return i
 	return -1
+
+
+func _has_room(faction: int) -> bool:
+	return players_of(faction).size() < FACTIONS.slots(faction)
 
 
 func players_of(faction: int) -> Array:

@@ -217,6 +217,10 @@ text = ""
 custom_minimum_size = Vector2(0, 40)
 text = "Доложить"
 
+[node name="Promote" type="Button" parent="UI/Commander/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Принять командование"
+
 [node name="Close" type="Button" parent="UI/Commander/Panel/VBox"]
 custom_minimum_size = Vector2(0, 36)
 text = "Закрыть (F)"

@@ -4,8 +4,11 @@ extends "res://tools/test_base.gd"
 ## Работает headless.
 ##
 ## Запуск:
-##   godot --headless --path godot_project -- --host --faction=0 --deathtest
-##   godot --headless --path godot_project -- --join=127.0.0.1 --faction=1 --deathtest
+##   godot --headless --path godot_project -- --host --faction=1 --deathtest
+##   godot --headless --path godot_project -- --join=127.0.0.1 --faction=2 --deathtest
+##
+## Хост берёт ЭЛЬФОВ, а не злодея: злодей — вожак, его смерть окончательна
+## (см. victory_test), и проверять на нём респавн нечем.
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
@@ -16,7 +19,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "смерть"
-	expected_host = 17
+	expected_host = 18
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -85,6 +88,7 @@ func _test_death_drops(me: Node3D) -> void:
 
 	# Ждём респавна и идём подбирать своё же добро.
 	await get_tree().create_timer(6.0).timeout
+	check(not me.is_leader, "рядовой боец не вожак", "is_leader=false")
 	check(me.health.alive, "персонаж вернулся в мир", "жив")
 	var base: Vector3 = FACTIONS.SPAWN[int(me.faction)]
 	check(me.global_position.distance_to(base) < 12.0, "респавн на базе своей стороны",
@@ -156,7 +160,7 @@ func _run_client() -> void:
 		fail("персонаж клиента не заспавнен")
 		return
 	var mine: Node = me.stock
-	var host_wallet: Node = _world.treasury.of(FACTIONS.Kind.VILLAIN)
+	var host_wallet: Node = _world.treasury.of(FACTIONS.Kind.ELVES)
 	check(mine != null and mine != host_wallet, "у клиента свой кошелёк стороны",
 		FACTIONS.name_of(me.faction))
 
