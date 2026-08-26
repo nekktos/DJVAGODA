@@ -38,6 +38,8 @@ const CORPSE_LIMIT := 30
 ## На каком расстоянии от верстака им можно пользоваться. Проверяет ХОСТ:
 ## иначе клиент выдавал бы себе протезы из любой точки карты.
 const WORKBENCH_RANGE := 7.0
+## То же для лавки торговца.
+const TRADER_RANGE := 7.0
 
 ## Дебаг-ключ --netlog: раз в секунду печатать позиции всех персонажей — видно,
 ## доезжает ли чужое движение до этого пира.
@@ -266,7 +268,7 @@ func _make_spawned(data: Dictionary) -> Node:
 	return node
 
 
-func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int) -> void:
+func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int, gear: int) -> void:
 	if not multiplayer.is_server():
 		return
 	_spawn_counter += 1
@@ -277,6 +279,9 @@ func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_
 		"origin": origin,
 		"dir": dir,
 		"shooter": shooter_id,
+		# Уровень снаряжения кладём в пакет спавна, а не читаем у стрелка при
+		# попадании: стрелок к тому моменту может быть уже мёртв или отключён.
+		"gear": gear,
 	})
 
 
@@ -331,6 +336,17 @@ func workbench_position() -> Vector3:
 func is_at_workbench(point: Vector3) -> bool:
 	var flat := Vector3(point.x, 0.0, point.z)
 	return flat.distance_to(workbench_position()) <= WORKBENCH_RANGE
+
+
+## Где стоит торговец эльфов. Он в их поселении: чужому туда дойти можно, но
+## идти придётся через весь лес — торговля намеренно не бесплатна географически.
+func trader_position() -> Vector3:
+	return WORLD_BUILDER.TRADER_POS
+
+
+func is_at_trader(point: Vector3) -> bool:
+	var flat := Vector3(point.x, 0.0, point.z)
+	return flat.distance_to(trader_position()) <= TRADER_RANGE
 
 
 # --- стройка ---------------------------------------------------------------

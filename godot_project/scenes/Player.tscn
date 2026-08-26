@@ -69,6 +69,9 @@ properties/13/replication_mode = 1
 properties/14/path = NodePath(".:sync_ability_cd")
 properties/14/spawn = true
 properties/14/replication_mode = 1
+properties/15/path = NodePath(".:gear_tier")
+properties/15/spawn = true
+properties/15/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

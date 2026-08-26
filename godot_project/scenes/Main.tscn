@@ -129,6 +129,52 @@ text = "Сесть в коляску"
 custom_minimum_size = Vector2(0, 36)
 text = "Закрыть (F)"
 
+[node name="Trader" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="Panel" type="PanelContainer" parent="UI/Trader"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -240.0
+offset_top = -130.0
+offset_right = 240.0
+offset_bottom = 130.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="UI/Trader/Panel"]
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Trader/Panel/VBox"]
+horizontal_alignment = 1
+text = "Лавка"
+
+[node name="Note" type="Label" parent="UI/Trader/Panel/VBox"]
+autowrap_mode = 3
+text = "Платят золотом и железом. Снаряжение действует на любое оружие в руках."
+
+[node name="Stock" type="Label" parent="UI/Trader/Panel/VBox"]
+autowrap_mode = 3
+text = "склад:"
+
+[node name="Bandages" type="Button" parent="UI/Trader/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Бинты"
+
+[node name="Gear" type="Button" parent="UI/Trader/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Снаряжение"
+
+[node name="Close" type="Button" parent="UI/Trader/Panel/VBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Закрыть (F)"
+
 [node name="Menu" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0

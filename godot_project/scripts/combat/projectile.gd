@@ -18,6 +18,8 @@ const HIT_MASK := 1 | 4
 
 var kind := 0
 var shooter_id := 1
+## Уровень снаряжения стрелка на момент выстрела.
+var gear_tier := 0
 
 var _velocity := Vector3.ZERO
 var _life := 0.0
@@ -29,6 +31,7 @@ var _mesh: MeshInstance3D
 func setup(data: Dictionary) -> void:
 	kind = int(data["kind"])
 	shooter_id = int(data["shooter"])
+	gear_tier = int(data.get("gear", 0))
 	position = data["origin"]
 	sync_position = position
 	_velocity = Vector3(data["dir"]).normalized() * WEAPONS.PROJECTILE_SPEED[kind]
@@ -118,7 +121,8 @@ func _resolve_hit(hit: Dictionary) -> void:
 		if zone != null and zone.has_method("owner_character"):
 			var target: Node3D = zone.owner_character()
 			if target != null:
-				var damage: float = WEAPONS.DAMAGE[kind] * zone.damage_multiplier
+				var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier
+					* WEAPONS.gear_damage(gear_tier))
 				target.take_damage(damage, shooter_id, zone.zone, point, _velocity.normalized())
 		else:
 			# Воткнулась в землю или стену — просто показать.
@@ -154,7 +158,8 @@ func _explode(point: Vector3) -> void:
 		var zone: Area3D = nearest[target][0]
 		var dist: float = nearest[target][1]
 		var falloff := clampf(1.0 - dist / WEAPONS.SPELL_BLAST_RADIUS, 0.0, 1.0)
-		var damage: float = WEAPONS.DAMAGE[kind] * zone.damage_multiplier * falloff
+		var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier * falloff
+			* WEAPONS.gear_damage(gear_tier))
 		if damage > 0.5:
 			var dir: Vector3 = (target.global_position - point).normalized()
 			# Флаг «по площади»: рассыпной строй именно его и гасит.

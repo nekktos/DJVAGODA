@@ -48,3 +48,29 @@ const PROJECTILE_LIFETIME := 6.0
 
 static func is_projectile(kind: int) -> bool:
 	return kind == Kind.BOW or kind == Kind.SPELL
+
+
+## Качество снаряжения (Этап 8, GDD раздел 2.1 — «покупка снаряжения, апгрейдов»).
+##
+## Уровень один на персонажа, а не на каждое оружие отдельно: три вида оружия
+## умножить на три уровня — это девять состояний, которые надо реплицировать и
+## балансировать, а играбельной разницы против одного «во что ты снаряжён» почти
+## нет. Если позже понадобится точность Daggerfall, разворачивать будем отсюда.
+const GEAR_TIERS := 3
+const GEAR_NAMES := ["простое", "калёное", "эльфийское"]
+## Множитель урона по уровню снаряжения.
+const GEAR_DAMAGE := [1.0, 1.25, 1.55]
+## Множитель отката: меньше единицы — бьют чаще.
+const GEAR_COOLDOWN := [1.0, 0.92, 0.85]
+
+
+static func gear_damage(tier: int) -> float:
+	return GEAR_DAMAGE[clampi(tier, 0, GEAR_TIERS - 1)]
+
+
+static func gear_cooldown(tier: int) -> float:
+	return GEAR_COOLDOWN[clampi(tier, 0, GEAR_TIERS - 1)]
+
+
+static func gear_name(tier: int) -> String:
+	return GEAR_NAMES[clampi(tier, 0, GEAR_TIERS - 1)]

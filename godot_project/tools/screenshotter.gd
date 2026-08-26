@@ -59,6 +59,11 @@ func _shots() -> Array:
 			"summon": true,
 		},
 		{
+			"name": "03e_лавка_эльфов",
+			"pos": Vector3(-292, 5.0, -262),
+			"look": Vector3(-300, 2.0, -272),
+		},
+		{
 			"name": "05_зона_злодея_форт",
 			"pos": Vector3(-300, 160, 640),
 			"look": Vector3(-300, 20, 260),

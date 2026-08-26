@@ -79,7 +79,7 @@ const SPAWN_POINTS: Array[Vector3] = [
 ]
 
 signal death_reported(player: Node3D, killer_id: int)
-signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int)
+signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int, gear: int)
 
 @export var sync_position: Vector3 = Vector3.ZERO
 @export var sync_yaw: float = 0.0
@@ -87,6 +87,9 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 ## Сколько осталось действовать кличу леса, секунды. Считает и обнуляет хост,
 ## клиент только читает — и для подсказки в HUD, и чтобы применить прибавку к
 ## скорости у себя (движение персонажа клиент считает сам, Этап 0).
+## Уровень снаряжения, куплен у торговца. Ведёт ХОСТ — иначе клиент выписал бы
+## себе эльфийский клинок бесплатно. Действует на любое оружие в руках.
+@export var gear_tier: int = 0
 @export var sync_buff_left: float = 0.0
 ## Остаток отката по каждой способности. Ведёт хост, клиент показывает.
 @export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0])
@@ -371,7 +374,8 @@ func _update_attack(delta: float) -> void:
 	if not _weapon_allowed(sync_weapon):
 		return
 
-	_cooldown_left = WEAPONS.COOLDOWN[sync_weapon] * body.attack_speed_scale() * buff_attack_scale()
+	_cooldown_left = (WEAPONS.COOLDOWN[sync_weapon] * body.attack_speed_scale()
+		* buff_attack_scale() * WEAPONS.gear_cooldown(gear_tier))
 	_swing_left = 0.45
 	_play("attack-melee-right" if sync_weapon == WEAPONS.Kind.SWORD else "holding-right-shoot", true)
 
@@ -630,7 +634,8 @@ func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
 			% [peer_id, origin.distance_to(host_origin)])
 		return
 
-	_server_cooldown = WEAPONS.COOLDOWN[kind] * body.attack_speed_scale()
+	_server_cooldown = (WEAPONS.COOLDOWN[kind] * body.attack_speed_scale()
+		* buff_attack_scale() * WEAPONS.gear_cooldown(gear_tier))
 	var aim := dir.normalized()
 	if aim.length() < 0.5:
 		return
@@ -641,7 +646,7 @@ func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
 			_server_swing_sword(aim)
 	else:
 		# Снаряд создаёт и ведёт мир — он владеет спавнером снарядов.
-		projectile_requested.emit(kind, host_origin, aim, peer_id)
+		projectile_requested.emit(kind, host_origin, aim, peer_id, gear_tier)
 
 
 ## Хост разрешает удар мечом: ищет зоны попадания в секторе перед персонажем.
@@ -675,7 +680,8 @@ func _server_swing_sword(aim: Vector3) -> void:
 
 	for target in best.keys():
 		var zone: Area3D = best[target]
-		var damage: float = WEAPONS.DAMAGE[WEAPONS.Kind.SWORD] * zone.damage_multiplier
+		var damage: float = (WEAPONS.DAMAGE[WEAPONS.Kind.SWORD] * zone.damage_multiplier
+			* WEAPONS.gear_damage(gear_tier))
 		target.take_damage(damage, peer_id, zone.zone, zone.global_position, aim)
 
 
@@ -892,6 +898,67 @@ func _sender_is_owner() -> bool:
 	if sender == 0:
 		sender = multiplayer.get_unique_id()
 	return sender == peer_id
+
+
+# --- торговля (Этап 8) -----------------------------------------------------
+
+## Игрок стоит у лавки? Клиент считает это же значение, чтобы показать подсказку,
+## но решает всё равно хост — иначе покупали бы с другого конца карты.
+func at_trader() -> bool:
+	var world := get_parent().get_parent()
+	if world == null or not world.has_method("is_at_trader"):
+		return false
+	return world.is_at_trader(global_position)
+
+
+## Цена следующего уровня снаряжения. Пустой массив — покупать больше нечего.
+func next_gear_cost() -> Array:
+	var next := gear_tier + 1
+	return RES.GEAR_COST.get(next, [])
+
+
+func ask_trade(what: int) -> void:
+	if multiplayer.is_server():
+		request_trade(what)
+	else:
+		request_trade.rpc_id(1, what)
+
+
+## Покупка у торговца. Считает и списывает ХОСТ.
+@rpc("any_peer", "reliable")
+func request_trade(what: int) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner():
+		push_warning("Пир пытался торговать чужим персонажем %d" % peer_id)
+		return
+	if not health.alive or not at_trader():
+		return
+
+	match what:
+		RES.Trade.BANDAGES:
+			_server_buy_bandages()
+		RES.Trade.GEAR:
+			_server_buy_gear()
+
+
+func _server_buy_bandages() -> void:
+	if body.bandages >= RES.BANDAGE_LIMIT:
+		return
+	if not stock.spend(RES.BANDAGE_COST):
+		return
+	body.bandages = mini(RES.BANDAGE_LIMIT, body.bandages + RES.BANDAGE_PACK)
+	print("[торг] игрок %d купил бинты, стало %d" % [peer_id, body.bandages])
+
+
+func _server_buy_gear() -> void:
+	var next := gear_tier + 1
+	if not RES.GEAR_COST.has(next):
+		return
+	if not stock.spend(RES.GEAR_COST[next]):
+		return
+	gear_tier = next
+	print("[торг] игрок %d купил снаряжение: %s" % [peer_id, WEAPONS.gear_name(gear_tier)])
 
 
 # --- добыча ресурсов ------------------------------------------------------

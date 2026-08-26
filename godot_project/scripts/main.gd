@@ -22,6 +22,7 @@ extends Node
 ##   --consoletest   автопроверка консольных команд (headless)
 ##   --foresttest    автопроверка impostor-леса (headless)
 ##   --elftest       автопроверка магии поддержки эльфов (headless)
+##   --tradetest     автопроверка торговли и снаряжения (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -52,6 +53,7 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _blind_right: ColorRect = $UI/Blind/Right
 @onready var _bench: Control = $UI/Bench
 @onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
+@onready var _trader: Control = $UI/Trader
 @onready var _announce: Label = $UI/Hud/Announce
 @onready var _faction_opt: OptionButton = $UI/Menu/Panel/VBox/FactionRow/FactionOpt
 @onready var _console: Control = $UI/Console
@@ -79,6 +81,11 @@ func _ready() -> void:
 	bench.get_node("Master").pressed.connect(_on_bench_prosthetic.bind(3))
 	bench.get_node("Chair").pressed.connect(_on_bench_chair)
 	bench.get_node("Close").pressed.connect(_close_bench)
+
+	var trader := $UI/Trader/Panel/VBox
+	trader.get_node("Bandages").pressed.connect(_on_trade.bind(RES.Trade.BANDAGES))
+	trader.get_node("Gear").pressed.connect(_on_trade.bind(RES.Trade.GEAR))
+	trader.get_node("Close").pressed.connect(_close_trader)
 
 	if not Net.steam_available():
 		_transport_opt.set_item_disabled(1, true)
@@ -126,11 +133,12 @@ func _process(delta: float) -> void:
 				else:
 					line += "   B — перевязать (стоя на месте)"
 			if FACTIONS.has_abilities(me.faction):
-				line += "
-" + _abilities_hint(me)
+				line += "\n" + _abilities_hint(me)
 			var pile: Node3D = me.loot_nearby()
 			if pile != null:
 				line += "\nF — подобрать груз: %s" % pile.summary()
+			elif me.at_trader():
+				line += "\nF — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
 			elif me.at_workbench():
 				line += "\nF — верстак: протезы и коляска"
 		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню"
@@ -169,10 +177,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if event.is_action_pressed(&"interact") and Net.active:
-		# У кучи груза F подбирает её, у верстака открывает панель.
+		# У кучи груза F подбирает её, у верстака и лавки открывает панель.
 		var me: Node3D = _world.local_player()
 		if me != null and me.loot_nearby() != null:
 			me.ask_collect_loot()
+		elif me != null and (me.at_trader() or _trader.visible):
+			_toggle_trader()
 		else:
 			_toggle_bench()
 		get_viewport().set_input_as_handled()
@@ -309,6 +319,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--tradetest"):
+		var trade_test: Node = preload("res://tools/trade_test.gd").new()
+		add_child(trade_test)
+		trade_test.start(_world)
+		needs_session = true
 
 	if args.has("--elftest"):
 		var elf_test: Node = preload("res://tools/elf_test.gd").new()
@@ -619,3 +635,61 @@ func _abilities_hint(me: Node3D) -> String:
 	if me.sync_buff_left > 0.0:
 		line += "   клич действует ещё %.0f с" % ceil(me.sync_buff_left)
 	return line
+
+
+# --- лавка торговца (Этап 8) ----------------------------------------------
+
+func _toggle_trader() -> void:
+	if _trader.visible:
+		_close_trader()
+		return
+	var me: Node3D = _world.local_player()
+	if me == null or not me.at_trader():
+		return
+	_refresh_trader(me)
+	_trader.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _refresh_trader(me: Node3D) -> void:
+	var box := $UI/Trader/Panel/VBox
+	box.get_node("Stock").text = "склад: %s\nснаряжение: %s" % [
+		me.stock.summary(), WEAPONS.gear_name(me.gear_tier)
+	]
+
+	var bandages: Button = box.get_node("Bandages")
+	if me.body.bandages >= RES.BANDAGE_LIMIT:
+		bandages.text = "Бинты — сумка полна (%d)" % RES.BANDAGE_LIMIT
+		bandages.disabled = true
+	else:
+		bandages.text = "Бинты, %d шт — %s" % [RES.BANDAGE_PACK, RES.format_cost(RES.BANDAGE_COST)]
+		bandages.disabled = not me.stock.can_afford(RES.BANDAGE_COST)
+
+	var gear: Button = box.get_node("Gear")
+	var cost: Array = me.next_gear_cost()
+	if cost.is_empty():
+		gear.text = "Снаряжение — лучше нет"
+		gear.disabled = true
+	else:
+		gear.text = "Снаряжение: %s — %s" % [
+			WEAPONS.gear_name(me.gear_tier + 1), RES.format_cost(cost)
+		]
+		gear.disabled = not me.stock.can_afford(cost)
+
+
+func _close_trader() -> void:
+	_trader.visible = false
+	if Net.active and not _world.strategy_mode:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Покупку исполняет хост, поэтому панель обновляем не сразу, а следующим
+## кадром: иначе она показала бы старые цифры.
+func _on_trade(what: int) -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.ask_trade(what)
+	await get_tree().create_timer(0.25).timeout
+	if _trader.visible and is_instance_valid(me):
+		_refresh_trader(me)

@@ -23,6 +23,10 @@ const WORKBENCH_POS := Vector3(-24.0, 0.0, 22.0)
 ## Шахта злодея: далеко от форта, ресурсы оттуда возит караван (GDD 2.3).
 const MINE_POS := Vector3(-470.0, 0.0, 470.0)
 
+## Лавка эльфов: на поляне их поселения. Тратить награбленное можно только
+## дойдя сюда (GDD раздел 2.1).
+const TRADER_POS := Vector3(-300.0, 0.0, -272.0)
+
 enum Zone { ELVES, EMPEROR, VILLAIN, HUMANS }
 
 const ZONE_CENTERS := {
@@ -213,6 +217,16 @@ func _build_elves(c: Vector2) -> void:
 	var g := _group("ZoneElves")
 	# Сам лес строит forest.gd: у него impostor-LOD и адресация по индексу.
 	# Здесь остаётся только поселение.
+
+	# Лавка торговца: навес на столбах у края поляны, чтобы её было видно
+	# издалека и не спутать с домиками.
+	_box(g, TRADER_POS + Vector3(0.0, 1.0, 0.0), Vector3(7.0, 2.0, 4.0), "wood")
+	_box(g, TRADER_POS + Vector3(0.0, 2.3, 0.0), Vector3(8.0, 0.6, 5.0), "stone")
+	for corner in 4:
+		var ox := 3.4 if corner % 2 == 0 else -3.4
+		var oz := 2.0 if corner < 2 else -2.0
+		_cylinder(g, TRADER_POS + Vector3(ox, 3.4, oz), 0.25, 2.2, "wood")
+	_box(g, TRADER_POS + Vector3(0.0, 4.7, 0.0), Vector3(9.0, 0.4, 6.0), "accent")
 
 	# Поселение на сваях.
 	for i in 7:
