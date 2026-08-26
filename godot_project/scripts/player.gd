@@ -161,6 +161,7 @@ var _weapon_visual: Node3D
 ## Какое оружие сейчас показано. Нужно, чтобы перерисовывать при смене — в том
 ## числе у чужих персонажей, у которых sync_weapon приезжает по сети.
 var _weapon_shown := -1
+var _tier_shown := -1
 var _current_anim := ""
 
 
@@ -827,11 +828,15 @@ func set_view_active(on: bool) -> void:
 
 ## Оружие висит на правой руке: едет с ней по анимации и исчезает вместе с
 ## оторванной рукой. Точку хвата считает weapon_visual по габаритам руки.
+## Пересобираем не только при смене оружия, но и при смене УРОВНЯ снаряжения:
+## купленный апгрейд виден по металлу, и увидеть его должны все, а не только
+## владелец — уровень едет по сети как часть состояния персонажа.
 func _refresh_weapon_visual() -> void:
-	if _weapon_shown == sync_weapon:
+	if _weapon_shown == sync_weapon and _tier_shown == gear_tier:
 		return
 	_weapon_shown = sync_weapon
-	_weapon_visual = WEAPON_VISUAL.attach(_parts.get("arm_r"), sync_weapon, _weapon_visual)
+	_tier_shown = gear_tier
+	_weapon_visual = WEAPON_VISUAL.attach(_parts.get("arm_r"), sync_weapon, _weapon_visual, gear_tier)
 
 
 static func _is_bot() -> bool:

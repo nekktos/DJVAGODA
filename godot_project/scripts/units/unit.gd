@@ -155,7 +155,7 @@ func _build_model() -> void:
 	# Мечник — с мечом в руке, точка хвата считается по габаритам руки.
 	# Зверь дерётся зубами: меч в лапе выглядел бы нелепо.
 	if not is_beast:
-		WEAPON_VISUAL.attach(_parts.get("arm_r"), WEAPONS.Kind.SWORD, null)
+		WEAPON_VISUAL.attach(_parts.get("arm_r"), WEAPONS.Kind.SWORD, null, 0)
 	_play("idle")
 
 

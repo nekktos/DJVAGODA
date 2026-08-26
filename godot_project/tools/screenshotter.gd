@@ -64,6 +64,12 @@ func _shots() -> Array:
 			"look": Vector3(-300, 2.0, -272),
 		},
 		{
+			"name": "04c_уровни_снаряжения",
+			"pos": Vector3(-21.5, 3.2, 36.0),
+			"look": Vector3(-21.5, 1.4, 26.0),
+			"gear_row": true,
+		},
+		{
 			"name": "04b_командир_стражи",
 			"pos": Vector3(276, 8.5, -226),
 			"look": Vector3(270, 7.0, -235),
@@ -182,6 +188,9 @@ func _run() -> void:
 		if shot.get("capture", false):
 			_stage_capture()
 			await get_tree().create_timer(2.0).timeout
+		if shot.get("gear_row", false):
+			_stage_gear_row()
+			await get_tree().create_timer(0.6).timeout
 		if shot.get("orders", false):
 			_stage_orders()
 			await get_tree().create_timer(0.6).timeout
@@ -371,4 +380,33 @@ func _stage_orders() -> void:
 	me.teleport.rpc(_world.commander.POSITION + Vector3(0.0, 2.0, 3.0))
 	await get_tree().physics_frame
 	me.request_report()
+	await get_tree().physics_frame
+
+
+## Три персонажа рядом с разными уровнями снаряжения: проверить, что купленный
+## апгрейд действительно ВИДЕН, а не только записан в число.
+##
+## Ставим ботов вместо игроков: трёх живых для съёмки не собрать, а нужен именно
+## ряд одинаковых фигур с разным оружием.
+func _stage_gear_row() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.teleport.rpc(Vector3(-24.0, 2.0, 26.0))
+	me.gear_tier = 0
+	await get_tree().physics_frame
+
+	for tier in [1, 2]:
+		var unit: Node3D = _world.spawn_unit(int(me.peer_id), tier, Vector3(
+			-24.0 + tier * 2.5, 2.0, 26.0
+		))
+		if unit == null:
+			continue
+		# Боец носит меч того же вида, что и игрок: подменяем ему уровень
+		# напрямую, чтобы в кадре оказался ряд из трёх разных клинков.
+		var arm: MeshInstance3D = unit.get("_parts")["arm_r"] if unit.get("_parts") != null else null
+		if arm != null:
+			var WV := preload("res://scripts/combat/weapon_visual.gd")
+			var W := preload("res://scripts/combat/weapons.gd")
+			WV.attach(arm, W.Kind.SWORD, arm.get_node_or_null("Weapon"), tier)
 	await get_tree().physics_frame

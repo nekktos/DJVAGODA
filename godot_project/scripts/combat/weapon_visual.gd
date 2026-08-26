@@ -17,9 +17,23 @@ const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const GRIP_FORWARD := 0.55
 const GRIP_RISE := 0.12
 
+## Цвет металла по уровню снаряжения (Этап 10). Купленный апгрейд должен быть
+## ВИДЕН: иначе игрок платит 180 золота и выглядит ровно как раньше, а чужой
+## уровень в бою не прочитать вовсе.
+##
+## Различаем именно металлом, а не формой: форма — это тип оружия, и путать два
+## разных смысла в одном силуэте нельзя.
+const TIER_METAL := [
+	Color(0.82, 0.84, 0.88),
+	Color(0.62, 0.74, 0.92),
+	Color(0.95, 0.84, 0.42),
+]
+## Верхний уровень ещё и светится: в сумерках леса цвета мало.
+const TIER_GLOW := 0.35
+
 
 ## Повесить оружие в руку, сняв предыдущее. Возвращает узел оружия.
-static func attach(arm: MeshInstance3D, kind: int, previous: Node3D) -> Node3D:
+static func attach(arm: MeshInstance3D, kind: int, previous: Node3D, tier: int = 0) -> Node3D:
 	if previous != null and is_instance_valid(previous):
 		previous.queue_free()
 	if arm == null:
@@ -27,7 +41,7 @@ static func attach(arm: MeshInstance3D, kind: int, previous: Node3D) -> Node3D:
 
 	var holder := Node3D.new()
 	holder.name = "Weapon"
-	_build(holder, kind)
+	_build(holder, kind, clampi(tier, 0, TIER_METAL.size() - 1))
 	arm.add_child(holder)
 
 	var box := arm.get_aabb()
@@ -39,24 +53,28 @@ static func attach(arm: MeshInstance3D, kind: int, previous: Node3D) -> Node3D:
 	return holder
 
 
-static func _build(holder: Node3D, kind: int) -> void:
+static func _build(holder: Node3D, kind: int, tier: int) -> void:
+	var metal: Color = TIER_METAL[tier]
+	var glow: float = TIER_GLOW if tier >= TIER_METAL.size() - 1 else 0.0
 	match kind:
 		WEAPONS.Kind.BOW:
 			# Лук держат вертикально, поперёк направления взгляда.
-			_add_box(holder, Vector3(0.07, 1.30, 0.14), Vector3.ZERO, Color(0.52, 0.36, 0.20))
-			_add_box(holder, Vector3(0.03, 1.24, 0.03), Vector3(0.0, 0.0, -0.10), Color(0.88, 0.86, 0.78))
+			# Металл здесь на тетиве: само древко деревянное на любом уровне.
+			_add_box(holder, Vector3(0.07, 1.30, 0.14), Vector3.ZERO, Color(0.52, 0.36, 0.20), 0.0)
+			_add_box(holder, Vector3(0.03, 1.24, 0.03), Vector3(0.0, 0.0, -0.10), metal, glow)
 		WEAPONS.Kind.SPELL:
 			# Посох с навершием.
-			_add_box(holder, Vector3(0.08, 0.08, 1.40), Vector3.ZERO, Color(0.35, 0.26, 0.18))
+			_add_box(holder, Vector3(0.08, 0.08, 1.40), Vector3.ZERO, Color(0.35, 0.26, 0.18), 0.0)
+			_add_box(holder, Vector3(0.10, 0.10, 0.18), Vector3(0.0, 0.0, 0.55), metal, glow)
 			_add_glow(holder, 0.16, Vector3(0.0, 0.0, 0.72))
 		_:
 			# Меч: клинок вперёд, гарда у кисти.
-			_add_box(holder, Vector3(0.09, 0.09, 1.25), Vector3(0.0, 0.0, 0.10), Color(0.82, 0.84, 0.88))
-			_add_box(holder, Vector3(0.34, 0.09, 0.09), Vector3(0.0, 0.0, -0.46), Color(0.55, 0.45, 0.22))
-			_add_box(holder, Vector3(0.11, 0.11, 0.26), Vector3(0.0, 0.0, -0.62), Color(0.30, 0.22, 0.14))
+			_add_box(holder, Vector3(0.09, 0.09, 1.25), Vector3(0.0, 0.0, 0.10), metal, glow)
+			_add_box(holder, Vector3(0.34, 0.09, 0.09), Vector3(0.0, 0.0, -0.46), metal * 0.7, 0.0)
+			_add_box(holder, Vector3(0.11, 0.11, 0.26), Vector3(0.0, 0.0, -0.62), Color(0.30, 0.22, 0.14), 0.0)
 
 
-static func _add_box(holder: Node3D, size: Vector3, offset: Vector3, color: Color) -> void:
+static func _add_box(holder: Node3D, size: Vector3, offset: Vector3, color: Color, glow: float = 0.0) -> void:
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = size
@@ -64,6 +82,10 @@ static func _add_box(holder: Node3D, size: Vector3, offset: Vector3, color: Colo
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.8
+	if glow > 0.0:
+		mat.emission_enabled = true
+		mat.emission = color
+		mat.emission_energy_multiplier = glow
 	mesh.material_override = mat
 	mesh.position = offset
 	holder.add_child(mesh)
