@@ -114,15 +114,16 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_tick_announce(delta)
 	if not Net.active:
-		_hud.text = "Оффлайн"
+		_hud.text = "Оффлайн   сборка: %s" % ProjectSettings.get_setting("application/config/version", "?")
 		return
 	var role := "ХОСТ" if Net.is_host else "КЛИЕНТ"
 	var kind := "Steam" if Net.transport == Net.Transport.STEAM else "IP"
 	var mode := "СТРАТЕГИЯ" if _world.strategy_mode else "ЭКШЕН"
 	if _world.is_spectating():
 		mode = "НАБЛЮДАТЕЛЬ (вожак пал, возврата нет)"
-	var line := "%s (%s)   id: %d   пиров: %d   fps: %d   камера: %s" % [
-		role, kind, Net.local_id(), Net.peer_count(), Engine.get_frames_per_second(), mode
+	var line := "%s (%s)   id: %d   пиров: %d   fps: %d   камера: %s   сборка: %s" % [
+		role, kind, Net.local_id(), Net.peer_count(), Engine.get_frames_per_second(), mode,
+		ProjectSettings.get_setting("application/config/version", "?")
 	]
 	if Net.is_host and Net.transport == Net.Transport.STEAM:
 		line += "\nSteam ID для друга: %d   (F9 — скопировать)" % Net.local_steam_id()
