@@ -160,6 +160,37 @@ func report_kill(killer_id: int, victim_faction: int) -> void:
 			guard.order_progress += 1
 
 
+## Решающий удар засчитывается только за ЛИЧНОЕ убийство самого злодея, а не за
+## любого убитого на его стороне: в этом весь смысл «убей его сам».
+func report_leader_kill(killer_id: int, victim_faction: int) -> void:
+	if not multiplayer.is_server():
+		return
+	if victim_faction != FACTIONS.Kind.VILLAIN:
+		return
+	for guard in _guards():
+		if int(guard.peer_id) != killer_id:
+			continue
+		if guard.order_kind == ORDERS.Kind.FINAL:
+			guard.order_progress = ORDERS.target_of(ORDERS.Kind.FINAL)
+
+
+## Страж погиб. Решающий удар при этом проваливается: приказ снимается, а порог
+## поднимается — служи дальше и заслужи снова (GDD раздел 8).
+##
+## Обычные приказы гибель не отменяет: провалить дежурство смертью было бы
+## наказанием на пустом месте.
+func report_guard_death(guard: Node3D) -> void:
+	if not multiplayer.is_server() or guard == null:
+		return
+	if guard.order_kind != ORDERS.Kind.FINAL:
+		return
+	if guard.order_progress >= ORDERS.target_of(ORDERS.Kind.FINAL):
+		return
+	guard.final_threshold = int(guard.orders_done) + ORDERS.ORDERS_FOR_FINAL
+	_clear_order(guard)
+	_notify(guard, "Последний бой провален. Служи дальше и заслужи снова.")
+
+
 func report_caravan_destroyed(killer_id: int, owner_faction: int) -> void:
 	if not multiplayer.is_server():
 		return
@@ -197,17 +228,33 @@ func report(guard: Node3D) -> String:
 	return "Приказ «%s» выполнен. %s" % [done_name, next]
 
 
-## Приказы идут по кругу в фиксированном порядке. Сюжетной цепочки в GDD нет,
-## а бесконечная выдача даёт страже занятие после обороны — см. открытый вопрос
-## в README.
+## Обычные приказы идут по кругу; когда служба дослужена до порога — вместо
+## очередного выдаётся РЕШАЮЩИЙ УДАР (GDD раздел 8).
+##
+## Это и есть вся «арка»: служи → заслужи право на последний бой → финал.
+## Сюжета и диалогов здесь нет намеренно — форма кампании выражена через то,
+## что уже работает, тем же принципом, что и сами приказы.
 func _issue_next(guard: Node3D) -> String:
-	var kind: int = int(guard.orders_done) % ORDERS.COUNT
+	var kind: int = ORDERS.Kind.FINAL if _final_available(guard) else int(guard.orders_done) % ORDERS.COUNT
 	guard.order_kind = kind
 	guard.order_progress = 0
 	guard.set_meta("hold_seconds", 0.0)
 	var text := "Новый приказ: %s" % ORDERS.name_of(kind)
 	_notify(guard, text)
 	return text
+
+
+## Готов ли страж к решающему удару.
+##
+## Предлагать его после гибели злодея бессмысленно — убивать уже некого, и
+## служба возвращается в обычный круг.
+func _final_available(guard: Node3D) -> bool:
+	if int(guard.orders_done) < int(guard.final_threshold):
+		return false
+	var objective: Node3D = get_parent().get_node_or_null("Objective")
+	if objective == null:
+		return false
+	return not objective.leader_is_down(FACTIONS.Kind.VILLAIN)
 
 
 func _clear_order(guard: Node3D) -> void:

@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "стража"
-	expected_host = 22
+	expected_host = 31
 	expected_client = 3
 	_world = world
 	_run.call_deferred()
@@ -40,6 +40,7 @@ func _run() -> void:
 	await _test_slay(me)
 	await _test_raid(me)
 	await _test_faction_guard(me)
+	await _test_arc(me)
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(10.0).timeout
 	finish()
@@ -210,3 +211,74 @@ func _run_client() -> void:
 	await get_tree().create_timer(2.0).timeout
 	check(me.orders_done != 99, "подделка счётчика приказов затёрта хостом",
 		"выставил 99, стало %d" % me.orders_done)
+
+
+## Арка службы (GDD раздел 8): служи → заслужи право на решающий удар → финал.
+##
+## Проверяем именно форму арки, а не отдельный приказ: до порога финал не
+## выдаётся, на пороге приходит вместо очередного, гибель по дороге его
+## проваливает и поднимает порог, а личное убийство злодея — засчитывает.
+func _test_arc(me: Node3D) -> void:
+	var commander := _commander()
+	me.faction = FACTIONS.Kind.GUARD
+	me.orders_done = 0
+	me.final_threshold = ORDERS.ORDERS_FOR_FINAL
+	_clear(me)
+
+	# До порога командир даёт обычные приказы по кругу.
+	await _go_to_commander(me)
+	me.request_report()
+	await get_tree().physics_frame
+	check(me.order_kind != ORDERS.Kind.FINAL, "до порога решающего удара не дают",
+		ORDERS.name_of(me.order_kind))
+
+	# Дослужились до порога — следующий приказ должен быть финальным.
+	me.orders_done = ORDERS.ORDERS_FOR_FINAL
+	_clear(me)
+	me.request_report()
+	await get_tree().physics_frame
+	check(me.order_kind == ORDERS.Kind.FINAL, "на пороге выдан решающий удар",
+		ORDERS.name_of(me.order_kind))
+	check(ORDERS.reward_of(ORDERS.Kind.FINAL)[RES.Kind.GOLD]
+			> ORDERS.reward_of(ORDERS.Kind.INTERCEPT)[RES.Kind.GOLD],
+		"за решающий удар платят больше всех",
+		"%d золота" % ORDERS.reward_of(ORDERS.Kind.FINAL)[RES.Kind.GOLD])
+
+	# Гибель по дороге проваливает удар и поднимает порог.
+	var threshold_before: int = me.final_threshold
+	commander.report_guard_death(me)
+	await get_tree().physics_frame
+	check(me.order_kind < 0, "гибель снимает решающий удар", "приказа нет")
+	check(me.final_threshold > threshold_before, "порог поднялся после провала",
+		"%d -> %d" % [threshold_before, me.final_threshold])
+
+	# Пока порог не достигнут, финал снова не дают — служба продолжается.
+	await _go_to_commander(me)
+	me.request_report()
+	await get_tree().physics_frame
+	check(me.order_kind != ORDERS.Kind.FINAL, "после провала снова служба",
+		ORDERS.name_of(me.order_kind))
+
+	# Личное убийство злодея засчитывает финал, а убийство рядового — нет.
+	me.orders_done = me.final_threshold
+	_clear(me)
+	me.request_report()
+	await get_tree().physics_frame
+	check(me.order_kind == ORDERS.Kind.FINAL, "заслужил снова — финал выдан",
+		ORDERS.name_of(me.order_kind))
+
+	commander.report_kill(int(me.peer_id), FACTIONS.Kind.VILLAIN)
+	await get_tree().physics_frame
+	check(me.order_progress < ORDERS.target_of(ORDERS.Kind.FINAL),
+		"рядовой на стороне злодея финал не закрывает",
+		"прогресс %d" % me.order_progress)
+
+	commander.report_leader_kill(int(me.peer_id), FACTIONS.Kind.VILLAIN)
+	await get_tree().physics_frame
+	check(me.order_progress >= ORDERS.target_of(ORDERS.Kind.FINAL),
+		"личное убийство злодея закрывает финал", "прогресс %d" % me.order_progress)
+
+
+func _clear(guard: Node3D) -> void:
+	guard.order_kind = -1
+	guard.order_progress = 0

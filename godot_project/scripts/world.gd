@@ -358,6 +358,11 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
+	# Гибель стража может провалить его решающий удар; гибель вожака — засчитать
+	# чужой. Порядок важен: сперва снимаем провал, потом засчитываем победителю.
+	commander.report_guard_death(player)
+	if player.is_leader:
+		commander.report_leader_kill(killer_id, int(player.faction))
 	_spawn_corpse(player)
 	_drop_belongings(player)
 	player.set_dead.rpc(true)

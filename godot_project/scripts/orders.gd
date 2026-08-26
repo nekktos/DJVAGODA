@@ -12,15 +12,23 @@ extends RefCounted
 ## приказы не на что менять и подчиняться командиру незачем.
 ##
 
-enum Kind { HOLD, SLAY, RAID, INTERCEPT }
+enum Kind { HOLD, SLAY, RAID, INTERCEPT, FINAL }
 
+## Обычных приказов четыре — они идут по кругу. FINAL в круг не входит: он
+## выдаётся вместо очередного, когда служба дослужена до порога.
 const COUNT := 4
+const KINDS := 5
+
+## Сколько приказов надо сдать, чтобы командир доверил решающий удар.
+## Число не жёсткое: откалибровать по playtest (GDD раздел 8).
+const ORDERS_FOR_FINAL := 5
 
 const NAMES := [
 	"держать дворец",
 	"проредить войско злодея",
 	"набег на форт злодея",
 	"перехватить караван",
+	"последний бой",
 ]
 
 ## Что именно требуется сделать — текст для панели командира.
@@ -29,11 +37,12 @@ const BRIEFS := [
 	"Убей %d бойцов или самого злодея.",
 	"Дойди до форта злодея и вернись живым во дворец.",
 	"Разбей %d караван злодея.",
+	"Дойди до форта злодея и убей его сам. Это конец службы или конец тебя.",
 ]
 
 ## Сколько нужно набрать, чтобы приказ считался выполненным.
 ## У набега две ступени: дошёл и вернулся.
-const TARGETS := [25, 3, 2, 1]
+const TARGETS := [25, 3, 2, 1, 1]
 
 ## Награда за выполнение: [дерево, камень, золото, железо].
 const REWARDS := [
@@ -41,6 +50,7 @@ const REWARDS := [
 	[0, 0, 60, 10],
 	[0, 0, 90, 20],
 	[0, 0, 120, 30],
+	[0, 0, 300, 100],
 ]
 
 ## Куда идти в набег и с какой точностью. Форт злодея.
@@ -52,28 +62,30 @@ const TALK_RANGE := 8.0
 
 
 static func name_of(kind: int) -> String:
-	return NAMES[clampi(kind, 0, COUNT - 1)]
+	return NAMES[clampi(kind, 0, KINDS - 1)]
 
 
 static func target_of(kind: int) -> int:
-	return TARGETS[clampi(kind, 0, COUNT - 1)]
+	return TARGETS[clampi(kind, 0, KINDS - 1)]
 
 
 static func reward_of(kind: int) -> Array:
-	return REWARDS[clampi(kind, 0, COUNT - 1)]
+	return REWARDS[clampi(kind, 0, KINDS - 1)]
 
 
 ## Человекочитаемая задача. Для набега счётчик бессмысленный, там ступени.
 static func brief_of(kind: int) -> String:
-	var index := clampi(kind, 0, COUNT - 1)
-	if index == Kind.RAID:
+	var index := clampi(kind, 0, KINDS - 1)
+	if index == Kind.RAID or index == Kind.FINAL:
 		return BRIEFS[index]
 	return BRIEFS[index] % TARGETS[index]
 
 
 ## Как показать прогресс. У набега — словами, у остальных — счётчиком.
 static func progress_text(kind: int, progress: int) -> String:
-	var index := clampi(kind, 0, COUNT - 1)
+	var index := clampi(kind, 0, KINDS - 1)
+	if index == Kind.FINAL:
+		return "злодей ещё жив" if progress <= 0 else "выполнено"
 	if index == Kind.RAID:
 		if progress <= 0:
 			return "идти к форту злодея"

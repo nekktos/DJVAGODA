@@ -95,6 +95,10 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 @export var order_kind: int = -1
 @export var order_progress: int = 0
 @export var orders_done: int = 0
+## Сколько приказов надо сдать до СЛЕДУЮЩЕГО предложения решающего удара.
+## Растёт при провале: погиб по дороге — служи дальше и заслужи снова
+## (GDD раздел 8).
+@export var final_threshold: int = 5
 ## Вожак стороны. У злодея это врождённое, страж становится им по повышению
 ## у NPC на базе (GDD раздел 2.2).
 ##
