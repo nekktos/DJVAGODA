@@ -6,13 +6,14 @@ extends "res://tools/test_base.gd"
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "эконом"
-	expected_host = 12
+	expected_host = 16
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -31,6 +32,7 @@ func _run() -> void:
 		finish()
 		return
 
+	_test_treasury(me)
 	await _test_harvest(me, RES.Kind.WOOD, "рубка дерева")
 	await _test_harvest(me, RES.Kind.STONE, "добыча камня")
 	await _test_capacity(me)
@@ -207,3 +209,33 @@ func _run_client(me: Node3D) -> void:
 	await get_tree().create_timer(1.5).timeout
 	var wood: int = me.stock.get_amount(RES.Kind.WOOD)
 	check(wood < 9999, "подделка ресурсов затёрта хостом", "дерева стало %d" % wood)
+
+
+## Запас принадлежит ФРАКЦИИ, а не персонажу (Этап 10, шаг 0).
+##
+## Проверяем не «работает как раньше» — это и так показали остальные проверки, —
+## а что владелец сменился на самом деле: у персонажа больше нет собственного
+## кошелька, а тот, что он отдаёт, лежит в казне его стороны.
+func _test_treasury(me: Node3D) -> void:
+	check(me.get_node_or_null("Stock") == null, "у персонажа нет своего запаса",
+		"ноды Stock нет")
+
+	var mine: Node = _world.treasury.of(me.faction)
+	check(mine != null and me.stock == mine, "персонаж отдаёт казну своей стороны",
+		FACTIONS.name_of(me.faction))
+
+	# У разных сторон казна разная: общий кошелёк на всех был бы хуже, чем
+	# кошелёк на персонаже.
+	var others := 0
+	for faction in FACTIONS.COUNT:
+		if faction != int(me.faction) and _world.treasury.of(faction) != mine:
+			others += 1
+	check(others == FACTIONS.COUNT - 1, "у каждой стороны своя казна",
+		"чужих казн: %d" % others)
+
+	# Трата персонажа уходит из казны фракции, а не из воздуха.
+	var before: int = mine.get_amount(RES.Kind.WOOD)
+	me.stock.spend([5, 0, 0, 0])
+	check(mine.get_amount(RES.Kind.WOOD) == before - 5, "трата уходит из казны стороны",
+		"%d -> %d" % [before, mine.get_amount(RES.Kind.WOOD)])
+	mine.add(RES.Kind.WOOD, 5)

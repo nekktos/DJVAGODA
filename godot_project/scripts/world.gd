@@ -61,6 +61,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var objective: Node3D = $Objective
 @onready var forest: Node3D = $Forest
 @onready var commander: Node3D = $Commander
+@onready var treasury: Node = $Treasury
 
 var strategy_mode := false
 
@@ -219,12 +220,8 @@ func _spawn_player(id: int, wanted_faction: int = 0) -> void:
 		# Сигналы нужны только хосту: и снаряды, и смерть считает он.
 		node.death_reported.connect(_on_player_death)
 		node.projectile_requested.connect(_on_projectile_requested)
-		# Стартовый запас по стороне: у злодея форт и шахта, эльфы живут грабежом.
-		var start := PackedInt32Array(FACTIONS.STARTING_RESOURCES[faction])
-		node.stock.amounts = start
-		# Потолок задаёт сторона: у злодея он растёт от складов, а эльфам и
-		# страже строить нечем (см. FACTIONS.STARTING_CAPACITY).
-		node.stock.capacity = FACTIONS.starting_capacity(faction)
+		# Стартовый запас больше не выдаётся персонажу: он лежит в казне фракции
+		# и разложен там ещё до появления игроков (treasury.gd).
 
 
 ## Выполняется на всех пирах с одними и теми же данными, поэтому имя ноды и

@@ -3,7 +3,6 @@
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/combat/health.gd" id="2_health"]
 [ext_resource type="Script" path="res://scripts/combat/body.gd" id="3_body"]
-[ext_resource type="Script" path="res://scripts/economy/stockpile.gd" id="4_stock"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_body"]
 radius = 0.35
@@ -45,42 +44,36 @@ properties/5/replication_mode = 1
 properties/6/path = NodePath("Body:in_wheelchair")
 properties/6/spawn = true
 properties/6/replication_mode = 1
-properties/7/path = NodePath("Stock:amounts")
+properties/7/path = NodePath(".:squad_formation")
 properties/7/spawn = true
 properties/7/replication_mode = 1
-properties/8/path = NodePath("Stock:capacity")
+properties/8/path = NodePath(".:squad_hold")
 properties/8/spawn = true
 properties/8/replication_mode = 1
-properties/9/path = NodePath(".:squad_formation")
+properties/9/path = NodePath(".:squad_rally")
 properties/9/spawn = true
 properties/9/replication_mode = 1
-properties/10/path = NodePath(".:squad_hold")
+properties/10/path = NodePath(".:squad_rally_yaw")
 properties/10/spawn = true
 properties/10/replication_mode = 1
-properties/11/path = NodePath(".:squad_rally")
+properties/11/path = NodePath(".:sync_buff_left")
 properties/11/spawn = true
 properties/11/replication_mode = 1
-properties/12/path = NodePath(".:squad_rally_yaw")
+properties/12/path = NodePath(".:sync_ability_cd")
 properties/12/spawn = true
 properties/12/replication_mode = 1
-properties/13/path = NodePath(".:sync_buff_left")
+properties/13/path = NodePath(".:gear_tier")
 properties/13/spawn = true
 properties/13/replication_mode = 1
-properties/14/path = NodePath(".:sync_ability_cd")
+properties/14/path = NodePath(".:order_kind")
 properties/14/spawn = true
 properties/14/replication_mode = 1
-properties/15/path = NodePath(".:gear_tier")
+properties/15/path = NodePath(".:order_progress")
 properties/15/spawn = true
 properties/15/replication_mode = 1
-properties/16/path = NodePath(".:order_kind")
+properties/16/path = NodePath(".:orders_done")
 properties/16/spawn = true
 properties/16/replication_mode = 1
-properties/17/path = NodePath(".:order_progress")
-properties/17/spawn = true
-properties/17/replication_mode = 1
-properties/18/path = NodePath(".:orders_done")
-properties/18/spawn = true
-properties/18/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
@@ -115,9 +108,6 @@ script = ExtResource("2_health")
 
 [node name="Body" type="Node" parent="."]
 script = ExtResource("3_body")
-
-[node name="Stock" type="Node" parent="."]
-script = ExtResource("4_stock")
 
 [node name="Sync" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("Repl_player")

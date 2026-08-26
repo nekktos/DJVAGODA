@@ -129,7 +129,16 @@ var _bandage_progress := 0.0
 @onready var _name_tag: Label3D = $NameTag
 @onready var health: Node = $Health
 @onready var body: Node = $Body
-@onready var stock: Node = $Stock
+## Запас ресурсов принадлежит ФРАКЦИИ, а не персонажу (Этап 10, шаг 0,
+## treasury.gd). Свойство оставлено, чтобы весь код, обращавшийся к
+## player.stock, работал без правок: меняется владелец, а не интерфейс.
+var stock: Node:
+	get:
+		var world := get_parent().get_parent() if get_parent() != null else null
+		if world == null:
+			return null
+		var treasury: Node = world.get_node_or_null("Treasury")
+		return treasury.of(faction) if treasury != null else null
 
 var _model: Node3D
 var _anim: AnimationPlayer
