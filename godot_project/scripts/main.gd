@@ -20,6 +20,7 @@ extends Node
 ##   --squadtest     автопроверка отряда и построений (headless)
 ##   --slicetest     автопроверка вертикального среза (headless)
 ##   --consoletest   автопроверка консольных команд (headless)
+##   --foresttest    автопроверка impostor-леса (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -303,6 +304,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--foresttest"):
+		var forest_test: Node = preload("res://tools/forest_test.gd").new()
+		add_child(forest_test)
+		forest_test.start(_world)
+		needs_session = true
 
 	if args.has("--consoletest"):
 		var console: Node = preload("res://tools/console_test.gd").new()

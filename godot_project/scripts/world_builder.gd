@@ -211,18 +211,8 @@ func _build_crossroads() -> void:
 
 func _build_elves(c: Vector2) -> void:
 	var g := _group("ZoneElves")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 3615                                   # фиксированный сид: лес одинаков у всех
-
-	for i in 220:
-		var a := rng.randf() * TAU
-		var r := sqrt(rng.randf()) * (ZONE_HALF - 30.0)
-		if r < 70.0:
-			continue                                  # поляна вокруг поселения
-		var p := c + Vector2(cos(a), sin(a)) * r
-		var th := rng.randf_range(10.0, 20.0)
-		_harvestable(_cylinder(g, Vector3(p.x, th * 0.5, p.y), 1.1, th, "trunk"), RES.Kind.WOOD)
-		_cone(g, Vector3(p.x, th + 5.0, p.y), 5.5, 12.0, "foliage")
+	# Сам лес строит forest.gd: у него impostor-LOD и адресация по индексу.
+	# Здесь остаётся только поселение.
 
 	# Поселение на сваях.
 	for i in 7:

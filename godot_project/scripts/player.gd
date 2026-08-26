@@ -743,15 +743,23 @@ func _server_try_harvest(aim: Vector3) -> bool:
 		return false
 
 	var kind: int = int(target.get_meta("resource", RES.Kind.WOOD))
-	var left: int = int(target.get_meta("hits_left", 1))
 	var taken: int = stock.add(kind, RES.YIELD_PER_HIT)
-	left -= 1
-	target.set_meta("hits_left", left)
-
 	harvested.rpc(hit.get("position", origin), kind, taken)
+
+	# Дерево из forest.gd адресуется индексом, а не путём ноды: объёмное дерево
+	# существует только пока рядом кто-то есть, и путь неустойчив.
+	var tree: int = int(target.get_meta("tree", -1))
+	if tree >= 0:
+		var forest: Node = get_parent().get_parent().forest
+		if forest.hit_tree(tree) <= 0:
+			forest.fell_tree.rpc(tree)
+		return true
+
+	var left: int = int(target.get_meta("hits_left", 1)) - 1
+	target.set_meta("hits_left", left)
 	if left <= 0:
-		# Источник исчерпан. Убираем его у всех: геометрия мира строится
-		# одинаково на каждом пире, поэтому путь ноды совпадает.
+		# Источник исчерпан. Убираем его у всех: остальная геометрия мира
+		# строится одинаково на каждом пире, поэтому путь ноды совпадает.
 		deplete_source.rpc(target.get_path())
 	return true
 

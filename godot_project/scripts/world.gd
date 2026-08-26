@@ -57,6 +57,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var route_controller: Node3D = $RouteController
 @onready var mine: Node3D = $Mine
 @onready var objective: Node3D = $Objective
+@onready var forest: Node3D = $Forest
 
 var strategy_mode := false
 
@@ -81,6 +82,14 @@ func _ready() -> void:
 
 	var builder := WORLD_BUILDER.new()
 	builder.build(_terrain)
+	# Лес зоны эльфов строит отдельная система: у него impostor-LOD и своя
+	# адресация деревьев по индексу (GDD раздел 5, forest.gd).
+	forest.build(
+		WORLD_BUILDER.ZONE_CENTERS[WORLD_BUILDER.Zone.ELVES],
+		WORLD_BUILDER.ZONE_HALF - 30.0,
+		70.0,
+		3615,
+	)
 	build_controller.place_requested.connect(_on_place_requested)
 	route_controller.route_sent.connect(_on_route_sent)
 	mine.position = WORLD_BUILDER.MINE_POS
