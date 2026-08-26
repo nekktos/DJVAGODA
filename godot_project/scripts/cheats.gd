@@ -30,6 +30,8 @@ const HELP := """Команды (выполняет хост):
   tp <x> <z>                    телепорт
   goto villain|elves|guard|mine|palace|trader|commander  телепорт к точке
   order done                    засчитать текущий приказ стражи целиком
+  save                          сохранить мир прямо сейчас
+  load                          перечитать мир из сохранения
   kill                          убить себя
   who                           кто в сессии и за кого играет
   help                          этот список"""
@@ -71,6 +73,10 @@ static func execute(world: Node3D, player: Node3D, line: String) -> String:
 			var on: bool = not bool(player.body.in_wheelchair)
 			var ok: bool = player.body.set_wheelchair(on)
 			return "коляска: %s" % ("сел" if on and ok else ("встал" if ok else "нельзя — ноги целы"))
+		"save":
+			return _save(world)
+		"load":
+			return _load(world)
 		"order":
 			return _order(player, args)
 		"caravan":
@@ -225,3 +231,16 @@ static func _order(player: Node3D, args: Array) -> String:
 		return "нужно: order done"
 	player.order_progress = ORDERS.target_of(player.order_kind)
 	return "приказ «%s» отмечен выполненным, доложи командиру" % ORDERS.name_of(player.order_kind)
+
+
+## Ручное сохранение и загрузка. По GDD раздел 6 нужны слоты; пока это одна
+## ячейка на мир, а команды дают проверить её, не дожидаясь автосейва.
+static func _save(world: Node3D) -> String:
+	var path: String = world.savegame.save_world()
+	return "мир сохранён: %s" % path if not path.is_empty() else "сохранить не удалось"
+
+
+static func _load(world: Node3D) -> String:
+	if not world.savegame.has_save():
+		return "сохранения нет"
+	return "мир загружен" if world.savegame.load_world() else "загрузить не удалось"

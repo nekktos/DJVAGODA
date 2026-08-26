@@ -27,7 +27,11 @@ extends Node
 ##   --deathtest     автопроверка смерти, респавна и мародёрства (headless)
 ##   --victorytest   автопроверка условий победы и командования (headless)
 ##   --diptest       автопроверка репутации и дипломатии (headless)
+##   --savetest      автопроверка сохранений и профиля игрока (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
+##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
+##   --world=ИМЯ     работать с отдельным файлом мира
+##   --freshworld    не загружать сохранение и не сохраняться (для автопроверок)
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
 ##
@@ -353,6 +357,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--savetest"):
+		var save_test: Node = preload("res://tools/save_test.gd").new()
+		add_child(save_test)
+		save_test.start(_world)
+		needs_session = true
 
 	if args.has("--diptest"):
 		var dip_test: Node = preload("res://tools/diplomacy_test.gd").new()

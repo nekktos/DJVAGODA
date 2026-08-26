@@ -95,6 +95,9 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 @export var order_kind: int = -1
 @export var order_progress: int = 0
 @export var orders_done: int = 0
+## Устойчивый идентификатор игрока, к которому привязан прогресс (Этап 10,
+## шаг 5). Приезжает в пакете спавна, поэтому одинаков на всех пирах.
+var profile_id := ""
 ## Сколько приказов надо сдать до СЛЕДУЮЩЕГО предложения решающего удара.
 ## Растёт при провале: погиб по дороге — служи дальше и заслужи снова
 ## (GDD раздел 8).

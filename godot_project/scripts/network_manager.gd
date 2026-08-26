@@ -50,11 +50,32 @@ var active := false
 ## Сторона, выбранная в меню до подключения. Хост проверит, свободна ли она.
 var chosen_faction := 0
 
+## Устойчивый идентификатор ИГРОКА, а не подключения.
+##
+## ПОЧЕМУ СВОЙ ПРОФИЛЬ, А НЕ STEAM ID. Steam-транспорт в проекте необязателен —
+## локальная игра по прямому IP остаётся основным режимом (GDD раздел 0). Если
+## привязать сохранения к Steam ID, то у игры без Steam сохранений не будет
+## вовсе, а с ним пришлось бы держать две разные схемы идентификации. Свой
+## профиль работает одинаково в обоих транспортах, а Steam ID при желании
+## всегда можно положить в него как значение.
+##
+## Файл лежит в user:// — это папка данных пользователя, она переживает
+## переустановку игры и не попадает в репозиторий.
+##
+## ЧЕСТНО ПРО ЗАЩИТУ: клиент присылает свой профиль сам, значит может прислать
+## чужой и забрать чужой прогресс. Для игры на своих это приемлемо; настоящая
+## защита требует аккаунтов и сервера, а их в проекте нет и не планируется
+## (GDD раздел 9 прошлой версии — матчмейкинг отдельная тема).
+const PROFILE_PATH := "user://profile.cfg"
+
+var profile_id := ""
+
 var _connect_timeout_left := 0.0
 var _steam_ready := false
 
 
 func _ready() -> void:
+	_load_profile()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -244,3 +265,38 @@ func _on_server_disconnected() -> void:
 	# Штатное завершение, а не ошибка — в лог движка не пишем.
 	status_changed.emit("Хост закрыл сессию.")
 	leave()
+
+
+## Прочитать профиль, а если его нет — завести. Делается один раз при запуске.
+##
+## Ключ --profile=ИМЯ подменяет профиль, не трогая файл. Он нужен не для читов,
+## а по необходимости: два окна на одной машине делят папку user://, значит и
+## файл профиля, значит без подмены оба игрока считались бы ОДНИМ человеком и
+## тянули бы друг у друга сохранённый прогресс. Так же он нужен автопроверкам.
+func _load_profile() -> void:
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	for arg in args:
+		if arg.begins_with("--profile="):
+			profile_id = arg.substr("--profile=".length())
+			if not profile_id.is_empty():
+				print("[профиль] задан ключом: %s" % profile_id)
+				return
+	var cfg := ConfigFile.new()
+	if cfg.load(PROFILE_PATH) == OK:
+		profile_id = String(cfg.get_value("profile", "id", ""))
+	if profile_id.is_empty():
+		profile_id = _new_profile_id()
+		cfg.set_value("profile", "id", profile_id)
+		cfg.set_value("profile", "created", Time.get_datetime_string_from_system())
+		cfg.save(PROFILE_PATH)
+		print("[профиль] создан новый: %s" % profile_id)
+	else:
+		print("[профиль] %s" % profile_id)
+
+
+## Случайный идентификатор. Не UUID по стандарту — достаточно того, что он
+## уникален на практике и читается глазами в файле сохранения.
+func _new_profile_id() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	return "p%08x%08x" % [rng.randi(), rng.randi()]

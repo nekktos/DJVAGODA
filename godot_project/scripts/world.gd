@@ -75,6 +75,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var commander: Node3D = $Commander
 @onready var treasury: Node = $Treasury
 @onready var diplomacy: Node = $Diplomacy
+@onready var savegame: Node = $Save
 
 var strategy_mode := false
 
@@ -217,12 +218,15 @@ func strategy_height() -> float:
 
 func _on_session_started() -> void:
 	if multiplayer.is_server():
+		# Мир поднимаем ДО игроков: восстановленная казна и репутация должны
+		# существовать к моменту, когда первый персонаж встанет в мир.
+		savegame.load_world()
 		_spawn_guard_barracks()
-		_spawn_player(1, Net.chosen_faction)
+		_spawn_player(1, Net.chosen_faction, Net.profile_id)
 	else:
 		# Клиент сам просит хоста о спавне — к этому моменту его World точно
 		# готов принять реплицированную ноду.
-		_request_spawn.rpc_id(1, Net.chosen_faction)
+		_request_spawn.rpc_id(1, Net.chosen_faction, Net.profile_id)
 
 
 ## Казарма стражи во дворце. Ставится один раз на старте сессии и принадлежит
@@ -253,13 +257,13 @@ func _on_peer_disconnected(id: int) -> void:
 
 
 @rpc("any_peer", "reliable")
-func _request_spawn(wanted_faction: int) -> void:
+func _request_spawn(wanted_faction: int, profile: String) -> void:
 	if not multiplayer.is_server():
 		return
-	_spawn_player(multiplayer.get_remote_sender_id(), wanted_faction)
+	_spawn_player(multiplayer.get_remote_sender_id(), wanted_faction, profile)
 
 
-func _spawn_player(id: int, wanted_faction: int = 0) -> void:
+func _spawn_player(id: int, wanted_faction: int = 0, profile: String = "") -> void:
 	if _players.has_node(str(id)):
 		return
 	var slot := _next_free_slot()
@@ -267,19 +271,27 @@ func _spawn_player(id: int, wanted_faction: int = 0) -> void:
 		push_warning("Сессия заполнена, игроку %d места нет." % id)
 		return
 
-	# Две одинаковые стороны в сессии запрещены (DESIGN_ANSWERS.md, пункт 3).
-	# Занятую заменяем ближайшей свободной и говорим об этом вслух, а не молча.
-	var faction := _assign_faction(wanted_faction)
+	# Вернувшийся игрок садится за СВОЮ прежнюю сторону, а не за выбранную в
+	# меню: прогресс привязан к фракции (GDD раздел 6), и пересадить его значит
+	# отобрать всё нажитое.
+	var asked := wanted_faction
+	var remembered: int = savegame.saved_faction(profile)
+	if remembered >= 0:
+		asked = remembered
+
+	# Свободных слотов у стороны может не остаться — тогда сажаем в ближайшую
+	# свободную и говорим об этом вслух, а не молча.
+	var faction := _assign_faction(asked)
 	if faction < 0:
 		push_warning("Свободных сторон не осталось, игроку %d места нет." % id)
 		return
-	if faction != wanted_faction:
+	if faction != asked:
 		Net.status_changed.emit("Сторона «%s» занята, игрок %d играет за «%s»." % [
-			FACTIONS.name_of(wanted_faction), id, FACTIONS.name_of(faction)
+			FACTIONS.name_of(asked), id, FACTIONS.name_of(faction)
 		])
 
 	print("[world] спавню игрока %d, сторона %s, слот %d" % [id, FACTIONS.name_of(faction), slot])
-	var node := _spawner.spawn({"id": id, "slot": slot, "faction": faction})
+	var node := _spawner.spawn({"id": id, "slot": slot, "faction": faction, "profile": profile})
 	if node != null:
 		# Сигналы нужны только хосту: и снаряды, и смерть считает он.
 		node.death_reported.connect(_on_player_death)
@@ -289,6 +301,9 @@ func _spawn_player(id: int, wanted_faction: int = 0) -> void:
 		node.is_leader = FACTIONS.has_strategy(faction)
 		# Стартовый запас больше не выдаётся персонажу: он лежит в казне фракции
 		# и разложен там ещё до появления игроков (treasury.gd).
+		# Прогресс накатываем ПОСЛЕ выставления роли: сохранение знает и о
+		# командовании, и его решение важнее умолчания по стороне.
+		savegame.restore_player(node)
 
 
 ## Выполняется на всех пирах с одними и теми же данными, поэтому имя ноды и
@@ -298,6 +313,7 @@ func _make_player(data: Dictionary) -> Node:
 	# Имя == peer id: по нему персонаж на всех пирах определяет своего авторитета.
 	player.name = str(data["id"])
 	player.spawn_slot = int(data["slot"])
+	player.profile_id = String(data.get("profile", ""))
 	player.faction = int(data.get("faction", 0))
 	return player
 

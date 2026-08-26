@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/strategy_camera.gd" id="2_strategy"]
@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://scripts/economy/stockpile.gd" id="10_stock"]
 [ext_resource type="Script" path="res://scripts/economy/wallet.gd" id="11_wallet"]
 [ext_resource type="Script" path="res://scripts/diplomacy.gd" id="12_diplomacy"]
+[ext_resource type="Script" path="res://scripts/savegame.gd" id="13_save"]
 
 [sub_resource type="SceneReplicationConfig" id="Repl_objective"]
 properties/0/path = NodePath(".:palace_owner")
@@ -147,6 +148,9 @@ script = ExtResource("7_forest")
 
 [node name="Commander" type="Node3D" parent="."]
 script = ExtResource("8_commander")
+
+[node name="Save" type="Node" parent="."]
+script = ExtResource("13_save")
 
 [node name="Diplomacy" type="Node" parent="."]
 script = ExtResource("12_diplomacy")
