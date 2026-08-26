@@ -80,6 +80,18 @@ signal died_on_server(unit: Node3D)
 
 var owner_id := 1
 var slot := 0
+## Сторона бойца. Раньше «свой-чужой» определялось по ВЛАДЕЛЬЦУ, и это было
+## верно ровно до тех пор, пока на сторону приходился один игрок. Теперь у
+## эльфов и стражи по пять слотов, и отряды двух союзников резали бы друг друга.
+##
+## Гарнизонам ИИ владельца нет вовсе, у них есть только сторона.
+var faction := 0
+## Куда возвращаться, если врага рядом нет. Ноль — значит боец служит игроку и
+## ходит за ним, а не сторожит точку.
+var home := Vector3.ZERO
+## Дальше этого от дома гарнизон не гонится за целью: он обороняет зону, а не
+## воюет по всей карте. У бойцов игрока поводка нет.
+var leash := 0.0
 ## Зверь ли это. Приезжает в пакете спавна и потому одинаков на всех пирах —
 ## реплицировать отдельно не нужно, как owner_id и slot.
 var is_beast := false
@@ -101,6 +113,9 @@ func setup(data: Dictionary) -> void:
 	slot = int(data["slot"])
 	position = data["point"]
 	sync_position = position
+	faction = int(data.get("faction", 0))
+	home = data.get("home", Vector3.ZERO)
+	leash = float(data.get("leash", 0.0))
 	is_beast = bool(data.get("beast", false))
 	if is_beast:
 		health = BEAST_HEALTH
@@ -216,11 +231,20 @@ func _physics_process(delta: float) -> void:
 	var destination: Vector3
 	var facing_target := false
 
+	# Гарнизон не гонится за целью дальше поводка: он обороняет зону, а не воюет
+	# по всей карте. Без этого первый же пробегающий мимо эльф уводил бы весь
+	# гарнизон дворца за собой.
+	if target != null and not _within_leash(target.global_position):
+		target = null
+
 	if target != null and global_position.distance_to(target.global_position) <= ENGAGE_RANGE:
 		destination = target.global_position
 		facing_target = true
 	elif commander != null:
 		destination = _slot_point(commander)
+	elif leash > 0.0:
+		# Врага рядом нет — возвращаемся на пост.
+		destination = home
 	else:
 		destination = global_position
 
@@ -261,6 +285,14 @@ func _physics_process(delta: float) -> void:
 	_play("walk" if sync_moving else "idle")
 
 
+## Внутри ли точка зоны, которую этот боец обороняет. Без поводка (бойцы
+## игрока) верно всегда.
+func _within_leash(point: Vector3) -> bool:
+	if leash <= 0.0:
+		return true
+	return home.distance_to(point) <= leash
+
+
 ## Куда встать по построению. Якорь и разворот берём у командира или у точки,
 ## которую он назначил приказом.
 func _slot_point(commander: Node3D) -> Vector3:
@@ -275,15 +307,20 @@ func _formation() -> int:
 	return int(commander.squad_formation) if commander != null else 0
 
 
+## Командир бойца. У гарнизона ИИ его нет: он стоит дома, а не ходит за кем-то.
 func _commander() -> Node3D:
 	var world := get_parent().get_parent()
 	if world == null:
 		return null
-	return world.get_node_or_null("Players/%d" % owner_id)
+	var boss := world.get_node_or_null("Players/%d" % owner_id)
+	# Командиром считаем только ЖИВОГО своей стороны: погибший вожак не водит
+	# отряд, а чужой не имеет на него права.
+	if boss == null or not ("faction" in boss) or int(boss.faction) != faction:
+		return null
+	return boss
 
 
-## Ближайший враг: чужой игрок, чужой боец или чужой караван.
-## Фракций в коде ещё нет, поэтому «чужой» это «другой владелец».
+## Ближайший враг: игрок, боец или караван ЧУЖОЙ СТОРОНЫ.
 func _find_target() -> Node3D:
 	var best: Node3D = null
 	var best_distance := ENGAGE_RANGE
@@ -295,7 +332,9 @@ func _find_target() -> Node3D:
 		# В Players может лежать не только персонаж, поэтому проверяем, а не верим.
 		if not ("peer_id" in player) or not player.has_method("take_damage"):
 			continue
-		if int(player.peer_id) == owner_id or not player.health.alive:
+		if not ("faction" in player) or int(player.faction) == faction:
+			continue
+		if not player.health.alive:
 			continue
 		var d: float = global_position.distance_to(player.global_position)
 		if d < best_distance:
@@ -305,13 +344,28 @@ func _find_target() -> Node3D:
 	for other in get_parent().get_children():
 		if other == self or not other.has_method("take_damage"):
 			continue
-		if not ("owner_id" in other) or int(other.owner_id) == owner_id:
+		# У каравана стороны нет, поэтому спрашиваем её у мира по владельцу.
+		var other_faction := _faction_of(other)
+		if other_faction < 0 or other_faction == faction:
 			continue
 		var d: float = global_position.distance_to(other.global_position)
 		if d < best_distance:
 			best_distance = d
 			best = other
 	return best
+
+
+## Сторона произвольного объекта в Spawned. У бойцов она своя, у каравана
+## только владелец — его сторону знает мир.
+func _faction_of(node: Node) -> int:
+	if "faction" in node:
+		return int(node.faction)
+	if not ("owner_id" in node):
+		return -1
+	var world := get_parent().get_parent()
+	if world == null or not world.has_method("faction_of"):
+		return -1
+	return int(world.faction_of(int(node.owner_id)))
 
 
 func _strike(target: Node3D) -> void:

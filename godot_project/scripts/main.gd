@@ -28,6 +28,7 @@ extends Node
 ##   --victorytest   автопроверка условий победы и командования (headless)
 ##   --diptest       автопроверка репутации и дипломатии (headless)
 ##   --savetest      автопроверка сохранений и профиля игрока (headless)
+##   --garrisontest  автопроверка гарнизонов свободных сторон (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
 ##   --world=ИМЯ     работать с отдельным файлом мира
@@ -358,6 +359,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--garrisontest"):
+		var garrison_test: Node = preload("res://tools/garrison_test.gd").new()
+		add_child(garrison_test)
+		garrison_test.start(_world)
+		needs_session = true
 
 	if args.has("--savetest"):
 		var save_test: Node = preload("res://tools/save_test.gd").new()

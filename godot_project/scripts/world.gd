@@ -76,6 +76,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var treasury: Node = $Treasury
 @onready var diplomacy: Node = $Diplomacy
 @onready var savegame: Node = $Save
+@onready var garrison: Node = $Garrison
 
 var strategy_mode := false
 
@@ -683,6 +684,7 @@ func spawn_unit(owner_id: int, slot: int, point: Vector3, beast: bool = false) -
 		"slot": slot,
 		"point": point,
 		"beast": beast,
+		"faction": faction_of(owner_id),
 	})
 	if node != null:
 		if beast:
@@ -732,3 +734,27 @@ func players_of(faction: int) -> Array:
 		if "faction" in child and int(child.faction) == faction:
 			found.append(child)
 	return found
+
+
+## Боец гарнизона свободной стороны (Этап 10, шаг 8а).
+##
+## Отличается от бойца игрока двумя вещами: у него нет владельца-пира (сторона
+## задана прямо) и есть ДОМ с поводком — он обороняет зону, а не ходит за
+## командиром.
+func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3, leash: float) -> Node:
+	if not Net.hosting():
+		return null
+	_spawn_counter += 1
+	return _world_spawner.spawn({
+		"type": "unit",
+		"id": _spawn_counter,
+		# Владельца нет: ноль не совпадает ни с одним peer id, поэтому командира
+		# такой боец не найдёт никогда и останется на посту.
+		"owner": 0,
+		"slot": slot,
+		"point": point,
+		"beast": false,
+		"faction": faction,
+		"home": home,
+		"leash": leash,
+	})

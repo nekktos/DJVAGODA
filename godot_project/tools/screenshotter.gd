@@ -76,6 +76,12 @@ func _shots() -> Array:
 			"orders": true,
 		},
 		{
+			"name": "04d_гарнизон_свободной_стороны",
+			"pos": Vector3(-300.0, 6.0, -282.0),
+			"look": Vector3(-300.0, 2.0, -300.0),
+			"garrison": true,
+		},
+		{
 			"name": "05_зона_злодея_форт",
 			"pos": Vector3(-300, 160, 640),
 			"look": Vector3(-300, 20, 260),
@@ -188,6 +194,10 @@ func _run() -> void:
 		if shot.get("capture", false):
 			_stage_capture()
 			await get_tree().create_timer(2.0).timeout
+		if shot.get("garrison", false):
+			# Гарнизон выставляется хостом сам, надо лишь дождаться его проверки
+			# состава сторон.
+			await get_tree().create_timer(5.0).timeout
 		if shot.get("gear_row", false):
 			_stage_gear_row()
 			await get_tree().create_timer(0.6).timeout
