@@ -28,7 +28,8 @@ const HELP := """Команды (выполняет хост):
   caravan                       отправить караван по прямой до шахты
   capture                       мгновенно захватить дворец своей стороной
   tp <x> <z>                    телепорт
-  goto villain|elves|guard|mine|palace   телепорт к точке
+  goto villain|elves|guard|mine|palace|trader|commander  телепорт к точке
+  order done                    засчитать текущий приказ стражи целиком
   kill                          убить себя
   who                           кто в сессии и за кого играет
   help                          этот список"""
@@ -70,6 +71,8 @@ static func execute(world: Node3D, player: Node3D, line: String) -> String:
 			var on: bool = not bool(player.body.in_wheelchair)
 			var ok: bool = player.body.set_wheelchair(on)
 			return "коляска: %s" % ("сел" if on and ok else ("встал" if ok else "нельзя — ноги целы"))
+		"order":
+			return _order(player, args)
 		"caravan":
 			return _caravan(world, player)
 		"capture":
@@ -193,7 +196,7 @@ static func _teleport(player: Node3D, args: Array) -> String:
 
 static func _goto(world: Node3D, player: Node3D, args: Array) -> String:
 	if args.size() < 1:
-		return "нужно: goto villain|elves|guard|mine|palace"
+		return "нужно: goto villain|elves|guard|mine|palace|trader|commander"
 	var where := String(args[0]).to_lower()
 	var point := Vector3.ZERO
 	match where:
@@ -201,7 +204,24 @@ static func _goto(world: Node3D, player: Node3D, args: Array) -> String:
 		"elves": point = FACTIONS.SPAWN[FACTIONS.Kind.ELVES]
 		"guard": point = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
 		"mine": point = world.mine.global_position + Vector3(0.0, 4.0, 34.0)
+		"trader": point = world.trader_position() + Vector3(0.0, 2.0, 4.0)
+		"commander": point = world.commander.POSITION + Vector3(0.0, 2.0, 4.0)
 		"palace": point = world.objective.PALACE + Vector3(0.0, 4.0, 0.0)
 		_: return "не знаю точку «%s»" % where
 	player.teleport.rpc(point + Vector3.UP * 2.0)
 	return "телепорт к «%s»" % where
+
+
+## Досрочно закрыть текущий приказ стражи. Нужен для playtest: ждать 25 секунд
+## удержания или бежать через полкарты в набег ради проверки цикла — трата
+## времени тестировщика, а не проверка механики.
+static func _order(player: Node3D, args: Array) -> String:
+	const ORDERS := preload("res://scripts/orders.gd")
+	if not ("order_kind" in player):
+		return "у этого персонажа нет приказов"
+	if player.order_kind < 0:
+		return "приказа нет — доложись командиру"
+	if args.size() < 1 or String(args[0]).to_lower() != "done":
+		return "нужно: order done"
+	player.order_progress = ORDERS.target_of(player.order_kind)
+	return "приказ «%s» отмечен выполненным, доложи командиру" % ORDERS.name_of(player.order_kind)
