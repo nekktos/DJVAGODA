@@ -64,6 +64,12 @@ func _shots() -> Array:
 			"look": Vector3(-300, 2.0, -272),
 		},
 		{
+			"name": "04b_командир_стражи",
+			"pos": Vector3(276, 8.5, -226),
+			"look": Vector3(270, 7.0, -235),
+			"orders": true,
+		},
+		{
 			"name": "05_зона_злодея_форт",
 			"pos": Vector3(-300, 160, 640),
 			"look": Vector3(-300, 20, 260),
@@ -176,6 +182,9 @@ func _run() -> void:
 		if shot.get("capture", false):
 			_stage_capture()
 			await get_tree().create_timer(2.0).timeout
+		if shot.get("orders", false):
+			_stage_orders()
+			await get_tree().create_timer(0.6).timeout
 		if shot.get("summon", false):
 			_stage_summon()
 			await get_tree().create_timer(1.2).timeout
@@ -350,3 +359,17 @@ func _stage_summon() -> void:
 		me.request_ability(ABILITIES.Kind.SUMMON)
 		me.rotation.y += 0.8
 		await get_tree().physics_frame
+
+
+## Поставить игрока стражем у командира и взять приказ штатным путём.
+## Предыдущий кадр (призыв волка) переводит персонажа в эльфы — возвращаем.
+func _stage_orders() -> void:
+	const FACTIONS := preload("res://scripts/factions.gd")
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.faction = FACTIONS.Kind.GUARD
+	me.teleport.rpc(_world.commander.POSITION + Vector3(0.0, 2.0, 3.0))
+	await get_tree().physics_frame
+	me.request_report()
+	await get_tree().physics_frame

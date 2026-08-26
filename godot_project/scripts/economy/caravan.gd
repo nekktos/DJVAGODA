@@ -27,7 +27,7 @@ const WAYPOINT_REACH := 3.0
 ## Насколько близко надо подъехать к шахте и складу.
 const DOCK_RANGE := 14.0
 
-signal destroyed(point: Vector3, cargo: PackedInt32Array)
+signal destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int)
 
 ## Реплицируемое состояние.
 @export var sync_position: Vector3 = Vector3.ZERO
@@ -186,7 +186,7 @@ func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vec
 		return
 	_alive = false
 	print("[караван] разбит игроком %d, груз высыпан: %s" % [attacker_id, _cargo_text()])
-	destroyed.emit(global_position, cargo)
+	destroyed.emit(global_position, cargo, attacker_id)
 	queue_free()
 
 

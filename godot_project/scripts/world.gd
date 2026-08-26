@@ -60,6 +60,7 @@ signal camera_mode_changed(strategy: bool)
 @onready var mine: Node3D = $Mine
 @onready var objective: Node3D = $Objective
 @onready var forest: Node3D = $Forest
+@onready var commander: Node3D = $Commander
 
 var strategy_mode := false
 
@@ -219,7 +220,11 @@ func _spawn_player(id: int, wanted_faction: int = 0) -> void:
 		node.death_reported.connect(_on_player_death)
 		node.projectile_requested.connect(_on_projectile_requested)
 		# Стартовый запас по стороне: у злодея форт и шахта, эльфы живут грабежом.
-		node.stock.amounts = PackedInt32Array(FACTIONS.STARTING_RESOURCES[faction])
+		var start := PackedInt32Array(FACTIONS.STARTING_RESOURCES[faction])
+		node.stock.amounts = start
+		# Потолок задаёт сторона: у злодея он растёт от складов, а эльфам и
+		# страже строить нечем (см. FACTIONS.STARTING_CAPACITY).
+		node.stock.capacity = FACTIONS.starting_capacity(faction)
 
 
 ## Выполняется на всех пирах с одними и теми же данными, поэтому имя ноды и
@@ -290,6 +295,7 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	objective.report_death(int(player.faction), faction_of(killer_id))
+	commander.report_kill(killer_id, int(player.faction))
 	_spawn_corpse(player)
 	player.set_dead.rpc(true)
 
@@ -449,15 +455,18 @@ func spawn_caravan(route: PackedVector3Array, owner_id: int) -> Node:
 	})
 	if node != null:
 		print("[караван] игрок %d отправил караван, точек в маршруте: %d" % [owner_id, route.size()])
-		node.destroyed.connect(_on_caravan_destroyed)
+		node.destroyed.connect(_on_caravan_destroyed.bind(owner_id))
 	return node
 
 
 ## Разбитый караван высыпает груз на землю: подобрать может любой
 ## (DESIGN_ANSWERS.md, пункт 15).
-func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array) -> void:
+func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int, caravan_owner: int) -> void:
 	if not multiplayer.is_server():
 		return
+	# Приказ стражи «перехватить караван» засчитывается тут же: командир сам
+	# решит, его ли это караван и тот ли игрок его разбил.
+	commander.report_caravan_destroyed(killer_id, faction_of(caravan_owner))
 	var total := 0
 	for value in cargo:
 		total += value
@@ -470,6 +479,14 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array) -> void:
 		"point": point,
 		"contents": cargo,
 	})
+
+
+## Боец погиб. Приказ стражи «проредить войско злодея» засчитывает и бойцов,
+## а не только самого злодея.
+func report_unit_kill(killer_id: int, unit_owner: int) -> void:
+	if not multiplayer.is_server():
+		return
+	commander.report_kill(killer_id, faction_of(unit_owner))
 
 
 ## Караваны игрока, живые в этот момент.

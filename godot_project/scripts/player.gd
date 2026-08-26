@@ -90,6 +90,11 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 ## Уровень снаряжения, куплен у торговца. Ведёт ХОСТ — иначе клиент выписал бы
 ## себе эльфийский клинок бесплатно. Действует на любое оружие в руках.
 @export var gear_tier: int = 0
+## Приказ командира (Этап 9). Ведёт ХОСТ, клиент только показывает.
+## -1 — приказа нет.
+@export var order_kind: int = -1
+@export var order_progress: int = 0
+@export var orders_done: int = 0
 @export var sync_buff_left: float = 0.0
 ## Остаток отката по каждой способности. Ведёт хост, клиент показывает.
 @export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0])
@@ -1315,3 +1320,41 @@ func animation_state() -> Dictionary:
 		"playing": _anim.is_playing(),
 		"looping": anim != null and anim.loop_mode != Animation.LOOP_NONE,
 	}
+
+
+# --- приказы командира (Этап 9) -------------------------------------------
+
+## Игрок стоит у командира? Клиент считает то же самое для подсказки.
+func at_commander() -> bool:
+	var world := get_parent().get_parent()
+	if world == null:
+		return false
+	var commander: Node3D = world.get_node_or_null("Commander")
+	if commander == null:
+		return false
+	return commander.in_range(global_position)
+
+
+func ask_report() -> void:
+	if multiplayer.is_server():
+		request_report()
+	else:
+		request_report.rpc_id(1)
+
+
+## Доклад командиру. Решает ХОСТ: он же проверяет расстояние и платит награду.
+@rpc("any_peer", "reliable")
+func request_report() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _sender_is_owner():
+		push_warning("Пир пытался докладывать чужим персонажем %d" % peer_id)
+		return
+	if not health.alive:
+		return
+	if faction != FACTIONS.Kind.GUARD:
+		return
+	var commander: Node3D = get_parent().get_parent().get_node_or_null("Commander")
+	if commander == null:
+		return
+	commander.report(self)

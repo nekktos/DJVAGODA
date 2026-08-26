@@ -13,6 +13,7 @@ extends RefCounted
 
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 
 enum Kind { VILLAIN, ELVES, GUARD }
 
@@ -60,11 +61,25 @@ const STARTING_RESOURCES := {
 	Kind.GUARD: [120, 120, 200, 120],
 }
 
+## Потолок склада на старте.
+##
+## У злодея он базовый и растёт от построенных складов. Эльфы и стража строить
+## не умеют (CAN_BUILD), поднять потолок им нечем — поэтому он задан сразу.
+## Без этого стража со стартовыми 200 золота при базовом потолке 120 не смогла
+## бы получить НИ ОДНОЙ монеты: свободное место считается как потолок минус
+## текущее, и оно выходило нулевым или отрицательным.
+const STARTING_CAPACITY := [RES.BASE_CAPACITY, 400, 600]
+
+
 const GOALS := [
 	"захватить дворец императора",
 	"жить грабежом караванов и добраться до дворца",
 	"убить злодея и не отдать дворец",
 ]
+
+
+static func starting_capacity(faction: int) -> int:
+	return STARTING_CAPACITY[clampi(faction, 0, COUNT - 1)]
 
 
 static func has_strategy(faction: int) -> bool:

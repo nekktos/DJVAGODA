@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/strategy_camera.gd" id="2_strategy"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/economy/mine.gd" id="5_mine"]
 [ext_resource type="Script" path="res://scripts/objective.gd" id="6_objective"]
 [ext_resource type="Script" path="res://scripts/forest.gd" id="7_forest"]
+[ext_resource type="Script" path="res://scripts/commander.gd" id="8_commander"]
 
 [sub_resource type="SceneReplicationConfig" id="Repl_objective"]
 properties/0/path = NodePath(".:palace_owner")
@@ -90,6 +91,9 @@ replication_interval = 0.5
 
 [node name="Forest" type="Node3D" parent="."]
 script = ExtResource("7_forest")
+
+[node name="Commander" type="Node3D" parent="."]
+script = ExtResource("8_commander")
 
 [node name="Players" type="Node3D" parent="."]
 

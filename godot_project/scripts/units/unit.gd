@@ -335,6 +335,9 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 		return
 	_alive = false
 	print("[отряд] боец игрока %d убит игроком %d" % [owner_id, attacker_id])
+	var world := get_parent().get_parent()
+	if world != null and world.has_method("report_unit_kill"):
+		world.report_unit_kill(attacker_id, owner_id)
 	died_on_server.emit(self)
 	queue_free()
 

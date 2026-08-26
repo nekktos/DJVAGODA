@@ -175,6 +175,52 @@ text = "Снаряжение"
 custom_minimum_size = Vector2(0, 36)
 text = "Закрыть (F)"
 
+[node name="Commander" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="Panel" type="PanelContainer" parent="UI/Commander"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -140.0
+offset_right = 260.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="UI/Commander/Panel"]
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Commander/Panel/VBox"]
+horizontal_alignment = 1
+text = "Командир стражи"
+
+[node name="Order" type="Label" parent="UI/Commander/Panel/VBox"]
+autowrap_mode = 3
+text = "Приказа нет."
+
+[node name="Progress" type="Label" parent="UI/Commander/Panel/VBox"]
+autowrap_mode = 3
+text = ""
+
+[node name="Reward" type="Label" parent="UI/Commander/Panel/VBox"]
+autowrap_mode = 3
+text = ""
+
+[node name="Report" type="Button" parent="UI/Commander/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Доложить"
+
+[node name="Close" type="Button" parent="UI/Commander/Panel/VBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Закрыть (F)"
+
 [node name="Menu" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0

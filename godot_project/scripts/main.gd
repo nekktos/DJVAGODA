@@ -23,6 +23,7 @@ extends Node
 ##   --foresttest    автопроверка impostor-леса (headless)
 ##   --elftest       автопроверка магии поддержки эльфов (headless)
 ##   --tradetest     автопроверка торговли и снаряжения (headless)
+##   --guardtest     автопроверка приказов командира стражи (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --playerprobe   печать состава собранного персонажа и выход (headless)
 ## Их можно передавать как напрямую, так и после "--".
@@ -37,6 +38,7 @@ const RES := preload("res://scripts/economy/resources.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
+const ORDERS := preload("res://scripts/orders.gd")
 
 ## Сколько секунд держится объявление о результате.
 const ANNOUNCE_SECONDS := 7.0
@@ -54,6 +56,7 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _bench: Control = $UI/Bench
 @onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
 @onready var _trader: Control = $UI/Trader
+@onready var _commander_ui: Control = $UI/Commander
 @onready var _announce: Label = $UI/Hud/Announce
 @onready var _faction_opt: OptionButton = $UI/Menu/Panel/VBox/FactionRow/FactionOpt
 @onready var _console: Control = $UI/Console
@@ -86,6 +89,10 @@ func _ready() -> void:
 	trader.get_node("Bandages").pressed.connect(_on_trade.bind(RES.Trade.BANDAGES))
 	trader.get_node("Gear").pressed.connect(_on_trade.bind(RES.Trade.GEAR))
 	trader.get_node("Close").pressed.connect(_close_trader)
+
+	var commander := $UI/Commander/Panel/VBox
+	commander.get_node("Report").pressed.connect(_on_report)
+	commander.get_node("Close").pressed.connect(_close_commander)
 
 	if not Net.steam_available():
 		_transport_opt.set_item_disabled(1, true)
@@ -134,11 +141,18 @@ func _process(delta: float) -> void:
 					line += "   B — перевязать (стоя на месте)"
 			if FACTIONS.has_abilities(me.faction):
 				line += "\n" + _abilities_hint(me)
+			if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
+				line += "\nприказ: %s — %s" % [
+					ORDERS.name_of(me.order_kind),
+					ORDERS.progress_text(me.order_kind, me.order_progress),
+				]
 			var pile: Node3D = me.loot_nearby()
 			if pile != null:
 				line += "\nF — подобрать груз: %s" % pile.summary()
 			elif me.at_trader():
 				line += "\nF — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
+			elif me.at_commander():
+				line += "\nF — командир: %s" % _order_hint(me)
 			elif me.at_workbench():
 				line += "\nF — верстак: протезы и коляска"
 		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню"
@@ -183,6 +197,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			me.ask_collect_loot()
 		elif me != null and (me.at_trader() or _trader.visible):
 			_toggle_trader()
+		elif me != null and (me.at_commander() or _commander_ui.visible):
+			_toggle_commander()
 		else:
 			_toggle_bench()
 		get_viewport().set_input_as_handled()
@@ -319,6 +335,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--guardtest"):
+		var guard_test: Node = preload("res://tools/guard_test.gd").new()
+		add_child(guard_test)
+		guard_test.start(_world)
+		needs_session = true
 
 	if args.has("--tradetest"):
 		var trade_test: Node = preload("res://tools/trade_test.gd").new()
@@ -693,3 +715,79 @@ func _on_trade(what: int) -> void:
 	await get_tree().create_timer(0.25).timeout
 	if _trader.visible and is_instance_valid(me):
 		_refresh_trader(me)
+
+
+# --- командир стражи (Этап 9) ---------------------------------------------
+
+func _toggle_commander() -> void:
+	if _commander_ui.visible:
+		_close_commander()
+		return
+	var me: Node3D = _world.local_player()
+	if me == null or not me.at_commander():
+		return
+	_refresh_commander(me)
+	_commander_ui.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _refresh_commander(me: Node3D) -> void:
+	var box := $UI/Commander/Panel/VBox
+	var order: Label = box.get_node("Order")
+	var progress: Label = box.get_node("Progress")
+	var reward: Label = box.get_node("Reward")
+	var report: Button = box.get_node("Report")
+
+	if int(me.faction) != FACTIONS.Kind.GUARD:
+		order.text = "Командир говорит только со стражей дворца."
+		progress.text = ""
+		reward.text = ""
+		report.disabled = true
+		return
+
+	report.disabled = false
+	if me.order_kind < 0:
+		order.text = "Приказа нет. Доложись, и командир его отдаст."
+		progress.text = "выполнено приказов: %d" % me.orders_done
+		reward.text = ""
+		report.text = "Получить приказ"
+		return
+
+	order.text = "Приказ: %s\n%s" % [
+		ORDERS.name_of(me.order_kind), ORDERS.brief_of(me.order_kind)
+	]
+	progress.text = "прогресс: %s   выполнено приказов: %d" % [
+		ORDERS.progress_text(me.order_kind, me.order_progress), me.orders_done
+	]
+	reward.text = "награда: %s" % RES.format_cost(ORDERS.reward_of(me.order_kind))
+	var ready_now: bool = me.order_progress >= ORDERS.target_of(me.order_kind)
+	report.text = "Доложить о выполнении" if ready_now else "Доложить (ещё не готово)"
+
+
+func _close_commander() -> void:
+	_commander_ui.visible = false
+	if Net.active and not _world.strategy_mode:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Доклад исполняет хост, поэтому панель перечитываем следующим кадром.
+func _on_report() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.ask_report()
+	await get_tree().create_timer(0.25).timeout
+	if _commander_ui.visible and is_instance_valid(me):
+		_refresh_commander(me)
+
+
+## Короткая строка про текущий приказ — для подсказки у командира и в HUD.
+func _order_hint(me: Node3D) -> String:
+	if int(me.faction) != FACTIONS.Kind.GUARD:
+		return "он говорит только со стражей"
+	if me.order_kind < 0:
+		return "получить приказ"
+	return "%s (%s)" % [
+		ORDERS.name_of(me.order_kind),
+		ORDERS.progress_text(me.order_kind, me.order_progress),
+	]
