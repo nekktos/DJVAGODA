@@ -13,6 +13,7 @@ extends Node3D
 ##
 
 const FACTIONS := preload("res://scripts/factions.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 
 ## Где стоит дворец и какого радиуса точка захвата.
 const PALACE := Vector3(300.0, 6.0, -300.0)
@@ -120,16 +121,34 @@ func leader_is_down(faction: int) -> bool:
 	return faction >= 0 and faction < FACTIONS.COUNT and leader_down[faction] == 1
 
 
-## Сторона считается сломленной, если её вожак пал ИЛИ за неё никто не играет.
+## Сторона сломлена. Для стражи этого мало — нужны ОБА условия: пал командир И
+## снесена казарма (решение по итогам шага 2). Убить одного человека проще, чем
+## выбить гарнизон, и одного убийства не должно хватать.
 ##
-## Второе — прямое требование GDD раздела 7: пока ИИ фракций нет, пустующая
-## сторона считается условием, выполненным автоматически, иначе победа эльфов
-## недостижима в сессии на двоих.
+## Пустующая сторона считается сломленной автоматически — прямое требование GDD
+## раздела 7: пока ИИ фракций нет, иначе победа эльфов недостижима вдвоём.
 func faction_is_broken(faction: int) -> bool:
-	if leader_is_down(faction):
-		return true
 	var players: Array = get_parent().players_of(faction)
-	return players.is_empty()
+	if players.is_empty():
+		return true
+	if not leader_is_down(faction):
+		return false
+	if faction == FACTIONS.Kind.GUARD:
+		return not _has_barracks(FACTIONS.Kind.GUARD)
+	return true
+
+
+## Есть ли у стороны живая казарма. Недостроенная тоже считается: сорвать
+## стройку — законный способ, но пока она стоит, гарнизон не выбит.
+func _has_barracks(faction: int) -> bool:
+	for node in get_tree().get_nodes_in_group("building"):
+		if not ("faction" in node) or not ("kind" in node):
+			continue
+		if int(node.faction) != faction:
+			continue
+		if int(node.kind) == RES.Building.BARRACKS:
+			return true
+	return false
 
 
 ## Проверить условия победы всех сторон. Только на хосте.

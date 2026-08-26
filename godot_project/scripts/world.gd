@@ -28,6 +28,11 @@ const UNIT_SCENE := preload("res://scenes/Unit.tscn")
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 
+## Казарма стражи стоит во дворце с начала партии: по GDD раздел 2.2 во дворце
+## «уже есть и ресурсы, и здания». Без неё условие поражения стражи («казарма
+## снесена И командир убит») было бы неопределимым — сносить нечего.
+const GUARD_BARRACKS_POS := Vector3(332.0, 6.0, -238.0)
+
 ## На каком расстоянии от своего склада ресурсы «при себе» перекладываются в
 ## него сами. Отдельной кнопки нет намеренно: вклад должен быть очевидным
 ## следствием возвращения на базу, а не ещё одним действием, которое забывают.
@@ -161,12 +166,22 @@ func local_player() -> Node3D:
 	return _players.get_node_or_null(str(multiplayer.get_unique_id()))
 
 
+## Стратегический режим есть у вожаков: у злодея по рождению, у командира
+## стражи по повышению (GDD раздел 2.2).
+##
+## Погибший вожак не возрождается и остаётся НАБЛЮДАТЕЛЕМ: камера у него
+## остаётся, чтобы он мог досмотреть партию, а управлять уже нечем.
 func toggle_camera_mode() -> void:
-	# Стратегический режим есть только у злодея (DESIGN_ANSWERS.md, пункт 19).
 	var player := local_player()
-	if player != null and not player.has_strategy():
+	if player != null and not player.has_strategy() and not is_spectating():
 		return
 	set_strategy_mode(not strategy_mode)
+
+
+## Игрок стал наблюдателем: его вожак пал окончательно и не вернётся.
+func is_spectating() -> bool:
+	var player := local_player()
+	return player != null and player.is_leader and not player.health.alive
 
 
 func set_strategy_mode(on: bool, height: float = -1.0) -> void:
@@ -178,7 +193,8 @@ func set_strategy_mode(on: bool, height: float = -1.0) -> void:
 	strategy_mode = on
 	# Персонаж продолжает симулироваться и реплицироваться в обоих режимах,
 	# но в стратегическом не принимает управление: он стоит и уязвим.
-	player.control_enabled = not on
+	# Мёртвый вожак управления не получает никогда — он наблюдатель.
+	player.control_enabled = not on and player.health.alive
 	if not on:
 		build_controller.set_active(false)
 	if on:
@@ -200,11 +216,21 @@ func strategy_height() -> float:
 
 func _on_session_started() -> void:
 	if multiplayer.is_server():
+		_spawn_guard_barracks()
 		_spawn_player(1, Net.chosen_faction)
 	else:
 		# Клиент сам просит хоста о спавне — к этому моменту его World точно
 		# готов принять реплицированную ноду.
 		_request_spawn.rpc_id(1, Net.chosen_faction)
+
+
+## Казарма стражи во дворце. Ставится один раз на старте сессии и принадлежит
+## СТОРОНЕ, а не игроку: она переживает уход любого конкретного стражника.
+func _spawn_guard_barracks() -> void:
+	for node in get_tree().get_nodes_in_group("building"):
+		if "faction" in node and int(node.faction) == FACTIONS.Kind.GUARD:
+			return
+	spawn_building(RES.Building.BARRACKS, GUARD_BARRACKS_POS, 0, FACTIONS.Kind.GUARD, true)
 
 
 func _on_session_ended() -> void:
@@ -343,6 +369,12 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	if player.is_leader:
 		print("[смерть] вожак %s пал окончательно" % player.name)
 		objective.report_leader_down(int(player.faction), faction_of(killer_id))
+		# Игрок остаётся в сессии наблюдателем: партия не обрывается победой,
+		# и досмотреть её он должен с камеры, а не с собственного трупа.
+		if int(player.peer_id) == 1:
+			player.become_spectator()
+		else:
+			player.become_spectator.rpc_id(int(player.peer_id))
 		return
 
 	await get_tree().create_timer(RESPAWN_DELAY).timeout
@@ -436,21 +468,33 @@ func is_at_trader(point: Vector3) -> bool:
 
 ## Поставить здание. Только на хосте: сюда попадают уже проверенные заявки
 ## (см. player.gd::request_build — там же списывается стоимость).
-func spawn_building(kind: int, point: Vector3, owner_id: int) -> Node:
+func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1, prebuilt := false) -> Node:
 	if not multiplayer.is_server():
 		return null
 	_spawn_counter += 1
+	var side: int = faction if faction >= 0 else faction_of(owner_id)
 	var node := _world_spawner.spawn({
 		"type": "building",
 		"id": _spawn_counter,
 		"kind": kind,
 		"point": point,
 		"owner": owner_id,
+		"faction": side,
+		"prebuilt": prebuilt,
 	})
 	if node != null:
-		print("[стройка] игрок %d ставит %s в %s" % [owner_id, RES.BUILDING_NAMES[kind], point])
+		print("[стройка] %s стороны «%s» в %s" % [RES.BUILDING_NAMES[kind], FACTIONS.name_of(side), point])
 		node.completed.connect(_on_building_completed.bind(node))
+		node.destroyed_on_server.connect(_on_building_destroyed)
 	return node
+
+
+## Постройка разрушена. Для стражи это половина условия поражения (GDD раздел 7):
+## сломлена она, только когда пал командир И снесена казарма.
+func _on_building_destroyed(_building: Node3D) -> void:
+	if not multiplayer.is_server():
+		return
+	objective.check_victories()
 
 
 ## Достроенный склад поднимает владельцу потолок хранения — по GDD это

@@ -11,15 +11,26 @@ extends Node3D
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+const EFFECTS := preload("res://scripts/combat/effects.gd")
+
+## Запас прочности постройки. Разрушить её должно быть заметным делом, а не
+## случайным попаданием: казарма стражи — условие её поражения (GDD раздел 7).
+const MAX_HEALTH := 600.0
+const HITBOX_LAYER := 4
 
 ## Достроено (на любом пире, после репликации).
 signal completed
+## Разрушено. Эмитится ТОЛЬКО на хосте — он решает судьбу постройки.
+signal destroyed_on_server(building: Node3D)
 
 ## Реплицируемое состояние.
 @export var progress: float = 0.0
+@export var health: float = MAX_HEALTH
 
 var kind := 0
 var owner_id := 1
+var faction := 0
 
 var _mesh: MeshInstance3D
 var _done := false
@@ -29,6 +40,11 @@ var _done := false
 func setup(data: Dictionary) -> void:
 	kind = int(data["kind"])
 	owner_id = int(data["owner"])
+	# Постройка принадлежит СТОРОНЕ, а не человеку: казарма стражи во дворце
+	# стоит с начала партии и переживает уход любого конкретного игрока.
+	faction = int(data.get("faction", 0))
+	if bool(data.get("prebuilt", false)):
+		progress = 1.0
 	position = data["point"]
 	rotation.y = float(data.get("yaw", 0.0))
 
@@ -52,7 +68,52 @@ func _ready() -> void:
 	_mesh.mesh = box
 	_mesh.material_override = _material()
 	add_child(_mesh)
+	_build_hit_zone(size)
 	_apply_progress()
+
+
+## Зона попадания на всю коробку: по постройке бьют мечом, стрелой и шаром так
+## же, как по бойцу, отдельного режима осады нет.
+func _build_hit_zone(size: Vector3) -> void:
+	var zone := Area3D.new()
+	zone.set_script(HIT_ZONE)
+	zone.zone = "building"
+	zone.damage_multiplier = 1.0
+	zone.collision_layer = HITBOX_LAYER
+	zone.collision_mask = 0
+	zone.monitoring = false
+	zone.position = Vector3(0.0, size.y * 0.5, 0.0)
+
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	zone.add_child(shape)
+	add_child(zone)
+
+
+## Принять урон. Только на хосте — как и весь остальной урон в игре.
+##
+## Недостроенное здание бьётся так же: это и есть способ сорвать стройку.
+func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
+	if not multiplayer.is_server() or health <= 0.0:
+		return
+	health = maxf(0.0, health - amount)
+	show_hit.rpc(point, dir, amount)
+	if health > 0.0:
+		return
+	print("[стройка] %s игрока %d разрушена игроком %d" % [label(), owner_id, attacker_id])
+	destroyed_on_server.emit(self)
+	queue_free()
+
+
+@rpc("any_peer", "call_local", "unreliable")
+func show_hit(point: Vector3, _dir: Vector3, _amount: float) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != 1:
+		return
+	# Щепки цветом дерева: крови у постройки нет.
+	EFFECTS.chips(get_parent().get_parent(), point, RES.Kind.WOOD)
 
 
 func _material() -> StandardMaterial3D:

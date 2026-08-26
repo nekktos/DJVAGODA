@@ -19,7 +19,7 @@ var _heard: Array[String] = []
 
 func start(world: Node3D) -> void:
 	tag = "победа"
-	expected_host = 16
+	expected_host = 24
 	expected_client = 3
 	_world = world
 	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
@@ -41,7 +41,9 @@ func _run() -> void:
 
 	_test_slots()
 	await _test_promotion(me)
+	await _test_guard_barracks()
 	await _test_villain_death_is_final(me)
+	await _test_guard_broken_needs_both(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -131,3 +133,60 @@ func _run_client(me: Node3D) -> void:
 	# Хост убьёт его по ходу своей половины; ждём и смотрим, что он не воскрес.
 	await get_tree().create_timer(14.0).timeout
 	check(not me.health.alive, "клиент видит, что злодей не вернулся", "мёртв")
+
+
+## У стражи есть казарма во дворце с начала партии, и она разрушаема.
+## Без неё условие «казарма снесена» было бы неопределимым.
+func _test_guard_barracks() -> void:
+	var barracks := _guard_barracks()
+	check(barracks != null, "казарма стражи стоит с начала партии",
+		"найдена" if barracks != null else "нет")
+	if barracks == null:
+		check(false, "казарма достроена", "казармы нет")
+		check(false, "казарма принимает урон", "казармы нет")
+		return
+	check(float(barracks.progress) >= 1.0, "казарма достроена",
+		"прогресс %.0f%%" % (float(barracks.progress) * 100.0))
+
+	var before: float = barracks.health
+	barracks.take_damage(50.0, 1, "building", barracks.global_position, Vector3.FORWARD)
+	await get_tree().physics_frame
+	check(barracks.health < before, "казарма принимает урон",
+		"%.0f -> %.0f" % [before, barracks.health])
+
+
+## Стража сломлена только когда пали ОБА: командир и казарма.
+## Убить одного человека проще, чем выбить гарнизон, и этого не должно хватать.
+func _test_guard_broken_needs_both(me: Node3D) -> void:
+	var objective: Node3D = _world.objective
+	check(not objective.faction_is_broken(FACTIONS.Kind.GUARD),
+		"живая стража не сломлена", "казарма цела, командир жив")
+
+	# Валим командира — казарма ещё стоит, значит сторона держится.
+	me.take_damage(999.0, 1, "torso", me.global_position, Vector3.FORWARD)
+	await get_tree().create_timer(1.0).timeout
+	check(objective.leader_is_down(FACTIONS.Kind.GUARD), "гибель командира засчитана",
+		"leader_down=true")
+	check(not objective.faction_is_broken(FACTIONS.Kind.GUARD),
+		"одной гибели командира мало", "казарма ещё стоит")
+
+	# Теперь сносим казарму — вот теперь сломлена.
+	var barracks := _guard_barracks()
+	if barracks == null:
+		check(false, "казарма нашлась для сноса", "нет")
+		check(false, "стража сломлена после сноса казармы", "нет")
+		return
+	barracks.take_damage(99999.0, 1, "building", barracks.global_position, Vector3.FORWARD)
+	await get_tree().create_timer(0.5).timeout
+	check(_guard_barracks() == null, "казарма нашлась для сноса", "снесена")
+	check(objective.faction_is_broken(FACTIONS.Kind.GUARD),
+		"стража сломлена после сноса казармы", "оба условия выполнены")
+
+
+func _guard_barracks() -> Node3D:
+	for node in get_tree().get_nodes_in_group("building"):
+		if not ("faction" in node) or not ("kind" in node):
+			continue
+		if int(node.faction) == FACTIONS.Kind.GUARD and int(node.kind) == 1:
+			return node
+	return null

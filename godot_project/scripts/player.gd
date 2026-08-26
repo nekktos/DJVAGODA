@@ -1405,3 +1405,21 @@ func request_promotion() -> void:
 	if commander == null:
 		return
 	commander.promote(self)
+
+
+## Перевести владельца этого персонажа в наблюдатели. Присылает ХОСТ тому пиру,
+## чей вожак пал окончательно.
+##
+## Управления больше нет, но камера остаётся: партия после победы продолжается
+## как песочница (GDD раздел 7), и досмотреть её игрок должен сверху, а не с
+## собственного трупа.
+@rpc("any_peer", "call_local", "reliable")
+func become_spectator() -> void:
+	if not _sender_is_host():
+		return
+	if not is_multiplayer_authority():
+		return
+	control_enabled = false
+	var world := get_parent().get_parent()
+	if world != null and world.has_method("set_strategy_mode"):
+		world.set_strategy_mode(true)

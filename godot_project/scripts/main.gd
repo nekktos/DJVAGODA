@@ -114,6 +114,8 @@ func _process(delta: float) -> void:
 	var role := "ХОСТ" if Net.is_host else "КЛИЕНТ"
 	var kind := "Steam" if Net.transport == Net.Transport.STEAM else "IP"
 	var mode := "СТРАТЕГИЯ" if _world.strategy_mode else "ЭКШЕН"
+	if _world.is_spectating():
+		mode = "НАБЛЮДАТЕЛЬ (вожак пал, возврата нет)"
 	var line := "%s (%s)   id: %d   пиров: %d   fps: %d   камера: %s" % [
 		role, kind, Net.local_id(), Net.peer_count(), Engine.get_frames_per_second(), mode
 	]
