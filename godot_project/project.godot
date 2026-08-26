@@ -121,10 +121,14 @@ interact={
 
 [debug]
 
-# Пишем лог в файл: без него тестировщик не может приложить к отчёту ничего,
-# кроме описания словами. Лежит в user://logs/godot.log.
+; Пишем лог в файл: без него тестировщик не может приложить к отчёту ничего,
+; кроме описания словами. Лежит в user://logs/godot.log.
 file_logging/enable_file_logging=true
 
 [rendering]
+
+; Нужно для экспорта под macOS universal и arm64: без ETC2 ASTC Godot
+; отказывается собирать под Apple Silicon вовсе.
+textures/vram_compression/import_etc2_astc=true
 
 renderer/rendering_method="forward_plus"

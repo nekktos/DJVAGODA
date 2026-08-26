@@ -2,7 +2,10 @@
 .godot/
 .import/
 export.cfg
-export_presets.cfg
+
+# export_presets.cfg ОТСЛЕЖИВАЕМ, вопреки шаблону Godot: в нём нет ни ключей
+# подписи, ни паролей — только настройки сборки, и без него собрать те же
+# бинарники на другой машине нельзя.
 *.translation
 .mono/
 data_*/
