@@ -32,7 +32,7 @@ func _run() -> void:
 		finish()
 		return
 
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		# Следим за персонажем ХОСТА: калечит он себя, значит и проверять
 		# репликацию надо на нём, а не на своём целом теле.
 		var host_player: Node3D = _world.get_node("Players").get_node_or_null("1")

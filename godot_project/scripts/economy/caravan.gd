@@ -101,7 +101,7 @@ func _build_hit_zone() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		# Клиент только сглаживает присланное.
 		position = position.lerp(sync_position, clampf(delta * 12.0, 0.0, 1.0))
 		rotation.y = lerp_angle(rotation.y, sync_yaw, clampf(delta * 8.0, 0.0, 1.0))
@@ -180,7 +180,7 @@ func _unload_at_home() -> void:
 
 ## Принять урон. Вызывается ТОЛЬКО хостом — так же, как у персонажей.
 func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
-	if not multiplayer.is_server() or not _alive:
+	if not Net.hosting() or not _alive:
 		return
 	health = maxf(0.0, health - amount)
 	show_hit.rpc(point, dir, amount)

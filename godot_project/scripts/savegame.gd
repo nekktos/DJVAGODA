@@ -64,7 +64,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if not multiplayer.is_server() or not Net.active:
+	if not Net.hosting():
 		return
 	_autosave_t += delta
 	if _autosave_t < AUTOSAVE_INTERVAL:
@@ -81,7 +81,7 @@ func save_path() -> String:
 
 ## Записать состояние мира. Только на хосте. Возвращает путь или пустую строку.
 func save_world() -> String:
-	if not multiplayer.is_server() or _frozen:
+	if not Net.hosting() or _frozen:
 		return ""
 	var world := get_parent()
 	var cfg := ConfigFile.new()
@@ -135,7 +135,7 @@ func save_world() -> String:
 
 ## Восстановить мир из файла. Только на хосте, до появления игроков.
 func load_world() -> bool:
-	if not multiplayer.is_server() or _frozen:
+	if not Net.hosting() or _frozen:
 		return false
 	var cfg := ConfigFile.new()
 	var path := save_path()
@@ -187,7 +187,7 @@ func saved_faction(profile: String) -> int:
 ## Накатить сохранённое состояние на только что заспавненного персонажа.
 ## Только на хосте и только один раз за сессию на профиль.
 func restore_player(player: Node3D) -> bool:
-	if not multiplayer.is_server() or player == null or _frozen:
+	if not Net.hosting() or player == null or _frozen:
 		return false
 	var profile := String(player.profile_id)
 	if profile.is_empty() or _restored.has(profile):

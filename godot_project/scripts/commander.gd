@@ -82,7 +82,7 @@ func in_range(point: Vector3) -> bool:
 # --- логика хоста ----------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	for guard in _guards():
 		_tick_order(guard, delta)
@@ -149,7 +149,7 @@ func _tick_raid(guard: Node3D) -> void:
 
 ## Кто-то что-то убил или разбил. Зовёт мир, командир решает, засчитывать ли.
 func report_kill(killer_id: int, victim_faction: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if victim_faction != FACTIONS.Kind.VILLAIN:
 		return
@@ -163,7 +163,7 @@ func report_kill(killer_id: int, victim_faction: int) -> void:
 ## Решающий удар засчитывается только за ЛИЧНОЕ убийство самого злодея, а не за
 ## любого убитого на его стороне: в этом весь смысл «убей его сам».
 func report_leader_kill(killer_id: int, victim_faction: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if victim_faction != FACTIONS.Kind.VILLAIN:
 		return
@@ -180,7 +180,7 @@ func report_leader_kill(killer_id: int, victim_faction: int) -> void:
 ## Обычные приказы гибель не отменяет: провалить дежурство смертью было бы
 ## наказанием на пустом месте.
 func report_guard_death(guard: Node3D) -> void:
-	if not multiplayer.is_server() or guard == null:
+	if not Net.hosting() or guard == null:
 		return
 	if guard.order_kind != ORDERS.Kind.FINAL:
 		return
@@ -192,7 +192,7 @@ func report_guard_death(guard: Node3D) -> void:
 
 
 func report_caravan_destroyed(killer_id: int, owner_faction: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if owner_faction != FACTIONS.Kind.VILLAIN:
 		return
@@ -206,7 +206,7 @@ func report_caravan_destroyed(killer_id: int, owner_faction: int) -> void:
 ## Доклад командиру. Выдаёт первый приказ, принимает выполненный и платит.
 ## Возвращает текст для лога — панель обновится по реплицированным числам.
 func report(guard: Node3D) -> String:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return ""
 	if not in_range(guard.global_position):
 		return ""
@@ -309,7 +309,7 @@ func can_promote(guard: Node3D) -> bool:
 ## Вместе с командованием страж получает стратегический режим, стройку и наём
 ## (GDD раздел 2.2) — и окончательную смерть: командир не возрождается.
 func promote(guard: Node3D) -> String:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return ""
 	if not in_range(guard.global_position):
 		return ""

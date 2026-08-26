@@ -39,7 +39,7 @@ func setup(data: Dictionary) -> void:
 
 func _ready() -> void:
 	_build_mesh()
-	if multiplayer.is_server():
+	if Net.hosting():
 		_collect_exclusions()
 
 
@@ -73,7 +73,7 @@ func _collect_exclusions() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		# Клиент только сглаживает присланную позицию.
 		position = position.lerp(sync_position, clampf(delta * 20.0, 0.0, 1.0))
 		_face_travel()

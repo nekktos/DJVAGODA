@@ -192,7 +192,7 @@ func _ready() -> void:
 	body.limb_severed.connect(_on_limb_severed)
 	body.state_changed.connect(_refresh_posture)
 
-	if multiplayer.is_server():
+	if Net.hosting():
 		health.died.connect(_on_died_on_server)
 
 
@@ -260,7 +260,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		_server_cooldown = maxf(0.0, _server_cooldown - delta)
 		_tick_abilities(delta)
 
@@ -410,7 +410,7 @@ func _update_attack(delta: float) -> void:
 	# случится только когда его подтвердит хост.
 	# Хост бьёт напрямую: rpc_id самому себе Godot запрещает, а делать RPC
 	# call_local ради этого нельзя — тогда удар исполнялся бы и на клиенте.
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_attack(sync_weapon, aim_origin(), aim_direction())
 	else:
 		request_attack.rpc_id(1, sync_weapon, aim_origin(), aim_direction())
@@ -486,7 +486,7 @@ func _update_abilities() -> void:
 	if not FACTIONS.allows_ability(faction, wanted) or not ability_ready(wanted):
 		return
 
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_ability(wanted)
 	else:
 		request_ability.rpc_id(1, wanted)
@@ -495,7 +495,7 @@ func _update_abilities() -> void:
 ## Заявка на способность. Проверяет и исполняет ХОСТ — как и урон.
 @rpc("any_peer", "reliable")
 func request_ability(kind: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		push_warning("Пир пытался колдовать чужим персонажем %d" % peer_id)
@@ -614,7 +614,7 @@ func _update_bandage(delta: float, inp: Dictionary) -> void:
 	if _bandage_progress < body.BANDAGE_TIME:
 		return
 	_bandage_progress = 0.0
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_bandage()
 	else:
 		request_bandage.rpc_id(1)
@@ -628,7 +628,7 @@ func bandage_progress() -> float:
 
 @rpc("any_peer", "reliable")
 func request_bandage() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		return
@@ -638,7 +638,7 @@ func request_bandage() -> void:
 ## Заявка на удар. Исполняется ТОЛЬКО на хосте.
 @rpc("any_peer", "reliable")
 func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 
 	var sender := multiplayer.get_remote_sender_id()
@@ -714,7 +714,7 @@ func _server_swing_sword(aim: Vector3) -> void:
 
 ## Принять урон. Вызывается ТОЛЬКО на хосте (из оружия или снаряда).
 func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	var dealt: float = health.apply_damage(amount, attacker_id)
 	if dealt <= 0.0:
@@ -864,14 +864,14 @@ func at_workbench() -> bool:
 
 
 func ask_prosthetic(new_tier: int) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_prosthetic(new_tier)
 	else:
 		request_prosthetic.rpc_id(1, new_tier)
 
 
 func ask_wheelchair(on: bool) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_wheelchair(on)
 	else:
 		request_wheelchair.rpc_id(1, on)
@@ -883,7 +883,7 @@ func ask_wheelchair(on: bool) -> void:
 ## мастерский стоят золота и железа. Цена — за комплект, а не за конечность.
 @rpc("any_peer", "reliable")
 func request_prosthetic(new_tier: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		return
@@ -918,7 +918,7 @@ func request_prosthetic(new_tier: int) -> void:
 
 @rpc("any_peer", "reliable")
 func request_wheelchair(on: bool) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		return
@@ -982,7 +982,7 @@ func bandage_cost() -> Array:
 
 
 func ask_trade(what: int) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_trade(what)
 	else:
 		request_trade.rpc_id(1, what)
@@ -991,7 +991,7 @@ func ask_trade(what: int) -> void:
 ## Покупка у торговца. Считает и списывает ХОСТ.
 @rpc("any_peer", "reliable")
 func request_trade(what: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		push_warning("Пир пытался торговать чужим персонажем %d" % peer_id)
@@ -1099,7 +1099,7 @@ const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 
 
 func ask_build(building_kind: int, point: Vector3) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_build(building_kind, point)
 	else:
 		request_build.rpc_id(1, building_kind, point)
@@ -1109,7 +1109,7 @@ func ask_build(building_kind: int, point: Vector3) -> void:
 ## у клиента — только подсказка, доверять ему нельзя.
 @rpc("any_peer", "reliable")
 func request_build(building_kind: int, point: Vector3) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner() or not health.alive:
 		return
@@ -1139,7 +1139,7 @@ const ROUTE_BOUND := 640.0
 
 
 func ask_send_caravan(points: PackedVector3Array) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_send_caravan(points)
 	else:
 		request_send_caravan.rpc_id(1, points)
@@ -1150,7 +1150,7 @@ func ask_send_caravan(points: PackedVector3Array) -> void:
 ## между ними (GDD раздел 8.2).
 @rpc("any_peer", "reliable")
 func request_send_caravan(points: PackedVector3Array) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner() or not health.alive:
 		return
@@ -1177,7 +1177,7 @@ func request_send_caravan(points: PackedVector3Array) -> void:
 
 
 func ask_collect_loot() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_collect_loot()
 	else:
 		request_collect_loot.rpc_id(1)
@@ -1186,7 +1186,7 @@ func ask_collect_loot() -> void:
 ## Подобрать ближайшую кучу. Расстояние проверяет хост, а не клиент.
 @rpc("any_peer", "reliable")
 func request_collect_loot() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner() or not health.alive:
 		return
@@ -1223,28 +1223,28 @@ func squad_facing() -> float:
 
 
 func ask_formation(kind: int) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_formation(kind)
 	else:
 		request_formation.rpc_id(1, kind)
 
 
 func ask_squad_move(point: Vector3) -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_squad_move(point)
 	else:
 		request_squad_move.rpc_id(1, point)
 
 
 func ask_squad_follow() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_squad_follow()
 	else:
 		request_squad_follow.rpc_id(1)
 
 
 func ask_train_unit() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_train_unit()
 	else:
 		request_train_unit.rpc_id(1)
@@ -1252,7 +1252,7 @@ func ask_train_unit() -> void:
 
 @rpc("any_peer", "reliable")
 func request_formation(kind: int) -> void:
-	if not multiplayer.is_server() or not _sender_is_owner():
+	if not Net.hosting() or not _sender_is_owner():
 		return
 	squad_formation = clampi(kind, 0, FORMATIONS.NAMES.size() - 1)
 
@@ -1261,7 +1261,7 @@ func request_formation(kind: int) -> void:
 ## пришёл лицом вперёд, а не спиной.
 @rpc("any_peer", "reliable")
 func request_squad_move(point: Vector3) -> void:
-	if not multiplayer.is_server() or not _sender_is_owner():
+	if not Net.hosting() or not _sender_is_owner():
 		return
 	if absf(point.x) > ROUTE_BOUND or absf(point.z) > ROUTE_BOUND:
 		return
@@ -1276,7 +1276,7 @@ func request_squad_move(point: Vector3) -> void:
 
 @rpc("any_peer", "reliable")
 func request_squad_follow() -> void:
-	if not multiplayer.is_server() or not _sender_is_owner():
+	if not Net.hosting() or not _sender_is_owner():
 		return
 	squad_hold = false
 
@@ -1284,7 +1284,7 @@ func request_squad_follow() -> void:
 ## Нанять мечника. Нужна достроенная казарма и ресурсы (Этап 4).
 @rpc("any_peer", "reliable")
 func request_train_unit() -> void:
-	if not multiplayer.is_server() or not _sender_is_owner():
+	if not Net.hosting() or not _sender_is_owner():
 		return
 	if not health.alive:
 		return
@@ -1347,7 +1347,7 @@ func ask_cheat(line: String) -> void:
 	if not OS.is_debug_build():
 		cheat_reply.emit("консоль доступна только в отладочной сборке")
 		return
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_cheat(line)
 	else:
 		request_cheat.rpc_id(1, line)
@@ -1357,7 +1357,7 @@ func ask_cheat(line: String) -> void:
 ## репликация, а спавн юнита на клиенте другие пиры бы не увидели.
 @rpc("any_peer", "reliable")
 func request_cheat(line: String) -> void:
-	if not multiplayer.is_server() or not OS.is_debug_build():
+	if not Net.hosting() or not OS.is_debug_build():
 		return
 	if not _sender_is_owner():
 		return
@@ -1403,7 +1403,7 @@ func at_commander() -> bool:
 
 
 func ask_report() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_report()
 	else:
 		request_report.rpc_id(1)
@@ -1412,7 +1412,7 @@ func ask_report() -> void:
 ## Доклад командиру. Решает ХОСТ: он же проверяет расстояние и платит награду.
 @rpc("any_peer", "reliable")
 func request_report() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		push_warning("Пир пытался докладывать чужим персонажем %d" % peer_id)
@@ -1428,7 +1428,7 @@ func request_report() -> void:
 
 
 func ask_promotion() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_promotion()
 	else:
 		request_promotion.rpc_id(1)
@@ -1438,7 +1438,7 @@ func ask_promotion() -> void:
 ## то, что живого командира сейчас нет.
 @rpc("any_peer", "reliable")
 func request_promotion() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner():
 		push_warning("Пир пытался принять командование чужим персонажем %d" % peer_id)
@@ -1489,7 +1489,7 @@ func truce_target() -> Node3D:
 
 
 func ask_truce() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		request_truce()
 	else:
 		request_truce.rpc_id(1)
@@ -1501,7 +1501,7 @@ func ask_truce() -> void:
 ## согласие. Так жест остаётся жестом, а не превращается в переговоры с UI.
 @rpc("any_peer", "reliable")
 func request_truce() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if not _sender_is_owner() or not health.alive:
 		return

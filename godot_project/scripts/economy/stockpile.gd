@@ -43,7 +43,7 @@ func can_afford(cost: Array) -> bool:
 
 ## Списать стоимость. Только на хосте. false, если не хватило.
 func spend(cost: Array) -> bool:
-	if not multiplayer.is_server() or not can_afford(cost):
+	if not Net.hosting() or not can_afford(cost):
 		return false
 	var copy := amounts.duplicate()
 	for i in RES.COUNT:
@@ -55,7 +55,7 @@ func spend(cost: Array) -> bool:
 
 ## Добавить добытое. Только на хосте. Возвращает, сколько влезло.
 func add(kind: int, value: int) -> int:
-	if not multiplayer.is_server() or kind < 0 or kind >= RES.COUNT or value <= 0:
+	if not Net.hosting() or kind < 0 or kind >= RES.COUNT or value <= 0:
 		return 0
 	var copy := amounts.duplicate()
 	var room: int = maxi(0, capacity - copy[kind])
@@ -68,7 +68,7 @@ func add(kind: int, value: int) -> int:
 
 ## Поднять потолок хранения. Только на хосте.
 func raise_capacity(bonus: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	capacity += bonus
 	changed.emit()
@@ -85,7 +85,7 @@ func summary() -> String:
 ## реально сняли. Нужен кошельку (wallet.gd), который тратит из двух запасов
 ## по очереди и потому не может пользоваться spend() с полной стоимостью.
 func take(kind: int, value: int) -> int:
-	if not multiplayer.is_server() or kind < 0 or kind >= RES.COUNT or value <= 0:
+	if not Net.hosting() or kind < 0 or kind >= RES.COUNT or value <= 0:
 		return 0
 	var copy := amounts.duplicate()
 	var taken: int = mini(copy[kind], value)

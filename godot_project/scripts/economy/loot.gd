@@ -45,7 +45,7 @@ func _ready() -> void:
 	mesh.position = Vector3(0.0, 0.45, 0.0)
 	add_child(mesh)
 
-	if multiplayer.is_server():
+	if Net.hosting():
 		get_tree().create_timer(LIFETIME).timeout.connect(func() -> void:
 			if is_instance_valid(self):
 				queue_free()
@@ -54,7 +54,7 @@ func _ready() -> void:
 
 ## Отдать содержимое подошедшему. Только на хосте.
 func collect(player: Node3D) -> int:
-	if not multiplayer.is_server() or _taken or player == null:
+	if not Net.hosting() or _taken or player == null:
 		return 0
 	if global_position.distance_to(player.global_position) > PICKUP_RANGE:
 		return 0

@@ -39,7 +39,7 @@ func _run() -> void:
 	# Свой старт каждая сторона проверяет РАНО — до того, как хост начнёт
 	# растаскивать всех по карте ради теста захвата.
 	_test_own_faction(me)
-	if multiplayer.is_server():
+	if Net.hosting():
 		# Ждём, пока подтянутся все пиры и успеют проверить свой старт.
 		await get_tree().create_timer(6.0).timeout
 		await _test_host_side(me)

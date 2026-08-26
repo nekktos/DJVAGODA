@@ -34,7 +34,7 @@ func _run() -> void:
 		finish()
 		return
 
-	if multiplayer.is_server():
+	if Net.hosting():
 		await _run_host(mine, other)
 	else:
 		await _run_client(mine, other)

@@ -66,7 +66,7 @@ func _process(delta: float) -> void:
 	if values != _seen:
 		_seen = values.duplicate()
 		changed.emit()
-	if multiplayer.is_server():
+	if Net.hosting():
 		_drift(delta)
 
 
@@ -90,7 +90,7 @@ func value_of(a: int, b: int) -> float:
 
 ## Сдвинуть отношение. Только на хосте. Положительное — теплеет.
 func shift(a: int, b: int, delta: float) -> void:
-	if not multiplayer.is_server() or a == b:
+	if not Net.hosting() or a == b:
 		return
 	var index := pair_index(a, b)
 	var copy := values.duplicate()
@@ -221,7 +221,7 @@ var _offers := {}
 
 ## Предложить перемирие другой стороне. Только на хосте.
 func offer_truce(from_faction: int, to_faction: int) -> String:
-	if not multiplayer.is_server() or from_faction == to_faction:
+	if not Net.hosting() or from_faction == to_faction:
 		return ""
 	# Встречное предложение той же пары считается согласием: не нужен отдельный
 	# «принять» — достаточно, чтобы оба сделали шаг навстречу.

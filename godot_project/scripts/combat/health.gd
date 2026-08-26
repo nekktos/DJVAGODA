@@ -43,7 +43,7 @@ func _process(_delta: float) -> void:
 ## Нанести урон. Вызывается ТОЛЬКО на хосте.
 ## Возвращает фактически снятое здоровье.
 func apply_damage(amount: float, killer_id: int) -> float:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		push_error("apply_damage вызван не на хосте — урон считает только хост")
 		return 0.0
 	if not alive or amount <= 0.0:
@@ -61,7 +61,7 @@ func apply_damage(amount: float, killer_id: int) -> float:
 
 ## Полное восстановление при респавне. Только на хосте.
 func revive() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	current = MAX_HEALTH
 	_last_seen = current

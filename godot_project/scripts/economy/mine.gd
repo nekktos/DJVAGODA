@@ -27,7 +27,7 @@ var _fraction := 0.0
 
 
 func _process(delta: float) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_fraction += RATE_PER_SECOND * delta
 	if _fraction < 1.0:
@@ -45,7 +45,7 @@ func _process(delta: float) -> void:
 ## Возвращает то, что реально удалось забрать.
 func take(limit: int) -> PackedInt32Array:
 	var taken := PackedInt32Array([0, 0, 0, 0])
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return taken
 	var copy := stored.duplicate()
 	for kind in PRODUCES:

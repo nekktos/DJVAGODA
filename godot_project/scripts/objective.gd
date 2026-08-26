@@ -57,7 +57,7 @@ func _process(delta: float) -> void:
 	# Объявление идёт ТОЛЬКО по RPC. Раньше здесь дублировалась ещё и реакция на
 	# смену реплицированного владельца, и клиенты получали баннер дважды.
 	_seen_owner = palace_owner
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_server_tick(delta)
 
@@ -104,7 +104,7 @@ func _capture(faction: int) -> void:
 
 ## Вожак пал. Зовёт мир, когда окончательно умирает злодей или командир стражи.
 func report_leader_down(faction: int, killer_faction: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	if faction < 0 or faction >= FACTIONS.COUNT or leader_down[faction] == 1:
 		return
@@ -157,7 +157,7 @@ func _has_barracks(faction: int) -> bool:
 ## сессия живёт как песочница — злодей после захвата дворца может добивать
 ## эльфов, и наоборот.
 func check_victories() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_maybe_declare(FACTIONS.Kind.VILLAIN, palace_owner == FACTIONS.Kind.VILLAIN)
 	_maybe_declare(FACTIONS.Kind.GUARD, leader_is_down(FACTIONS.Kind.VILLAIN))

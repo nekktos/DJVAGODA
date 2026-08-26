@@ -96,7 +96,7 @@ func _build_hit_zone(size: Vector3) -> void:
 ##
 ## Недостроенное здание бьётся так же: это и есть способ сорвать стройку.
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
-	if not multiplayer.is_server() or health <= 0.0:
+	if not Net.hosting() or health <= 0.0:
 		return
 	health = maxf(0.0, health - amount)
 	show_hit.rpc(point, dir, amount)
@@ -124,7 +124,7 @@ func _material() -> StandardMaterial3D:
 
 
 func _process(delta: float) -> void:
-	if multiplayer.is_server() and progress < 1.0:
+	if Net.hosting() and progress < 1.0:
 		progress = minf(1.0, progress + delta / float(RES.BUILD_TIME[kind]))
 	_apply_progress()
 	if progress >= 1.0 and not _done:

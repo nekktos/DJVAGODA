@@ -300,3 +300,21 @@ func _new_profile_id() -> String:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	return "p%08x%08x" % [rng.randi(), rng.randi()]
+
+
+## Мы хост ПРЯМО СЕЙЧАС, с живым сетевым пиром.
+##
+## Отличается от multiplayer.is_server() тем, что не ругается в лог, когда пира
+## нет вовсе. А нет его в двух совершенно обычных случаях: до подключения (сцена
+## мира живёт с самого старта) и после разрыва сессии.
+##
+## Без этой проверки каждый кадр в лог падала строка «No multiplayer peer is
+## assigned» — в одном прогоне автопроверки набралось 3794 штуки, и они
+## маскировали настоящие ошибки.
+func hosting() -> bool:
+	return multiplayer.multiplayer_peer != null and multiplayer.is_server()
+
+
+## Симметричная проверка для клиентских веток.
+func joined() -> bool:
+	return multiplayer.multiplayer_peer != null and not multiplayer.is_server()

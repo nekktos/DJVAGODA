@@ -56,7 +56,7 @@ func ran() -> int:
 
 ## Подвести итог и выйти с кодом. Вызывать в конце обеих половин.
 func finish() -> void:
-	var expected: int = expected_host if multiplayer.is_server() else expected_client
+	var expected: int = expected_host if Net.hosting() else expected_client
 	if _ran < expected:
 		_failures += 1
 		print("[%s] ПРОВАЛ: выполнилось проверок %d из %d — часть кода не отработала"

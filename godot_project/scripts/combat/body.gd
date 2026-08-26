@@ -107,7 +107,7 @@ func _process(delta: float) -> void:
 		_seen_eyes = eyes_lost
 		state_changed.emit()
 
-	if multiplayer.is_server():
+	if Net.hosting():
 		_server_tick(delta)
 
 
@@ -216,7 +216,7 @@ func summary() -> String:
 ## Учесть попадание в зону. Вызывается ТОЛЬКО на хосте, из player.take_damage.
 ## Здоровье снимается отдельно: здесь считается только судьба конечности.
 func register_hit(zone: String, amount: float) -> void:
-	if not multiplayer.is_server() or amount <= 0.0:
+	if not Net.hosting() or amount <= 0.0:
 		return
 
 	if zone == "head":
@@ -268,7 +268,7 @@ func _server_tick(delta: float) -> void:
 
 ## Перевязать. Только на хосте. Возвращает true, если бинт израсходован.
 func apply_bandage() -> bool:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return false
 	if not bleeding or bandages <= 0:
 		return false
@@ -280,7 +280,7 @@ func apply_bandage() -> bool:
 
 ## Поставить протез. Только на хосте.
 func grant_prosthetic(limb: int, new_tier: int) -> bool:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return false
 	if limb < 0 or limb >= LIMB_KEYS.size() or not is_severed(limb):
 		return false
@@ -295,7 +295,7 @@ func grant_prosthetic(limb: int, new_tier: int) -> bool:
 
 ## Пересесть в коляску или встать из неё. Только на хосте.
 func set_wheelchair(on: bool) -> bool:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return false
 	# В коляску есть смысл садиться только без рабочих ног.
 	if on and not is_crawling():
@@ -317,7 +317,7 @@ func _set_tier(limb: int, value: int) -> void:
 
 ## Полный сброс при респавне. Только на хосте.
 func reset() -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	severed_mask = 0
 	prosthetics = PackedByteArray([0, 0, 0, 0])

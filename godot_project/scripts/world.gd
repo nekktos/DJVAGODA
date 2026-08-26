@@ -137,7 +137,7 @@ func _process(delta: float) -> void:
 ## Отдельной кнопки нет намеренно: вклад должен быть очевидным следствием
 ## возвращения на базу, а не ещё одним действием, которое забывают нажать.
 func _tick_deposit(delta: float) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_deposit_t += delta
 	if _deposit_t < DEPOSIT_INTERVAL:
@@ -217,7 +217,7 @@ func strategy_height() -> float:
 # --- сессия и спавн --------------------------------------------------------
 
 func _on_session_started() -> void:
-	if multiplayer.is_server():
+	if Net.hosting():
 		# Мир поднимаем ДО игроков: восстановленная казна и репутация должны
 		# существовать к моменту, когда первый персонаж встанет в мир.
 		savegame.load_world()
@@ -249,7 +249,7 @@ func _on_session_ended() -> void:
 
 
 func _on_peer_disconnected(id: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	var node := _players.get_node_or_null(str(id))
 	if node != null:
@@ -258,7 +258,7 @@ func _on_peer_disconnected(id: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _request_spawn(wanted_faction: int, profile: String) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_spawn_player(multiplayer.get_remote_sender_id(), wanted_faction, profile)
 
@@ -354,7 +354,7 @@ func _make_spawned(data: Dictionary) -> Node:
 
 
 func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int, gear: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_spawn_counter += 1
 	_world_spawner.spawn({
@@ -371,7 +371,7 @@ func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_
 
 
 func _on_player_death(player: Node3D, killer_id: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
@@ -447,7 +447,7 @@ func _spawn_corpse(player: Node3D) -> void:
 ## Положить труп в заданной точке. Отдельным методом, потому что этим
 ## пользуются инструменты проверки (tools/screenshotter.gd).
 func place_corpse(point: Vector3, yaw: float, slot: int, severed: int = 0) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	_spawn_counter += 1
 	var corpse := _world_spawner.spawn({
@@ -492,7 +492,7 @@ func is_at_trader(point: Vector3) -> bool:
 ## Поставить здание. Только на хосте: сюда попадают уже проверенные заявки
 ## (см. player.gd::request_build — там же списывается стоимость).
 func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1, prebuilt := false) -> Node:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return null
 	_spawn_counter += 1
 	var side: int = faction if faction >= 0 else faction_of(owner_id)
@@ -515,7 +515,7 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1, pre
 ## Постройка разрушена. Для стражи это половина условия поражения (GDD раздел 7):
 ## сломлена она, только когда пал командир И снесена казарма.
 func _on_building_destroyed(building: Node3D, killer_id: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	objective.check_victories()
 	if building != null and "faction" in building:
@@ -525,7 +525,7 @@ func _on_building_destroyed(building: Node3D, killer_id: int) -> void:
 ## Достроенный склад поднимает владельцу потолок хранения — по GDD это
 ## «главное здание, оно же склад и пункт приёма ресурсов».
 func _on_building_completed(node: Node) -> void:
-	if not multiplayer.is_server() or node == null:
+	if not Net.hosting() or node == null:
 		return
 	if int(node.kind) != RES.Building.STORAGE:
 		return
@@ -590,7 +590,7 @@ func storage_of(owner_id: int) -> Node3D:
 ## Отправить караван. Только на хосте: маршрут сюда попадает уже проверенным
 ## (см. player.gd::request_send_caravan).
 func spawn_caravan(route: PackedVector3Array, owner_id: int) -> Node:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return null
 	_spawn_counter += 1
 	var node := _world_spawner.spawn({
@@ -608,7 +608,7 @@ func spawn_caravan(route: PackedVector3Array, owner_id: int) -> Node:
 ## Разбитый караван высыпает груз на землю: подобрать может любой
 ## (DESIGN_ANSWERS.md, пункт 15).
 func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int, caravan_owner: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	# Приказ стражи «перехватить караван» засчитывается тут же: командир сам
 	# решит, его ли это караван и тот ли игрок его разбил.
@@ -631,7 +631,7 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 ## Боец погиб. Приказ стражи «проредить войско злодея» засчитывает и бойцов,
 ## а не только самого злодея.
 func report_unit_kill(killer_id: int, unit_owner: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	commander.report_kill(killer_id, faction_of(unit_owner))
 
@@ -673,7 +673,7 @@ func units_of(owner_id: int) -> Array:
 ## Нанять бойца. Только на хосте: заявка сюда попадает уже проверенной
 ## (см. player.gd::request_train_unit).
 func spawn_unit(owner_id: int, slot: int, point: Vector3, beast: bool = false) -> Node:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return null
 	_spawn_counter += 1
 	var node := _world_spawner.spawn({

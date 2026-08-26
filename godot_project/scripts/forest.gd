@@ -463,7 +463,7 @@ func _sender_is_host() -> bool:
 
 
 func _on_peer_connected(id: int) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return
 	var felled := felled_indices()
 	if felled.is_empty():

@@ -57,7 +57,7 @@ func can_afford(cost: Array) -> bool:
 ## Списать. Сначала тратим то, что при себе: этот запас всё равно под риском,
 ## глупо беречь его и тратить защищённый.
 func spend(cost: Array) -> bool:
-	if not multiplayer.is_server() or not can_afford(cost):
+	if not Net.hosting() or not can_afford(cost):
 		return false
 	for i in RES.COUNT:
 		var left := int(cost[i])
@@ -76,7 +76,7 @@ func spend(cost: Array) -> bool:
 ## Переложить всё, что при себе, в склад. Только на хосте.
 ## Возвращает, сколько единиц удалось сложить (в склад может не влезть).
 func deposit() -> int:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return 0
 	var moved := 0
 	for i in RES.COUNT:
@@ -93,7 +93,7 @@ func deposit() -> int:
 ## Смерть: всё, что при себе, уходит из кошелька. Возвращает выпавшее, чтобы
 ## мир высыпал это трупом на землю. Только на хосте.
 func drop_carried() -> PackedInt32Array:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		return PackedInt32Array([0, 0, 0, 0])
 	var lost: PackedInt32Array = carried.amounts.duplicate()
 	carried.amounts = PackedInt32Array([0, 0, 0, 0])

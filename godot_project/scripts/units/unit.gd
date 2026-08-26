@@ -189,7 +189,7 @@ func _play(anim_name: String) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not multiplayer.is_server():
+	if not Net.hosting():
 		var t := clampf(delta * 14.0, 0.0, 1.0)
 		global_position = global_position.lerp(sync_position, t)
 		rotation.y = lerp_angle(rotation.y, sync_yaw, t)
@@ -326,7 +326,7 @@ func _strike(target: Node3D) -> void:
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон
 ## (DESIGN_ANSWERS.md, пункт 16).
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3, aoe := false) -> void:
-	if not multiplayer.is_server() or not _alive:
+	if not Net.hosting() or not _alive:
 		return
 	var scaled: float = amount * FORMATIONS.damage_scale(_formation(), aoe)
 	health = maxf(0.0, health - scaled)
