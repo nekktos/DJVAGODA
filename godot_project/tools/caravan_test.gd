@@ -10,13 +10,14 @@ extends "res://tools/test_base.gd"
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 13
+	expected_host = 15
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -39,6 +40,7 @@ func _run() -> void:
 
 	await _test_needs_storage(me)
 	await _build_storage(me)
+	_test_route_goes_around(me)
 	await _test_enter_key(me)
 	await _test_delivery(me)
 	await _test_raid(me)
@@ -152,6 +154,27 @@ func _test_raid(me: Node3D) -> void:
 ##
 ## Это дыра, которую вскрыл живой тестер: все прежние проверки дёргали
 ## request_send_caravan сами и потому не замечали, доходит ли до неё нажатие
+## Нарисованный маршрут прокладывается ПО КАРТЕ, а не по прямой.
+##
+## Точки игрока остаются его решением и все посещаются — меняется только то, как
+## караван идёт между ними. Проверяем длину против прямой: караван, срезающий
+## сквозь гору, дал бы ровно прямую, и отличить его от исправного иначе нельзя.
+func _test_route_goes_around(me: Node3D) -> void:
+	var from: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN]
+	var to: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
+	var drawn := PackedVector3Array([from, to])
+	var walked: PackedVector3Array = _world._walkable_route(drawn)
+
+	check(walked.size() > drawn.size(), "маршрут развернулся в путь по карте",
+		"%d точек из %d нарисованных" % [walked.size(), drawn.size()])
+	var straight: float = from.distance_to(to)
+	var length := 0.0
+	for i in range(1, walked.size()):
+		length += walked[i - 1].distance_to(walked[i])
+	check(length > straight * 1.05, "и он длиннее прямой — значит что-то обходит",
+		"%.0f м против %.0f по прямой" % [length, straight])
+
+
 ## Enter. У тестера маршрут рисовался, а караван не выезжал — и ни одна
 ## автопроверка этого не видела.
 func _test_enter_key(me: Node3D) -> void:

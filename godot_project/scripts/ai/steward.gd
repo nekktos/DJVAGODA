@@ -50,6 +50,10 @@ const BUILDERS_WANTED := 2
 ## должен выигрывать числом там, где человек выигрывает решениями.
 const SQUAD_WANTED := 6
 
+## Больше одного каравана ИИ в пути не держит: у игрока потолок два, и
+## соперник, возящий вдвое больше, выигрывал бы расписанием, а не решениями.
+const CARAVANS_WANTED := 1
+
 ## Где искать место под постройку: кольцами вокруг базы.
 const SPOT_RADII := [26.0, 38.0, 52.0, 68.0]
 const SPOT_ANGLES := 8
@@ -70,6 +74,7 @@ func _process(delta: float) -> void:
 		_hire(faction)
 		_build(faction)
 		_assign_roles(faction)
+		_send_caravan(faction)
 		_train(faction)
 
 
@@ -244,6 +249,28 @@ func _donor_role(have: PackedInt32Array, wanted: PackedInt32Array) -> int:
 			surplus = extra
 			best = role
 	return best
+
+
+## Отправить караван к шахте, если есть куда возвращаться.
+##
+## Батрак-шахтёр носит понемногу и своими ногами; караван возит помногу и по
+## расписанию. Для стороны, которая строится, второе важнее — а раньше ИИ не
+## умел вовсе, и это была единственная незакрытая часть стратегического слоя.
+##
+## Маршрут — самый простой: склад, потом шахта. Игрок рисует его руками и может
+## выбрать длинный путь в обход (GDD 2.3); ИИ такого выбора не делает, за него
+## это решает навигация в `world.spawn_caravan`.
+func _send_caravan(faction: int) -> void:
+	var world := get_parent()
+	var storage := _ready_building(faction, RES.Building.STORAGE)
+	if storage == null:
+		return
+	if world.caravans_of(0).size() >= CARAVANS_WANTED:
+		return
+	if world.mine == null:
+		return
+	var route := PackedVector3Array([storage.global_position, world.mine.global_position])
+	world.spawn_caravan(route, 0, faction)
 
 
 ## Набрать войско. Бойцы безвладельческие: их подберёт `warband.gd` и поведёт в

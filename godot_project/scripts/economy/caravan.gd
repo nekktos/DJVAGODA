@@ -12,6 +12,7 @@ extends Node3D
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 
@@ -37,6 +38,10 @@ signal destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int)
 @export var cargo: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
 
 var owner_id := 1
+## Сторона каравана. Владельца может не быть вовсе — караван ИИ принадлежит
+## СТОРОНЕ, как батраки и гарнизон, — а разгружаться и портить отношения он
+## обязан одинаково с игроцким.
+var faction := 0
 var route: PackedVector3Array = PackedVector3Array()
 
 var _leg := 0
@@ -48,6 +53,7 @@ var _alive := true
 ## Вызывается спавнером на всех пирах с одинаковыми данными.
 func setup(data: Dictionary) -> void:
 	owner_id = int(data["owner"])
+	faction = int(data.get("faction", 0))
 	route = data["route"]
 	position = route[0] if route.size() > 0 else Vector3.ZERO
 	sync_position = position
@@ -142,6 +148,9 @@ func _advance(delta: float, backwards: bool) -> bool:
 	index = clampi(index, 0, route.size() - 1)
 	var target: Vector3 = route[index]
 
+	# Расстояние до точки меряем ПО ГОРИЗОНТАЛИ, а идём в трёх измерениях: точки
+	# маршрута теперь лежат на земле (их даёт навигация), и караван обязан за ней
+	# следовать, а не висеть на высоте, с которой выехал.
 	var flat_target := Vector3(target.x, position.y, target.z)
 	var to_target := flat_target - position
 	if to_target.length() <= WAYPOINT_REACH:
@@ -153,6 +162,8 @@ func _advance(delta: float, backwards: bool) -> bool:
 
 	var dir := to_target.normalized()
 	position += dir * SPEED * delta
+	# Высоту подтягиваем плавно: резкий скачок на спуске выглядит как телепорт.
+	position.y = lerpf(position.y, target.y, clampf(delta * 4.0, 0.0, 1.0))
 	rotation.y = atan2(-dir.x, -dir.z)
 	return false
 
@@ -166,15 +177,22 @@ func _load_at_mine() -> void:
 
 
 func _unload_at_home() -> void:
-	var owner_player := _world().get_node_or_null("Players/%d" % owner_id)
-	if owner_player == null:
+	# Разгружаемся в казну СТОРОНЫ, а не владельцу-персонажу. Искать владельца
+	# среди игроков значит не заметить караван ИИ: у него владельца нет вовсе, и
+	# он привозил груз в никуда — молча, как когда-то батраки и склад ИИ.
+	var treasury: Node = _world().get_node_or_null("Treasury")
+	if treasury == null:
+		return
+	var wallet: Node = treasury.of(faction)
+	if wallet == null:
 		return
 	var delivered := 0
 	for kind in RES.COUNT:
 		# Караван разгружается СРАЗУ В СКЛАД: он для того и едет, а не чтобы
 		# набить карманы игроку (GDD раздел 2.3).
-		delivered += owner_player.stock.add_stored(kind, cargo[kind])
-	print("[караван] доставлено на склад игрока %d: %d единиц" % [owner_id, delivered])
+		delivered += wallet.add_stored(kind, cargo[kind])
+	print("[караван] доставлено стороне «%s»: %d единиц"
+		% [FACTIONS.name_of(faction), delivered])
 	cargo = PackedInt32Array([0, 0, 0, 0])
 
 

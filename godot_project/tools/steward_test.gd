@@ -26,7 +26,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "хозяйство"
-	expected_host = 13
+	expected_host = 16
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -41,6 +41,7 @@ func _run() -> void:
 	_test_only_villain()
 	await _test_hires_and_builds()
 	await _test_roles_follow_need()
+	await _test_sends_caravan()
 	await _test_trains_and_joins_warband()
 	finish()
 
@@ -106,6 +107,37 @@ func _test_roles_follow_need() -> void:
 			break
 	check(seen_builder, "во время стройки часть рук — на стройке", "видели строителя")
 	check(seen_gatherer, "но добыча не оголяется полностью", "видели добытчика")
+
+
+## Возит караваном. Это была последняя незакрытая часть стратегического слоя.
+##
+## Проверяем не только «караван выехал», но и что он ДОВЁЗ: у каравана ИИ нет
+## владельца-персонажа, и разгрузка, искавшая владельца среди игроков, привозила
+## груз в никуда — молча, ровно как когда-то склад ИИ и первые батраки.
+func _test_sends_caravan() -> void:
+	var sent: Node3D = null
+	for i in 45:
+		await get_tree().create_timer(1.0).timeout
+		var mine_caravans: Array = _world.caravans_of(0)
+		if not mine_caravans.is_empty():
+			sent = mine_caravans[0]
+			break
+	check(sent != null, "ИИ отправил караван", "караванов %d" % _world.caravans_of(0).size())
+	if sent == null:
+		return
+	check(int(sent.faction) == FACTIONS.Kind.VILLAIN, "караван принадлежит СТОРОНЕ",
+		FACTIONS.name_of(int(sent.faction)))
+
+	# Разгрузку проверяем НАПРЯМУЮ, а не ждём круга: дорога до шахты и обратно
+	# занимает больше минуты, и набор упирался бы в предел по времени. Сломан был
+	# именно этот код — разгрузка искала владельца среди игроков и у каравана без
+	# владельца привозила груз в никуда.
+	var wallet: Node = _villain_wallet()
+	var before: int = wallet.get_amount(RES.Kind.IRON)
+	sent.cargo = PackedInt32Array([0, 0, 0, 40])
+	sent._unload_at_home()
+	check(wallet.get_amount(RES.Kind.IRON) > before, "и разгружается в казну СТОРОНЫ",
+		"железо %d -> %d" % [before, wallet.get_amount(RES.Kind.IRON)])
 
 
 ## Набирает войско, и оно попадает в общий отряд ИИ — а батраки в него не

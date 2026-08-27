@@ -658,31 +658,64 @@ func storage_of(owner_id: int) -> Node3D:
 
 ## Отправить караван. Только на хосте: маршрут сюда попадает уже проверенным
 ## (см. player.gd::request_send_caravan).
-func spawn_caravan(route: PackedVector3Array, owner_id: int) -> Node:
+func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1) -> Node:
 	if not Net.hosting():
 		return null
 	_spawn_counter += 1
+	var walked := _walkable_route(route)
 	var node := _world_spawner.spawn({
 		"type": "caravan",
 		"id": _spawn_counter,
-		"route": route,
+		"route": walked,
 		"owner": owner_id,
+		"faction": faction if faction >= 0 else faction_of(owner_id),
 	})
 	if node != null:
-		print("[караван] игрок %d отправил караван, точек в маршруте: %d" % [owner_id, route.size()])
-		node.destroyed.connect(_on_caravan_destroyed.bind(owner_id))
+		print("[караван] игрок %d отправил караван, точек в маршруте: %d (по карте %d)"
+			% [owner_id, route.size(), walked.size()])
+		node.destroyed.connect(_on_caravan_destroyed.bind(node.faction))
 	return node
+
+
+## Проложить нарисованный маршрут ПО КАРТЕ.
+##
+## Точки, которые игрок наметил кликами, остаются его решением и все до одной
+## посещаются: короткий путь по открытому месту против длинного в обход — это
+## выбор игрока (GDD 2.3), и отбирать его нельзя. Меняется только то, КАК караван
+## идёт между ними: раньше по прямой, сквозь горы и с постоянной высотой, теперь
+## по навигационной сетке, следуя земле.
+##
+## Если пути между двумя точками нет, оставляем прямой отрезок: пусть лучше
+## упрётся, чем маршрут молча не отправится.
+func _walkable_route(route: PackedVector3Array) -> PackedVector3Array:
+	if route.size() < 2 or not navigation.is_ready():
+		return route
+	var walked := PackedVector3Array()
+	walked.append(route[0])
+	for i in range(1, route.size()):
+		var leg: PackedVector3Array = navigation.path_between(
+			navigation.closest_point(route[i - 1]), navigation.closest_point(route[i]))
+		if leg.size() < 2:
+			walked.append(route[i])
+			continue
+		# Первую точку отрезка пропускаем: это то место, где мы уже стоим.
+		for j in range(1, leg.size()):
+			walked.append(leg[j])
+	return walked
 
 
 ## Разбитый караван высыпает груз на землю: подобрать может любой
 ## (DESIGN_ANSWERS.md, пункт 15).
-func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int, caravan_owner: int) -> void:
+func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int, caravan_faction: int) -> void:
 	if not Net.hosting():
 		return
+	# Сторону каравана берём У НЕГО, а не через владельца: у каравана ИИ владельца
+	# нет, и через faction_of(0) сторона выходила -1 — ни приказ стражи, ни
+	# отношения такой разбитый караван не засчитывали.
 	# Приказ стражи «перехватить караван» засчитывается тут же: командир сам
 	# решит, его ли это караван и тот ли игрок его разбил.
-	commander.report_caravan_destroyed(killer_id, faction_of(caravan_owner))
-	diplomacy.on_caravan_destroyed(faction_of(caravan_owner), faction_of(killer_id))
+	commander.report_caravan_destroyed(killer_id, caravan_faction)
+	diplomacy.on_caravan_destroyed(caravan_faction, faction_of(killer_id))
 	var total := 0
 	for value in cargo:
 		total += value
