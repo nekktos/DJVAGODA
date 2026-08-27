@@ -25,6 +25,7 @@ extends Node
 const FACTIONS := preload("res://scripts/factions.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
+const BUILDER := preload("res://scripts/world_builder.gd")
 
 enum State { HOLD, MARCH, FIGHT, RETURN }
 
@@ -73,6 +74,29 @@ const FRIENDLY_ABOVE := 20.0
 ## глазами по коду не видно.
 const RAID_RANGE := 420.0
 
+## Насколько якорь строя может оторваться от отряда. Дальше он останавливается и
+## ждёт: якорь — это не бегун, а точка сбора, и уходить без бойцов ему незачем.
+## Без ожидания якорь ушёл к цели один, а отряд остался у стены, о которую
+## споткнулся, — и снаружи это выглядело как идущий набег.
+const LAG_LIMIT := 20.0
+
+## Отряд считается застрявшим, если за столько секунд похода его середина не
+## сдвинулась на STUCK_STEP метров. Тогда набег отменяется.
+##
+## Это страховка, а не механика: известные проходы описаны в
+## `world_builder.gd::SORTIE_PATH`. Но бойцы ходят по прямой, карту им никто не
+## объясняет, и застрять они могут о что угодно. Лучше вернуться домой, чем
+## стоять у камня до конца партии.
+## Шаг заведомо меньше того, что отряд проходит между размышлениями на марше
+## (ANCHOR_SPEED × THINK_INTERVAL = 10 м): иначе идущий отряд копил бы секунды
+## застревания просто потому, что порог выбран впритык.
+const STUCK_SECONDS := 24.0
+const STUCK_STEP := 6.0
+
+var _route := {}
+var _stuck_t := {}
+var _last_centre := {}
+
 var _think_t := 0.0
 ## Сторона -> состояние отряда.
 var _state := {}
@@ -99,16 +123,70 @@ func _process(delta: float) -> void:
 func _move_anchors(delta: float) -> void:
 	for faction in _anchor.keys():
 		var here: Vector3 = _anchor[faction]
-		var there: Vector3 = _goal.get(faction, here)
+		var there: Vector3 = _next_point(faction, here)
 		var to := there - here
 		to.y = 0.0
+
+		# Ждём отстающих. Отряд идёт вокруг якоря, и если якорь уйдёт вперёд, они
+		# просто не догонят: скорость у них та же.
+		var centre := _centre_of(faction)
+		if centre.is_finite() and centre.distance_to(here) > LAG_LIMIT:
+			_command(faction, here, to)
+			continue
+
 		var step := ANCHOR_SPEED * delta
 		if to.length() <= step:
 			here = Vector3(there.x, here.y, there.z)
+			_advance_route(faction)
 		else:
 			here += to.normalized() * step
 		_anchor[faction] = here
 		_command(faction, here, to)
+
+
+## Следующая точка маршрута. Пока маршрут не пройден, якорь идёт по нему, а не
+## напрямую к цели: базы стоят за стенами, а прямой путь ведёт в стену.
+func _next_point(faction: int, fallback: Vector3) -> Vector3:
+	var route: Array = _route.get(faction, [])
+	if route.is_empty():
+		return _goal.get(faction, fallback)
+	return route[0]
+
+
+func _advance_route(faction: int) -> void:
+	var route: Array = _route.get(faction, [])
+	if not route.is_empty():
+		route.remove_at(0)
+		_route[faction] = route
+
+
+## Середина отряда. Vector3.INF, если отряда нет.
+func _centre_of(faction: int) -> Vector3:
+	var band := _band(faction)
+	if band.is_empty():
+		return Vector3.INF
+	var sum := Vector3.ZERO
+	for unit in band:
+		sum += unit.global_position
+	return sum / float(band.size())
+
+
+## Проложить маршрут: сначала выход из своей зоны, потом цель. При возвращении
+## порядок обратный. Точки прохода лежат в `world_builder.gd::SORTIE_PATH`.
+func _set_route(faction: int, target: Vector3, outbound: bool) -> void:
+	var gates: Array = BUILDER.SORTIE_PATH.get(faction, [])
+	var route := []
+	if outbound:
+		for point in gates:
+			route.append(point)
+	else:
+		for i in range(gates.size() - 1, -1, -1):
+			route.append(gates[i])
+	route.append(target)
+	_route[faction] = route
+	_goal[faction] = target
+	_stuck_t[faction] = 0.0
+	_last_centre[faction] = _centre_of(faction)
 
 
 ## Раздать бойцам стороны текущий приказ: якорь, разворот, построение, поводок.
@@ -149,6 +227,9 @@ func _think(faction: int) -> void:
 		_state.erase(faction)
 		_goal.erase(faction)
 		_anchor.erase(faction)
+		_route.erase(faction)
+		_stuck_t.erase(faction)
+		_last_centre.erase(faction)
 		return
 
 	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
@@ -171,21 +252,25 @@ func _think(faction: int) -> void:
 		State.FIGHT:
 			# Бой кончился. Проредили — домой, целы — дальше по плану.
 			if _spent(band):
-				_set_state(faction, State.RETURN)
-				_goal[faction] = base
+				_go_home(faction, base)
 			else:
 				_plan_next(faction, band, base)
 		State.MARCH:
-			if _spent(band):
-				_set_state(faction, State.RETURN)
-				_goal[faction] = base
-			elif here.distance_to(_goal.get(faction, here)) <= ARRIVE_RADIUS:
+			if _spent(band) or _is_stuck(faction, band):
+				_go_home(faction, base)
+			elif _arrived(faction, here):
 				# Пришли, а бить некого: цель уже разрушена или ушла.
 				_plan_next(faction, band, base)
 		State.RETURN:
-			if here.distance_to(base) <= ARRIVE_RADIUS:
+			if here.distance_to(base) <= ARRIVE_RADIUS or _is_stuck(faction, band):
 				_set_state(faction, State.HOLD)
+				_route[faction] = []
 				_goal[faction] = base
+			elif not _spent(band):
+				# Цель появилась, пока шли домой. Целый отряд обязан её заметить:
+				# иначе он пройдёт мимо только что построенного склада и будет
+				# топать до базы, чтобы через минуту выйти сюда же снова.
+				_plan_next(faction, band, base)
 		_:
 			_plan_next(faction, band, base)
 
@@ -194,16 +279,21 @@ func _think(faction: int) -> void:
 ## стоять дома и ждать пополнения от `garrison.gd`.
 func _plan_next(faction: int, band: Array, base: Vector3) -> void:
 	if float(band.size()) < GARRISON.SIZE * SALLY_FRACTION:
-		_set_state(faction, State.HOLD)
-		_goal[faction] = base
+		_stand_down(faction, base)
 		return
 	var target := _pick_target(faction)
 	if target == Vector3.INF:
-		_set_state(faction, State.HOLD)
-		_goal[faction] = base
+		_stand_down(faction, base)
 		return
+	var same_goal: bool = _goal.get(faction, Vector3.INF).distance_to(target) <= ARRIVE_RADIUS
+	var fresh: bool = _state.get(faction, State.HOLD) != State.MARCH or not same_goal
+	var from_home: bool = _state.get(faction, State.HOLD) == State.HOLD
 	_set_state(faction, State.MARCH)
-	_goal[faction] = target
+	# Выход из зоны нужен только когда выходим ИЗ НЕЁ. Отряд, уже стоящий в поле,
+	# гнать обратно через собственные ворота незачем.
+	_set_route(faction, target, from_home)
+	if fresh:
+		_announce_raid(faction, target)
 
 
 ## Куда идти: вражеская постройка, а если такой рядом нет — караван. Постройка
@@ -258,6 +348,72 @@ func _pick_target(faction: int) -> Vector3:
 ## Враждебна ли сторона. Своих не трогаем, дружелюбных тоже: перемирие поднимает
 ## отношения выше порога, и отряд обязан его уважать, иначе перемирие с ИИ
 ## ничего не значило бы.
+## Дошёл ли отряд до цели: маршрут пройден весь, и у цели стоит либо якорь, либо
+## сам отряд.
+##
+## Спрашивать только про якорь недостаточно. Бойцы останавливаются в замахе от
+## цели, а у постройки замах считается от её края (`unit.gd::_reach_of`) — до
+## склада это восемь метров. Отряд уже разбирает стену, а якорь до середины
+## склада не дошёл, и приход не засчитывался: набег числился идущим, пока его не
+## отменял сторож «застрял».
+func _arrived(faction: int, here: Vector3) -> bool:
+	if not _route.get(faction, []).is_empty():
+		return false
+	var goal: Vector3 = _goal.get(faction, here)
+	if here.distance_to(goal) <= ARRIVE_RADIUS:
+		return true
+	var centre := _centre_of(faction)
+	return centre.is_finite() and centre.distance_to(goal) <= ARRIVE_RADIUS
+
+
+## Отбой. Дома — просто стоим; в поле — сначала возвращаемся.
+##
+## Разница не косметическая: «дома» разрешает гарнизону пополнять штат
+## (`garrison.gd::_reinforce`), и объявить отбой посреди чужой зоны значило бы
+## восполнять потери прямо во вражеском тылу.
+func _stand_down(faction: int, base: Vector3) -> void:
+	var here: Vector3 = _anchor.get(faction, base)
+	if here.distance_to(base) > ARRIVE_RADIUS:
+		# Уже отходим — не трогаем: перекладка маршрута каждое размышление
+		# обнуляла бы и сторож «застрял», и весь смысл отсчёта.
+		if _state.get(faction, State.HOLD) != State.RETURN:
+			_go_home(faction, base)
+		return
+	_set_state(faction, State.HOLD)
+	_route[faction] = []
+	_goal[faction] = base
+
+
+## Отход домой тем же путём, каким шли.
+func _go_home(faction: int, base: Vector3) -> void:
+	_set_state(faction, State.RETURN)
+	_set_route(faction, base, false)
+
+
+## Застрял ли отряд: середина строя не двигается, хотя он в походе. Бойцы ходят
+## по прямой, и упереться могут во что угодно; отменённый набег лучше отряда,
+## стоящего у камня до конца партии.
+func _is_stuck(faction: int, band: Array) -> bool:
+	if band.is_empty():
+		return false
+	var centre := _centre_of(faction)
+	if not centre.is_finite():
+		return false
+	var was: Vector3 = _last_centre.get(faction, centre)
+	if centre.distance_to(was) >= STUCK_STEP:
+		_last_centre[faction] = centre
+		_stuck_t[faction] = 0.0
+		return false
+	var waited: float = _stuck_t.get(faction, 0.0) + THINK_INTERVAL
+	_stuck_t[faction] = waited
+	if waited < STUCK_SECONDS:
+		return false
+	print("[отряд ИИ] %s: застрял, набег отменён" % FACTIONS.name_of(faction))
+	_last_centre[faction] = centre
+	_stuck_t[faction] = 0.0
+	return true
+
+
 func _hostile(faction: int, other: int) -> bool:
 	if other < 0 or other == faction:
 		return false
@@ -307,10 +463,51 @@ func _band(faction: int) -> Array:
 	return result
 
 
+## Сказать всем, что сторона вышла в набег.
+##
+## Мир начал воевать сам, и без этого игрок видит только, что откуда-то пришли
+## четверо и разбирают его склад. Это ровно та болезнь, на которую пожаловался
+## первый тестер: игра делает что-то важное и молчит об этом. Объявляем в тот же
+## канал, что и захват дворца.
+##
+## Объявляем ТОЛЬКО о новом набеге, а не при каждом пересчёте цели. Первая
+## версия объявляла из `_plan_next` безусловно, и трёхминутный прогон выдал 52
+## одинаковых сообщения: отряд дошёл до цели, не смог её сломать и заново ставил
+## ту же самую каждые несколько секунд.
+func _announce_raid(faction: int, target: Vector3) -> void:
+	var objective: Node = get_parent().get_node_or_null("Objective")
+	if objective == null:
+		return
+	# Без глагола: названия сторон разного числа («Злодей», «Лесные эльфы»), и
+	# любая общая формулировка со сказуемым выходит безграмотной для половины.
+	objective.announce.rpc("Набег: %s → %s" % [
+		FACTIONS.name_of(faction), _place_name(target)])
+
+
+## Как назвать точку на карте, чтобы игрок понял, куда идут. Ближайшая база —
+## достаточный ориентир: карта разбита на зоны сторон.
+func _place_name(point: Vector3) -> String:
+	var best := -1
+	var best_distance := INF
+	for faction in FACTIONS.COUNT:
+		var d: float = point.distance_to(FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)])
+		if d < best_distance:
+			best_distance = d
+			best = faction
+	if best < 0:
+		return "неизвестно куда"
+	return "зона %s" % FACTIONS.name_of(best)
+
+
 func _set_state(faction: int, state: int) -> void:
 	if _state.get(faction, -1) == state:
 		return
 	_state[faction] = state
+	# Отсчёт «застрял» ведётся для текущего дела. Не сбросив его при смене
+	# состояния, отряд после успешного набега объявлял себя застрявшим на
+	# обратном пути: он и правда стоял, но пока стоял — не шёл.
+	_stuck_t[faction] = 0.0
+	_last_centre[faction] = _centre_of(faction)
 	print("[отряд ИИ] %s: %s" % [FACTIONS.name_of(faction), STATE_NAMES[state]])
 
 

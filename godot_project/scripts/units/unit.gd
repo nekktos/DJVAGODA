@@ -16,6 +16,7 @@ const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 
@@ -313,7 +314,7 @@ func _physics_process(delta: float) -> void:
 	var to_dest := destination - global_position
 	to_dest.y = 0.0
 	var distance := to_dest.length()
-	var stop_at: float = STRIKE_RANGE if facing_target else SLOT_TOLERANCE
+	var stop_at: float = _reach_of(target) if facing_target else SLOT_TOLERANCE
 
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
@@ -464,6 +465,24 @@ func _strike_cooldown() -> float:
 	if is_champion:
 		return CHAMPION_COOLDOWN
 	return STRIKE_COOLDOWN
+
+
+## На каком расстоянии боец достаёт до цели.
+##
+## Для бойца и игрока это просто длина замаха. Для ПОСТРОЙКИ — плюс её половина:
+## расстояние считается до центра, а склад имеет 12 на 10 метров. Боец упирался
+## в стену за шесть метров от центра, до замаха ему не хватало трёх с половиной,
+## и он стоял так вечно. Отряды не могли разрушить НИ ОДНО здание — ни ИИ, ни
+## игрока, — и по коду это не видно: и цель находится, и путь к ней есть.
+## Поймал трёхминутный прогон: ИИ раз за разом объявлял набег на склад, который
+## не мог сломать.
+func _reach_of(target: Node3D) -> float:
+	if target == null:
+		return STRIKE_RANGE
+	if target.is_in_group("building") and "kind" in target:
+		var size: Vector3 = RES.BUILDING_SIZE.get(int(target.kind), Vector3.ZERO)
+		return STRIKE_RANGE + maxf(size.x, size.z) * 0.5
+	return STRIKE_RANGE
 
 
 func _strike(target: Node3D) -> void:

@@ -30,6 +30,7 @@ extends Node
 ##   --savetest      автопроверка сохранений и профиля игрока (headless)
 ##   --garrisontest  автопроверка гарнизонов свободных сторон (headless)
 ##   --warbandtest   автопроверка воюющего ИИ свободных сторон (headless)
+##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
 ##   --world=ИМЯ     работать с отдельным файлом мира
@@ -47,6 +48,7 @@ const RES := preload("res://scripts/economy/resources.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
+const WARBAND := preload("res://scripts/ai/warband.gd")
 const ORDERS := preload("res://scripts/orders.gd")
 
 ## Сколько секунд держится объявление о результате.
@@ -131,6 +133,7 @@ func _process(delta: float) -> void:
 	if Net.is_host and Net.transport == Net.Transport.STEAM:
 		line += "\nSteam ID для друга: %d   (F9 — скопировать)" % Net.local_steam_id()
 	line += "\n" + _objective_hint(_world.local_player())
+	line += _ai_hint()
 	if _world.strategy_mode:
 		line += "   высота: %d м" % int(_world.strategy_height())
 		var boss: Node3D = _world.local_player()
@@ -365,6 +368,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--soaktest"):
+		var soak_test: Node = preload("res://tools/soak_test.gd").new()
+		add_child(soak_test)
+		soak_test.start(_world)
+		needs_session = true
 
 	if args.has("--warbandtest"):
 		var warband_test: Node = preload("res://tools/warband_test.gd").new()
@@ -651,6 +660,26 @@ func _squad_hint() -> String:
 		squad.size(), RES.SQUAD_LIMIT, stance,
 		FORMATIONS.describe(me.squad_formation), RES.format_cost(RES.UNIT_COST)
 	]
+
+
+## Чем заняты стороны, за которые никто не сел. Мир теперь воюет сам, и игрок
+## должен видеть, что кроме него в партии кто-то есть. Строка появляется только
+## когда свободные стороны действительно есть — втроём её не будет вовсе.
+func _ai_hint() -> String:
+	var parts := PackedStringArray()
+	for faction in FACTIONS.COUNT:
+		if not _world.players_of(faction).is_empty():
+			continue
+		if _world.garrison.size_of(faction) <= 0:
+			continue
+		parts.append("%s — %s (%d)" % [
+			FACTIONS.name_of(faction),
+			WARBAND.STATE_NAMES[_world.warband.state_of(faction)],
+			_world.garrison.size_of(faction),
+		])
+	if parts.is_empty():
+		return ""
+	return "\nбез игроков: " + "   ".join(parts)
 
 
 # --- результат партии ------------------------------------------------------

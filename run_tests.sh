@@ -40,6 +40,7 @@ SUITES=(
 	"dip:--diptest:1,2:"
 	"garrison:--garrisontest:0,1:"
 	"warband:--warbandtest:0,1:"
+	"soak:--soaktest::"
 	"slice:--slicetest:0,1,2:"
 	"save:--savetest:2,1:--world=autotest-save"
 )

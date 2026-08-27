@@ -26,13 +26,17 @@ var _world: Node3D
 ## отключается, доиграв свою половину, и «первая свободная» посреди прогона
 ## меняется. На этом прогон один раз уже сломался.
 var _side := -1
+## Объявления, дошедшие до этого пира. Набег обязан быть слышен: мир начал
+## воевать сам, и молча это делать нельзя.
+var _heard := PackedStringArray()
 
 
 func start(world: Node3D) -> void:
 	tag = "ИИ-отряд"
-	expected_host = 17
-	expected_client = 2
+	expected_host = 18
+	expected_client = 3
 	_world = world
+	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
 	_run.call_deferred()
 
 
@@ -140,6 +144,13 @@ func _test_marches_on_property(me: Node3D) -> void:
 	check(spread < WARBAND.MARCH_LEASH, "отряд идёт вместе, а не растянулся",
 		"дальний боец в %.0f м от якоря" % spread)
 
+	var announced := false
+	for text in _heard:
+		if text.to_lower().contains("набег"):
+			announced = true
+	check(announced, "о набеге объявили всем",
+		"объявлений %d: %s" % [_heard.size(), ", ".join(_heard)])
+
 
 ## Построение меняется по обстановке — «использует построения» из плана.
 func _test_formations() -> void:
@@ -203,7 +214,9 @@ func _test_retreats_when_spent() -> void:
 	# После перемирия отряд вернулся домой, а решения принимаются раз в
 	# THINK_INTERVAL. Дожидаемся, пока он снова выйдет: бить его дома
 	# бессмысленно, там пополнение как раз и должно работать.
-	for i in 24:
+	# Ждать приходится долго: отняв у отряда цель перемирием, мы отправили его
+	# домой, а дорога занимает больше минуты.
+	for i in 200:
 		if _warband().state_of(free_side) == WARBAND.State.MARCH:
 			break
 		await get_tree().create_timer(0.5).timeout
@@ -243,6 +256,13 @@ func _run_client() -> void:
 	for node in get_tree().get_nodes_in_group("unit"):
 		seen += 1
 	check(seen > 0, "бойцы ИИ видны клиенту", "%d нод" % seen)
+
+	var announced := false
+	for text in _heard:
+		if text.to_lower().contains("набег"):
+			announced = true
+	check(announced, "объявление о набеге доехало до клиента",
+		"объявлений %d" % _heard.size())
 	check(_world.warband.state_of(0) == 0 and not _world.warband.anchor_of(0).is_finite(),
 		"клиент сам ничем не командует", "состояние пустое")
 
