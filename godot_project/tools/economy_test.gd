@@ -146,7 +146,7 @@ func _test_build(me: Node3D) -> void:
 	# злодея расставлены случайным сидом, на них полагаться нельзя.
 	var slope := Vector3(480.0, 0.0, -300.0)
 	var on_slope: int = _buildings().size()
-	me.request_build(RES.Building.BARRACKS, slope)
+	me.request_build(RES.Building.SWORD_BARRACKS, slope)
 	await get_tree().create_timer(0.4).timeout
 	check(_buildings().size() == on_slope, "на неровном месте не ставится",
 		"построек %d" % _buildings().size())

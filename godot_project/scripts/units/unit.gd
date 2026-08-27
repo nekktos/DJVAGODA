@@ -124,6 +124,21 @@ const REPATH_DISTANCE := 6.0
 ## Ближе этого точка пути считается пройденной.
 const WAYPOINT_RADIUS := 2.5
 
+## Лучник (Этап 10). Тот же боец, но бьёт издали и почти беспомощен вблизи.
+##
+## Числа берутся у ЛУКА из `weapons.gd` — того самого, которым стреляет игрок.
+## Отдельного «урона лучника» нет намеренно: два набора чисел на одно и то же
+## оружие разошлись бы при первой же правке баланса.
+##
+## Дальность боя вчетверо больше мечницкой: в этом весь смысл рода войск.
+## Здоровья меньше — лучник, до которого добежали, должен умирать быстро, иначе
+## он просто лучший мечник.
+const ARCHER_HEALTH := 65.0
+const ARCHER_ENGAGE := 32.0
+## На каком расстоянии лучник останавливается и стреляет. Ближе не подходит.
+const ARCHER_RANGE := 24.0
+const ARCHER_COLOR := Color(0.36, 0.46, 0.28)
+
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
 
@@ -155,6 +170,9 @@ var is_beast := false
 
 ## Распорядитель стражи: боец с многократным запасом, см. CHAMPION_*.
 var is_champion := false
+
+## Лучник: стреляет вместо удара, см. ARCHER_*.
+var is_archer := false
 
 ## Приказ ИИ свободной стороны (Этап 10, шаг 8, ступень «б»).
 ##
@@ -196,11 +214,14 @@ func setup(data: Dictionary) -> void:
 	leash = float(data.get("leash", 0.0))
 	is_beast = bool(data.get("beast", false))
 	is_champion = bool(data.get("champion", false))
+	is_archer = bool(data.get("archer", false))
 	if is_beast:
 		health = BEAST_HEALTH
 		life_left = ABILITIES.SUMMON_LIFETIME
 	elif is_champion:
 		health = CHAMPION_HEALTH
+	elif is_archer:
+		health = ARCHER_HEALTH
 
 
 func _ready() -> void:
@@ -514,7 +535,11 @@ func _faction_of(node: Node) -> int:
 ## Боевые числа зависят от вида бойца. Вынесено в методы: видов стало три, и
 ## цепочки тернарников по месту вызова перестали читаться.
 func _engage_range() -> float:
-	return CHAMPION_ENGAGE if is_champion else ENGAGE_RANGE
+	if is_champion:
+		return CHAMPION_ENGAGE
+	if is_archer:
+		return ARCHER_ENGAGE
+	return ENGAGE_RANGE
 
 
 func _move_speed() -> float:
@@ -530,6 +555,8 @@ func _strike_damage() -> float:
 		return BEAST_DAMAGE
 	if is_champion:
 		return CHAMPION_DAMAGE
+	if is_archer:
+		return WEAPONS.DAMAGE[WEAPONS.Kind.BOW]
 	return STRIKE_DAMAGE
 
 
@@ -538,6 +565,8 @@ func _strike_cooldown() -> float:
 		return BEAST_COOLDOWN
 	if is_champion:
 		return CHAMPION_COOLDOWN
+	if is_archer:
+		return WEAPONS.COOLDOWN[WEAPONS.Kind.BOW]
 	return STRIKE_COOLDOWN
 
 
@@ -590,6 +619,20 @@ func _navigation() -> Node:
 	return world.navigation
 
 
+## Физические RID капсулы и своих зон попадания. Нужны стреле, чтобы только что
+## выпущенный лучником снаряд не воткнулся в него самого.
+func own_collision_rids() -> Array[RID]:
+	var rids: Array[RID] = [get_rid()]
+	for key in _parts.keys():
+		var mesh: Node = _parts[key]
+		if mesh == null:
+			continue
+		for child in mesh.get_children():
+			if child is Area3D:
+				rids.append((child as Area3D).get_rid())
+	return rids
+
+
 ## На каком расстоянии боец достаёт до цели.
 ##
 ## Для бойца и игрока это просто длина замаха. Для ПОСТРОЙКИ — плюс её половина:
@@ -602,6 +645,11 @@ func _navigation() -> Node:
 func _reach_of(target: Node3D) -> float:
 	if target == null:
 		return STRIKE_RANGE
+	if is_archer:
+		# Лучник останавливается на дистанции выстрела и дальше не идёт: подойти
+		# вплотную для него значит умереть.
+		return ARCHER_RANGE
+
 	if target.is_in_group("building") and "kind" in target:
 		var size: Vector3 = RES.BUILDING_SIZE.get(int(target.kind), Vector3.ZERO)
 		return STRIKE_RANGE + maxf(size.x, size.z) * 0.5
@@ -614,7 +662,20 @@ func _strike(target: Node3D) -> void:
 	_cooldown = _strike_cooldown()
 	var point := target.global_position + Vector3.UP * 1.1
 	var dir := (target.global_position - global_position).normalized()
+	if is_archer:
+		_shoot(dir)
+		return
 	target.take_damage(_strike_damage(), owner_id, "torso", point, dir)
+
+
+## Выстрел лучника. Стреляем НАСТОЯЩИМ снарядом, тем же, что у игрока: стрела
+## летит по дуге, её видно, её можно не догнать — и она может промахнуться.
+## Мгновенное попадание было бы дешевле в коде и хуже во всём остальном.
+func _shoot(dir: Vector3) -> void:
+	var world := get_parent().get_parent()
+	if world == null or not world.has_method("spawn_unit_arrow"):
+		return
+	world.spawn_unit_arrow(global_position + Vector3.UP * 1.4, dir, self)
 
 
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон

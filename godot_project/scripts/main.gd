@@ -197,7 +197,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if key == KEY_2:
-			_world.set_build_mode(true, RES.Building.BARRACKS)
+			_world.set_build_mode(true, RES.Building.SWORD_BARRACKS)
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_3:
+			_world.set_build_mode(true, RES.Building.ARCHER_BARRACKS)
 			get_viewport().set_input_as_handled()
 			return
 		if key == KEY_C:
@@ -212,8 +216,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_squad_order("follow", 0)
 			get_viewport().set_input_as_handled()
 			return
+		# T — мечник, Y — лучник: каждому свой род войск и своя казарма.
 		if key == KEY_T:
 			_squad_order("train", 0)
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_Y:
+			_squad_order("train", 1)
 			get_viewport().set_input_as_handled()
 			return
 		if key == KEY_B:
@@ -684,7 +693,7 @@ func _squad_order(what: String, value: int) -> void:
 		"follow":
 			me.ask_squad_follow()
 		"train":
-			me.ask_train_unit()
+			me.ask_train_unit(value == 1)
 
 
 ## ПКМ в стратегической камере, когда не идёт стройка и не рисуется маршрут —
@@ -710,9 +719,18 @@ func _squad_hint() -> String:
 		return ""
 	var squad: Array = _world.units_of(me.peer_id)
 	var stance := "держит позицию" if me.squad_hold else "следует за командиром"
-	return "отряд: %d/%d, %s, %s   |   F1-F4 строй, G следовать, ПКМ идти в точку, T нанять (%s)" % [
-		squad.size(), RES.SQUAD_LIMIT, stance,
-		FORMATIONS.describe(me.squad_formation), RES.format_cost(RES.UNIT_COST)
+	var swords := 0
+	var bows := 0
+	for unit in squad:
+		if "is_archer" in unit and unit.is_archer:
+			bows += 1
+		else:
+			swords += 1
+	return "отряд: %d/%d (мечников %d, лучников %d), %s, %s
+F1-F4 строй, G следовать, ПКМ идти в точку   |   T мечник (%s)   Y лучник (%s)" % [
+		squad.size(), RES.SQUAD_LIMIT, swords, bows, stance,
+		FORMATIONS.describe(me.squad_formation),
+		RES.format_cost(RES.UNIT_COST), RES.format_cost(RES.ARCHER_COST)
 	]
 
 

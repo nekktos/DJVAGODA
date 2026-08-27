@@ -146,7 +146,9 @@ func _has_barracks(faction: int) -> bool:
 			continue
 		if int(node.faction) != faction:
 			continue
-		if int(node.kind) == RES.Building.BARRACKS:
+		# Любая казарма стражи считается: у неё она одна, но привязываться к
+		# конкретному роду войск в условии поражения незачем.
+		if int(node.kind) != RES.Building.STORAGE:
 			return true
 	return false
 

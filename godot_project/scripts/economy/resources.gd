@@ -24,30 +24,39 @@ const SOURCE_HITS := 6
 ## На каком расстоянии можно добывать.
 const HARVEST_RANGE := 3.2
 
-enum Building { STORAGE, BARRACKS }
+## Казарм две, и это не украшение: род войск привязан к постройке. Мечники
+## выходят из одной, лучники из другой, и выбор «во что вложиться первым» —
+## настоящий выбор, а не порядок нажатий.
+enum Building { STORAGE, SWORD_BARRACKS, ARCHER_BARRACKS }
 
-const BUILDING_NAMES := ["склад", "казарма"]
+const BUILDING_NAMES := ["склад", "казарма мечников", "казарма лучников"]
 
 ## Стоимость постройки: [дерево, камень, золото, железо].
 const BUILDING_COST := {
 	Building.STORAGE: [40, 20, 0, 0],
-	Building.BARRACKS: [60, 40, 0, 10],
+	Building.SWORD_BARRACKS: [60, 40, 0, 10],
+	# Лучникам нужны наконечники: железа больше, зато камня меньше.
+	Building.ARCHER_BARRACKS: [70, 25, 0, 20],
 }
 
 ## Сколько секунд строится.
 const BUILD_TIME := {
 	Building.STORAGE: 6.0,
-	Building.BARRACKS: 8.0,
+	Building.SWORD_BARRACKS: 8.0,
+	Building.ARCHER_BARRACKS: 9.0,
 }
 
 ## Размер основания, метры. Нужен и для призрака, и для проверки места.
 const BUILDING_SIZE := {
 	Building.STORAGE: Vector3(12.0, 7.0, 10.0),
-	Building.BARRACKS: Vector3(14.0, 6.0, 9.0),
+	Building.SWORD_BARRACKS: Vector3(14.0, 6.0, 9.0),
+	Building.ARCHER_BARRACKS: Vector3(12.0, 6.0, 9.0),
 }
 
-## Цена одного мечника из казармы и потолок отряда.
+## Цена одного бойца по роду войск и потолок отряда. Лучник дороже железом и
+## дешевле золотом: он бьёт издали, но в ближнем бою почти беспомощен.
 const UNIT_COST := [0, 0, 25, 10]
+const ARCHER_COST := [0, 0, 20, 18]
 
 ## Цена одного батрака. Батрак — это рабочие руки, а не воин: нанимается без
 ## построек и стоит заметно дешевле мечника, иначе за первые руки пришлось бы

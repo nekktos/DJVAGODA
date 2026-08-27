@@ -19,6 +19,7 @@ const PLAYER_SCRIPT := preload("res://scripts/player.gd")
 ## То же и для строителя карты: обращаться к нему по class_name нельзя, кэш
 ## глобальных классов строится только редактором и на свежем клоне его нет.
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const PROJECTILE_SCENE := preload("res://scenes/Projectile.tscn")
 const CORPSE_SCENE := preload("res://scenes/Corpse.tscn")
 const BUILDING_SCENE := preload("res://scenes/Building.tscn")
@@ -268,7 +269,7 @@ func _spawn_guard_barracks() -> void:
 	for node in get_tree().get_nodes_in_group("building"):
 		if "faction" in node and int(node.faction) == FACTIONS.Kind.GUARD:
 			return
-	spawn_building(RES.Building.BARRACKS, GUARD_BARRACKS_POS, 0, FACTIONS.Kind.GUARD, true)
+	spawn_building(RES.Building.SWORD_BARRACKS, GUARD_BARRACKS_POS, 0, FACTIONS.Kind.GUARD, true)
 
 
 func _on_session_ended() -> void:
@@ -386,6 +387,25 @@ func _make_spawned(data: Dictionary) -> Node:
 	node.name = "%s_%d" % [data["type"], int(data["id"])]
 	node.setup(data)
 	return node
+
+
+## Стрела бойца-лучника. Отличается от игроцкой только тем, КТО стрелок: у бойца
+## нет peer id, поэтому снаряд запоминает путь ноды и по нему исключает стрелка
+## из собственного попадания.
+func spawn_unit_arrow(origin: Vector3, dir: Vector3, shooter: Node3D) -> Node:
+	if not Net.hosting() or shooter == null:
+		return null
+	_spawn_counter += 1
+	return _world_spawner.spawn({
+		"type": "projectile",
+		"id": _spawn_counter,
+		"kind": WEAPONS.Kind.BOW,
+		"origin": origin,
+		"dir": dir,
+		"shooter": int(shooter.owner_id),
+		"shooter_path": String(shooter.get_path()),
+		"gear": 0,
+	})
 
 
 func _on_projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int, gear: int) -> void:
@@ -728,12 +748,12 @@ func caravans_of(owner_id: int) -> Array:
 # --- отряд -----------------------------------------------------------------
 
 ## Ближайшая ДОСТРОЕННАЯ казарма игрока.
-func barracks_of(owner_id: int) -> Node3D:
+func barracks_of(owner_id: int, kind: int = RES.Building.SWORD_BARRACKS) -> Node3D:
 	for node in get_tree().get_nodes_in_group("building"):
 		var building := node as Node3D
 		if building == null:
 			continue
-		if int(building.kind) != RES.Building.BARRACKS:
+		if int(building.kind) != kind:
 			continue
 		if int(building.owner_id) != owner_id or float(building.progress) < 1.0:
 			continue
@@ -752,7 +772,8 @@ func units_of(owner_id: int) -> Array:
 
 ## Нанять бойца. Только на хосте: заявка сюда попадает уже проверенной
 ## (см. player.gd::request_train_unit).
-func spawn_unit(owner_id: int, slot: int, point: Vector3, beast: bool = false) -> Node:
+func spawn_unit(owner_id: int, slot: int, point: Vector3, beast: bool = false,
+		archer: bool = false) -> Node:
 	if not Net.hosting():
 		return null
 	_spawn_counter += 1
@@ -763,13 +784,15 @@ func spawn_unit(owner_id: int, slot: int, point: Vector3, beast: bool = false) -
 		"slot": slot,
 		"point": point,
 		"beast": beast,
+		"archer": archer,
 		"faction": faction_of(owner_id),
 	})
 	if node != null:
 		if beast:
 			print("[призыв] игрок %d призвал волка, слот %d" % [owner_id, slot])
 		else:
-			print("[отряд] игрок %d нанял мечника, слот %d" % [owner_id, slot])
+			print("[отряд] игрок %d нанял %s, слот %d"
+				% [owner_id, "лучника" if archer else "мечника", slot])
 	return node
 
 

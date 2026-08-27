@@ -18,6 +18,10 @@ const HIT_MASK := 1 | 4
 
 var kind := 0
 var shooter_id := 1
+## Путь ноды стрелка. У бойца-лучника нет peer id, и найти его среди игроков
+## нельзя — а исключить из попадания надо, иначе стрела втыкается в самого
+## стрелка на первом же кадре.
+var shooter_path := ""
 ## Уровень снаряжения стрелка на момент выстрела.
 var gear_tier := 0
 
@@ -32,6 +36,7 @@ func setup(data: Dictionary) -> void:
 	kind = int(data["kind"])
 	shooter_id = int(data["shooter"])
 	gear_tier = int(data.get("gear", 0))
+	shooter_path = String(data.get("shooter_path", ""))
 	position = data["origin"]
 	sync_position = position
 	_velocity = Vector3(data["dir"]).normalized() * WEAPONS.PROJECTILE_SPEED[kind]
@@ -66,7 +71,11 @@ func _build_mesh() -> void:
 ## Свои же зоны попадания и своя капсула не должны ловить только что
 ## выпущенный снаряд.
 func _collect_exclusions() -> void:
-	var shooter := get_parent().get_parent().get_node_or_null("Players/%d" % shooter_id)
+	var shooter: Node = null
+	if not shooter_path.is_empty():
+		shooter = get_node_or_null(NodePath(shooter_path))
+	if shooter == null:
+		shooter = get_parent().get_parent().get_node_or_null("Players/%d" % shooter_id)
 	if shooter == null or not shooter.has_method("own_collision_rids"):
 		return
 	_exclude = shooter.own_collision_rids()

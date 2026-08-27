@@ -10,6 +10,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const UNIT := preload("res://scripts/units/unit.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 
 var _world: Node3D
@@ -17,7 +18,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "отряд-тест"
-	expected_host = 19
+	expected_host = 26
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -39,6 +40,7 @@ func _run() -> void:
 	await _test_orders(me)
 	_test_modifiers()
 	await _test_spacing_and_animation(me)
+	await _test_archers(me)
 
 	finish()
 
@@ -53,8 +55,8 @@ func _test_hiring(me: Node3D) -> void:
 	check(_units(me).is_empty(), "без достроенной казармы наём невозможен",
 		"бойцов %d" % _units(me).size())
 
-	me.request_build(RES.Building.BARRACKS, Vector3(-60.0, 0.0, 90.0))
-	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.BARRACKS] + 1.5).timeout
+	me.request_build(RES.Building.SWORD_BARRACKS, Vector3(-60.0, 0.0, 90.0))
+	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.SWORD_BARRACKS] + 1.5).timeout
 	check(_world.barracks_of(me.peer_id) != null, "казарма достроена", "казарма есть")
 
 	var gold_before: int = me.stock.get_amount(RES.Kind.GOLD)
@@ -196,6 +198,66 @@ func _test_modifiers() -> void:
 
 ## Бойцы не должны стоять внахлёст, а ходьба — не должна замирать после
 ## одного проигрыша. Оба пункта нашлись на живом playtest, глазами.
+## Лучники: свой род войск, своя казарма, стрельба издали.
+##
+## Проверяем то, что ОТЛИЧАЕТ лучника от мечника, а не то, что он «есть»: без
+## своей казармы его не нанять, видит он вчетверо дальше, останавливается на
+## дистанции выстрела и стреляет настоящей стрелой — той же, что игрок.
+func _test_archers(me: Node3D) -> void:
+	me.stock.grant([400, 400, 400, 400])
+	# Освобождаем место в отряде: к этому моменту он забит под потолок
+	# предыдущими проверками, и отказ в найме шёл бы по «отряд полон», а не
+	# по отсутствию казармы. Проверка прошла бы зелёной, ничего не проверив.
+	var squad: Array = _world.units_of(me.peer_id)
+	for i in mini(4, squad.size()):
+		squad[i].queue_free()
+	await get_tree().create_timer(0.5).timeout
+
+	# Казарма мечников уже стоит, а лучников — нет: наём обязан отказать.
+	var before: int = _world.units_of(me.peer_id).size()
+	me.ask_train_unit(true)
+	await get_tree().create_timer(0.4).timeout
+	check(_world.units_of(me.peer_id).size() == before,
+		"без своей казармы лучника не нанять", "отряд %d" % _world.units_of(me.peer_id).size())
+
+	me.request_build(RES.Building.ARCHER_BARRACKS, Vector3(-90.0, 0.0, 90.0))
+	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.ARCHER_BARRACKS] + 2.0).timeout
+	check(_world.barracks_of(me.peer_id, RES.Building.ARCHER_BARRACKS) != null,
+		"казарма лучников достроена", "есть")
+
+	me.ask_train_unit(true)
+	await get_tree().create_timer(0.5).timeout
+	var archer: Node3D = null
+	for unit in _world.units_of(me.peer_id):
+		if unit.is_archer:
+			archer = unit
+	check(archer != null, "лучник нанят", "отряд %d" % _world.units_of(me.peer_id).size())
+	if archer == null:
+		return
+
+	check(archer.health <= UNIT.ARCHER_HEALTH, "лучник слабее мечника здоровьем",
+		"%.0f против %.0f" % [archer.health, UNIT.MAX_HEALTH])
+	check(archer._engage_range() > UNIT.ENGAGE_RANGE * 2.0, "и видит цель заметно дальше",
+		"%.0f против %.0f м" % [archer._engage_range(), UNIT.ENGAGE_RANGE])
+	check(archer._reach_of(archer) > UNIT.STRIKE_RANGE * 5.0,
+		"стреляет, не подходя вплотную",
+		"с %.0f м против %.0f у мечника" % [archer._reach_of(archer), UNIT.STRIKE_RANGE])
+
+	var before_arrows := _arrows()
+	archer._shoot(Vector3.FORWARD)
+	await get_tree().physics_frame
+	check(_arrows() > before_arrows, "выстрел рождает настоящую стрелу",
+		"снарядов %d -> %d" % [before_arrows, _arrows()])
+
+
+func _arrows() -> int:
+	var count := 0
+	for node in _world.get_node("Spawned").get_children():
+		if String(node.name).begins_with("projectile"):
+			count += 1
+	return count
+
+
 func _test_spacing_and_animation(me: Node3D) -> void:
 	var squad: Array = _units(me)
 	if squad.size() < 4:

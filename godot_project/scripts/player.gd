@@ -1249,11 +1249,13 @@ func ask_squad_follow() -> void:
 		request_squad_follow.rpc_id(1)
 
 
-func ask_train_unit() -> void:
+## Нанять бойца. archer — лучник вместо мечника; у них разные казармы и разная
+## цена, но одна очередь и один потолок отряда.
+func ask_train_unit(archer: bool = false) -> void:
 	if Net.hosting():
-		request_train_unit()
+		request_train_unit(archer)
 	else:
-		request_train_unit.rpc_id(1)
+		request_train_unit.rpc_id(1, archer)
 
 
 @rpc("any_peer", "reliable")
@@ -1397,22 +1399,26 @@ func request_set_labourer_role(role: int) -> void:
 
 
 @rpc("any_peer", "reliable")
-func request_train_unit() -> void:
+func request_train_unit(archer: bool = false) -> void:
 	if not Net.hosting() or not _sender_is_owner():
 		return
 	if not health.alive:
 		return
 	var world := get_parent().get_parent()
-	var barracks: Node3D = world.barracks_of(peer_id)
+	var kind: int = RES.Building.ARCHER_BARRACKS if archer else RES.Building.SWORD_BARRACKS
+	var barracks: Node3D = world.barracks_of(peer_id, kind)
 	if barracks == null:
-		_refuse("нанимать негде: сначала построй казарму (клавиша 2)")
+		_refuse("нанимать негде: сначала построй %s (клавиша %d)"
+			% [RES.BUILDING_NAMES[kind], kind + 1])
 		return
 	var squad: Array = world.units_of(peer_id)
 	if squad.size() >= RES.SQUAD_LIMIT:
 		_refuse("отряд уже полон")
 		return
-	if not stock.spend(RES.UNIT_COST):
-		_refuse("не хватает ресурсов на мечника — нужно %s" % RES.format_cost(RES.UNIT_COST))
+	var cost: Array = RES.ARCHER_COST if archer else RES.UNIT_COST
+	if not stock.spend(cost):
+		_refuse("не хватает ресурсов на %s — нужно %s"
+			% ["лучника" if archer else "мечника", RES.format_cost(cost)])
 		return
 	# Разводим по спирали: если спавнить всех в одну точку, капсулы влезают друг
 	# в друга и CharacterBody3D потом не может их расцепить.
@@ -1420,7 +1426,7 @@ func request_train_unit() -> void:
 	var angle: float = float(index) * 0.9
 	var radius: float = 3.0 + float(index) * 0.45
 	var offset := Vector3(cos(angle) * radius, 1.0, 9.0 + sin(angle) * radius)
-	world.spawn_unit(peer_id, index, barracks.global_position + offset)
+	world.spawn_unit(peer_id, index, barracks.global_position + offset, false, archer)
 
 
 # --- фракция --------------------------------------------------------------
