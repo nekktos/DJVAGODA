@@ -67,6 +67,19 @@ static func _build(holder: Node3D, kind: int, tier: int) -> void:
 			_add_box(holder, Vector3(0.08, 0.08, 1.40), Vector3.ZERO, Color(0.35, 0.26, 0.18), 0.0)
 			_add_box(holder, Vector3(0.10, 0.10, 0.18), Vector3(0.0, 0.0, 0.55), metal, glow)
 			_add_glow(holder, 0.16, Vector3(0.0, 0.0, 0.72))
+		WEAPONS.Kind.CROSSBOW:
+			# Арбалет: короткое ложе поперёк и дуга на конце — силуэт должен
+			# читаться как «не лук», иначе стороны не отличить издали.
+			_add_box(holder, Vector3(0.10, 0.10, 0.80), Vector3(0.0, 0.0, 0.10), Color(0.40, 0.29, 0.17), 0.0)
+			_add_box(holder, Vector3(0.90, 0.06, 0.08), Vector3(0.0, 0.0, 0.42), metal, glow)
+		WEAPONS.Kind.AXE:
+			# Топор: короткое древко и широкое лезвие сбоку.
+			_add_box(holder, Vector3(0.07, 0.07, 0.95), Vector3(0.0, 0.0, 0.05), Color(0.45, 0.32, 0.19), 0.0)
+			_add_box(holder, Vector3(0.30, 0.34, 0.10), Vector3(0.13, 0.0, 0.44), metal, glow)
+		WEAPONS.Kind.HAMMER:
+			# Молот: длинное древко и тяжёлая голова — он должен выглядеть тяжёлым.
+			_add_box(holder, Vector3(0.09, 0.09, 1.25), Vector3(0.0, 0.0, 0.10), Color(0.38, 0.27, 0.16), 0.0)
+			_add_box(holder, Vector3(0.30, 0.30, 0.34), Vector3(0.0, 0.0, 0.62), metal, glow)
 		_:
 			# Меч: клинок вперёд, гарда у кисти.
 			_add_box(holder, Vector3(0.09, 0.09, 1.25), Vector3(0.0, 0.0, 0.10), metal, glow)

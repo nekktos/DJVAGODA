@@ -201,6 +201,9 @@ var _path_goal := Vector3.INF
 ## Сколько времени боец упирается, никуда не двигаясь.
 var _blocked_t := 0.0
 var _alive := true
+## Перевербовка: сколько осталось и куда вернуть сторону.
+var _charm_left := 0.0
+var _charm_home := -1
 
 
 ## Вызывается спавнером на всех пирах с одинаковыми данными.
@@ -340,6 +343,11 @@ func _physics_process(delta: float) -> void:
 			return
 
 	_cooldown = maxf(0.0, _cooldown - delta)
+	if _charm_left > 0.0:
+		_charm_left -= delta
+		if _charm_left <= 0.0 and _charm_home >= 0:
+			faction = _charm_home
+			_charm_home = -1
 
 	var target: Node3D = _find_target() if _wants_fight() else null
 	var destination: Vector3
@@ -441,6 +449,31 @@ func _idle_destination(_delta: float) -> Vector3:
 ## Ищет ли этот боец, кого ударить. Батрак на работе — нет.
 func _wants_fight() -> bool:
 	return true
+
+
+## Перевербовать на время. Паралич воли по НАЁМНОМУ существу — это буквальный
+## контроль разума (GDD 3.2), и он уместен именно потому, что боец не человек.
+##
+## Меняем СТОРОНУ и ничего больше: весь «свой-чужой» в игре считается по ней, и
+## перевербованный сам собой начинает драться за нового хозяина, идти в его
+## строю и не трогать его бойцов. Отдельного состояния «под контролем» заводить
+## не нужно — нужно только помнить, куда возвращать.
+func charm(new_faction: int, seconds: float) -> void:
+	if not Net.hosting() or not _alive:
+		return
+	if _charm_left <= 0.0:
+		_charm_home = faction
+	faction = new_faction
+	_charm_left = maxf(_charm_left, seconds)
+	# Под чужой рукой боец не держит прежний пост: иначе он побежит домой к тем,
+	# против кого его только что развернули.
+	ai_led = false
+	home = global_position
+	leash = 0.0
+
+
+func charmed() -> bool:
+	return _charm_left > 0.0
 
 
 ## Внутри ли точка зоны, которую этот боец обороняет. Без поводка (бойцы
@@ -676,6 +709,16 @@ func _shoot(dir: Vector3) -> void:
 	if world == null or not world.has_method("spawn_unit_arrow"):
 		return
 	world.spawn_unit_arrow(global_position + Vector3.UP * 1.4, dir, self)
+
+
+## Во сколько раз построение режет входящий урон. Единица — защиты нет.
+##
+## Наружу это нужно арбалету: он «пробивает строй» (GDD 3.1). Защитного
+## множителя от снаряжения в игре нет вовсе — снаряжение усиливает бьющего, а не
+## защищает битого, — а построение есть, и стена щитов даёт ровно ту защиту,
+## против которой болт и задуман.
+func defensive_scale(aoe: bool = false) -> float:
+	return FORMATIONS.damage_scale(_formation(), aoe)
 
 
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон

@@ -51,12 +51,22 @@ func _run() -> void:
 	finish()
 
 
-## Магия поддержки — только у эльфов. У злодея своя, но атакующая, и она в
-## оружии; страже магия не положена вовсе.
+## Магия поддержки — только у эльфов. У злодея магия своя и атакующая (GDD 3.2),
+## страже не положена вовсе.
+##
+## Раньше здесь стояло «у злодея магии нет вовсе», и это перестало быть правдой,
+## когда ему добавили паралич, увядание и слепоту. Проверять надо не отсутствие
+## магии у злодея, а то, что ДРУИДИЧЕСКАЯ магия ему недоступна: лечить и звать
+## волков он не должен уметь ни при каких обстоятельствах.
 func _test_faction_access(me: Node3D) -> void:
 	check(FACTIONS.has_abilities(FACTIONS.Kind.ELVES), "магия поддержки у эльфов есть",
 		FACTIONS.abilities_text(FACTIONS.Kind.ELVES))
-	check(not FACTIONS.has_abilities(FACTIONS.Kind.VILLAIN), "у злодея её нет", "пусто")
+	var druid_leaked := false
+	for kind in [ABILITIES.Kind.HEAL, ABILITIES.Kind.RALLY, ABILITIES.Kind.SUMMON]:
+		if FACTIONS.allows_ability(FACTIONS.Kind.VILLAIN, kind):
+			druid_leaked = true
+	check(not druid_leaked, "у злодея магии поддержки нет — только своя, атакующая",
+		FACTIONS.abilities_text(FACTIONS.Kind.VILLAIN))
 	check(not FACTIONS.has_abilities(FACTIONS.Kind.GUARD), "у стражи её нет", "пусто")
 	check(int(me.faction) == FACTIONS.Kind.ELVES, "тест идёт за эльфов",
 		FACTIONS.name_of(me.faction))

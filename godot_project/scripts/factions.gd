@@ -43,20 +43,44 @@ const CAN_BUILD := [true, false, false]
 
 ## Чем сторона умеет драться. У злодея атакующая магия (GDD 8.4), эльфы в
 ## срезе начинают с лука и меча (DESIGN_ANSWERS.md, пункт 18).
+## Меч и лук — общая база, плюс одно эксклюзивное тяжёлое оружие на сторону
+## (GDD раздел 3.1). Порядок в списке — это порядок клавиш 1, 2, 3, ...
 const WEAPON_SETS := {
-	Kind.VILLAIN: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.SPELL],
-	Kind.ELVES: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW],
-	Kind.GUARD: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW],
+	# У злодея четыре вида оружия и вдобавок три заклинания на 4/5/6, поэтому
+	# огненный шар оставлен на прежней третьей клавише — за неё держится рука, —
+	# а молот получил отдельную, седьмую. Иначе пришлось бы двигать шар и ломать
+	# привычку ради порядка в списке.
+	Kind.VILLAIN: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.SPELL,
+		WEAPONS.Kind.HAMMER],
+	Kind.ELVES: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.AXE],
+	Kind.GUARD: [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.CROSSBOW],
 }
+
+
+## Какое оружие стоит на этой клавише у этой стороны. -1 — клавиша пустая.
+##
+## Раньше клавиши 1/2/3 были жёстко привязаны к мечу, луку и заклинанию, и новое
+## оружие вешать было некуда. Теперь клавиша — это НОМЕР В НАБОРЕ стороны, и
+## каждая сторона получает свои три-четыре подряд, без дыр.
+static func weapon_on_slot(faction: int, slot: int) -> int:
+	var set: Array = WEAPON_SETS.get(clampi(faction, 0, COUNT - 1), [])
+	return int(set[slot]) if slot >= 0 and slot < set.size() else -1
 
 ## Способности поддержки. Друидический уклон — только у эльфов (GDD 8.4):
 ## лечение, бафф и призыв животных. У злодея своя магия, но атакующая, и она
 ## живёт в WEAPON_SETS; страже магия не положена вовсе.
 const ABILITY_SETS := {
-	Kind.VILLAIN: [],
+	Kind.VILLAIN: [ABILITIES.Kind.PARALYSIS, ABILITIES.Kind.WITHER, ABILITIES.Kind.BLIND],
 	Kind.ELVES: [ABILITIES.Kind.HEAL, ABILITIES.Kind.RALLY, ABILITIES.Kind.SUMMON],
 	Kind.GUARD: [],
 }
+
+
+## Какая способность на этой клавише у этой стороны. -1 — клавиша пустая.
+## Клавиши 4/5/6 одни и те же, а что на них — зависит от стороны.
+static func ability_on_slot(faction: int, slot: int) -> int:
+	var set: Array = ABILITY_SETS.get(clampi(faction, 0, COUNT - 1), [])
+	return int(set[slot]) if slot >= 0 and slot < set.size() else -1
 
 
 ## Сколько бойцов сторона получает на старте.

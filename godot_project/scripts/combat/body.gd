@@ -243,6 +243,19 @@ func register_hit(zone: String, amount: float) -> void:
 	state_changed.emit()
 
 
+## Открыть кровотечение без потери конечности. Нужно топору (GDD 3.1) и
+## проклятию увядания (3.2): рана кровит, а рука цела.
+##
+## Перевязка лечит его тем же бинтом и тем же способом — отдельного «магического
+## кровотечения» не заводим, иначе у игрока было бы два разных кровотечения с
+## разными правилами и одинаковым видом.
+func start_bleeding() -> void:
+	if not Net.hosting() or bleeding:
+		return
+	bleeding = true
+	state_changed.emit()
+
+
 func _server_tick(delta: float) -> void:
 	var health: Node = get_parent().get_node_or_null("Health")
 	if health == null or not health.alive:

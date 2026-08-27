@@ -72,6 +72,21 @@ func _build_mesh() -> void:
 
 ## Свои же зоны попадания и своя капсула не должны ловить только что
 ## выпущенный снаряд.
+## Поправка на пробитие строя для арбалета.
+##
+## Цель сама умножит урон на защиту своего построения, и отменить это снаружи
+## нельзя — зато можно заранее домножить так, чтобы после её умножения вышло то,
+## что нужно. Так болт обходится без нового параметра в `take_damage`, который
+## пришлось бы протаскивать через бойцов, персонажей, постройки и караваны.
+func _pierce_scale(target: Node3D, aoe: bool) -> float:
+	if kind != WEAPONS.Kind.CROSSBOW or not target.has_method("defensive_scale"):
+		return 1.0
+	var scale: float = target.defensive_scale(aoe)
+	if scale <= 0.01 or scale >= 1.0:
+		return 1.0
+	return lerpf(scale, 1.0, WEAPONS.CROSSBOW_PIERCE) / scale
+
+
 func _collect_exclusions() -> void:
 	var shooter: Node = null
 	if not shooter_path.is_empty():
@@ -134,6 +149,7 @@ func _resolve_hit(hit: Dictionary) -> void:
 			if target != null:
 				var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier
 					* WEAPONS.gear_damage(gear_tier))
+				damage *= _pierce_scale(target, false)
 				target.take_damage(damage, shooter_id, zone.zone, point, _velocity.normalized())
 		else:
 			# Воткнулась в землю или стену — просто показать.

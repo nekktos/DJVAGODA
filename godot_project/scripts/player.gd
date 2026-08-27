@@ -111,7 +111,10 @@ var profile_id := ""
 @export var is_leader: bool = false
 @export var sync_buff_left: float = 0.0
 ## Остаток отката по каждой способности. Ведёт хост, клиент показывает.
-@export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0])
+## Откаты по ВСЕМ способностям, а не только по эльфийским трём: у злодея свои
+## три, и номера у них общие. Длина обязана совпадать с ABILITIES.COUNT —
+## короткий массив падал на первом же заклинании злодея, молча и в каждом кадре.
+@export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 ## Нужен, чтобы чужие персонажи анимировались: движение у них не считается.
 @export var sync_moving: bool = false
 
@@ -126,6 +129,27 @@ var spawn_slot := 0
 ## Сторона игрока. Приезжает данными спавна, поэтому одинакова на всех пирах.
 var faction := 0
 var control_enabled := true
+
+## Сколько секунд персонаж сбит с ног и не может бить. Ставит молот (GDD 3.1).
+## Реплицируется: сбитый должен видеть, что он сбит, а не гадать, почему не бьёт.
+@export var sync_stagger: float = 0.0
+
+## Магия злодея (GDD 3.2). Все три состояния РЕПЛИЦИРУЮТСЯ: цель обязана видеть,
+## что с ней происходит, иначе паралич выглядит как зависшая игра, а увядание —
+## как непонятно откуда взявшаяся слабость.
+@export var sync_paralysis: float = 0.0
+@export var sync_wither: float = 0.0
+@export var sync_blind: float = 0.0
+
+## Окно неуязвимости к повторному параличу. Считает и хранит ТОЛЬКО хост: цели
+## знать о нём незачем, а вот удерживать её в вечном контроле цепочкой кастов
+## нельзя.
+var _paralysis_immunity := 0.0
+var _was_paralysed := false
+## Идущий каст: что колдуем и сколько осталось. Тоже только на хосте — он же и
+## срывает каст, когда по кастующему попали.
+var _cast_kind := -1
+var _cast_left := 0.0
 var scripted_input := {}
 
 static var _bot_mode := -1
@@ -269,6 +293,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if Net.hosting():
 		_server_cooldown = maxf(0.0, _server_cooldown - delta)
+		sync_stagger = maxf(0.0, sync_stagger - delta)
+		_tick_curses(delta)
 		_tick_abilities(delta)
 
 	_swing_left = maxf(0.0, _swing_left - delta)
@@ -317,6 +343,12 @@ func _gather_input() -> Dictionary:
 func apply_input(inp: Dictionary, delta: float) -> void:
 	var move: Vector2 = inp.get("move", Vector2.ZERO)
 	var jump: bool = inp.get("jump", false)
+	if sync_paralysis > 0.0:
+		# Парализованный не двигается. КАМЕРУ у него не отбираем: смотреть по
+		# сторонам он должен — иначе несколько секунд выглядят как зависшая игра,
+		# а не как заклинание.
+		move = Vector2.ZERO
+		jump = false
 
 	var speed: float = body.move_speed(SPEED) * buff_speed_scale()
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
@@ -388,17 +420,15 @@ func _refresh_posture() -> void:
 
 func _update_attack(delta: float) -> void:
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
-	if not control_enabled or not health.alive:
+	if not control_enabled or not health.alive or sync_stagger > 0.0 or sync_paralysis > 0.0:
 		return
 
 	# Оружие переключаем только среди разрешённого стороне: у эльфов и стражи
 	# нет атакующей магии (DESIGN_ANSWERS.md, пункт 18).
-	if Input.is_action_just_pressed("weapon_1"):
-		_select_weapon(WEAPONS.Kind.SWORD)
-	elif Input.is_action_just_pressed("weapon_2"):
-		_select_weapon(WEAPONS.Kind.BOW)
-	elif Input.is_action_just_pressed("weapon_3"):
-		_select_weapon(WEAPONS.Kind.SPELL)
+	for slot in 4:
+		if Input.is_action_just_pressed("weapon_%d" % (slot + 1)):
+			_select_weapon(FACTIONS.weapon_on_slot(faction, slot))
+			break
 
 	var wants: bool = scripted_input.get("attack", false)
 	if not wants and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -411,7 +441,7 @@ func _update_attack(delta: float) -> void:
 	_cooldown_left = (WEAPONS.COOLDOWN[sync_weapon] * body.attack_speed_scale()
 		* buff_attack_scale() * WEAPONS.gear_cooldown(gear_tier))
 	_swing_left = 0.45
-	_play("attack-melee-right" if sync_weapon == WEAPONS.Kind.SWORD else "holding-right-shoot", true)
+	_play("attack-melee-right" if WEAPONS.is_melee(sync_weapon) else "holding-right-shoot", true)
 
 	# Замах рисуем сразу, чтобы удар ощущался мгновенным. Урон при этом
 	# случится только когда его подтвердит хост.
@@ -428,7 +458,7 @@ func _update_attack(delta: float) -> void:
 func _weapon_allowed(kind: int) -> bool:
 	if not FACTIONS.allows_weapon(faction, kind):
 		return false
-	if kind == WEAPONS.Kind.SWORD:
+	if WEAPONS.is_melee(kind):
 		return body.can_attack_melee()
 	return body.can_attack_ranged()
 
@@ -470,18 +500,83 @@ func _tick_abilities(delta: float) -> void:
 		sync_buff_left = maxf(0.0, sync_buff_left - delta)
 
 
+## Состояния от магии злодея и идущий каст. Только на хосте.
+func _tick_curses(delta: float) -> void:
+	sync_paralysis = maxf(0.0, sync_paralysis - delta)
+	sync_wither = maxf(0.0, sync_wither - delta)
+	sync_blind = maxf(0.0, sync_blind - delta)
+	_paralysis_immunity = maxf(0.0, _paralysis_immunity - delta)
+	if sync_paralysis > 0.0:
+		_was_paralysed = true
+	elif _was_paralysed:
+		# Эффект только что кончился — открываем окно неуязвимости.
+		_was_paralysed = false
+		_paralysis_immunity = ABILITIES.PARALYSIS_IMMUNITY
+
+	if _cast_left > 0.0:
+		_cast_left -= delta
+		if _cast_left <= 0.0:
+			var kind := _cast_kind
+			_cast_kind = -1
+			_finish_cast(kind)
+
+
+## Сорвать идущий каст. Зовётся при попадании по кастующему — это и есть
+## обязательный контрплей против паралича (GDD 3.2), и ради него же существует
+## оглушение молотом.
+func interrupt_cast() -> void:
+	if _cast_left <= 0.0:
+		return
+	_cast_left = 0.0
+	_cast_kind = -1
+	print("[магия] каст игрока %d сорван" % peer_id)
+
+
+## Идёт ли каст прямо сейчас. Для автопроверок и подсказки.
+func casting() -> bool:
+	return _cast_left > 0.0
+
+
+## Наложить паралич. Возвращает false, если цель под окном неуязвимости.
+func apply_paralysis(seconds: float) -> bool:
+	if not Net.hosting() or not health.alive:
+		return false
+	if _paralysis_immunity > 0.0:
+		return false
+	sync_paralysis = maxf(sync_paralysis, seconds)
+	_was_paralysed = true
+	return true
+
+
+func apply_wither(seconds: float) -> void:
+	if not Net.hosting() or not health.alive:
+		return
+	sync_wither = maxf(sync_wither, seconds)
+	body.start_bleeding()
+
+
+func apply_blind(seconds: float) -> void:
+	if not Net.hosting() or not health.alive:
+		return
+	sync_blind = maxf(sync_blind, seconds)
+
+
+## Множитель наносимого урона. Увядание ослабляет, но не обнуляет: проклятый
+## должен драться хуже, а не перестать драться.
+func curse_damage_scale() -> float:
+	return ABILITIES.WITHER_DAMAGE_SCALE if sync_wither > 0.0 else 1.0
+
+
 ## Ввод. Клиент только просит — применяет способность хост.
 func _update_abilities() -> void:
-	if not control_enabled or not health.alive:
+	if not control_enabled or not health.alive or sync_paralysis > 0.0:
 		return
 
 	var wanted := -1
-	if Input.is_action_just_pressed("ability_1"):
-		wanted = ABILITIES.Kind.HEAL
-	elif Input.is_action_just_pressed("ability_2"):
-		wanted = ABILITIES.Kind.RALLY
-	elif Input.is_action_just_pressed("ability_3"):
-		wanted = ABILITIES.Kind.SUMMON
+	for slot in 3:
+		if Input.is_action_just_pressed("ability_%d" % (slot + 1)):
+			wanted = FACTIONS.ability_on_slot(faction, slot)
+			break
 	if wanted < 0 and scripted_input.has("ability"):
 		# Автопроверки просят способность через сценарный ввод. Забираем сразу:
 		# иначе она сработала бы каждый кадр, пока ключ лежит в словаре.
@@ -517,19 +612,132 @@ func request_ability(kind: int) -> void:
 	if not body.can_attack_ranged():
 		return
 
-	var done := false
-	match kind:
-		ABILITIES.Kind.HEAL:
-			done = _server_cast_heal()
-		ABILITIES.Kind.RALLY:
-			done = _server_cast_rally()
-		ABILITIES.Kind.SUMMON:
-			done = _server_cast_summon()
-	if not done:
+	if sync_paralysis > 0.0 or sync_stagger > 0.0:
+		# Парализованный и сбитый не колдуют. Проверяем на хосте: клиент мог не
+		# успеть узнать о своём состоянии.
 		return
 
+	# Долгий каст. Заклинание не срабатывает сразу — его видно и его можно
+	# сорвать ударом (GDD 3.2, обязательный контрплей).
+	var cast: float = ABILITIES.cast_time(kind)
+	if cast > 0.0:
+		if _cast_left > 0.0:
+			return
+		_cast_kind = kind
+		_cast_left = cast
+		ability_cast.rpc(kind, global_position)
+		return
+
+	if not _run_ability(kind):
+		return
 	sync_ability_cd[kind] = ABILITIES.cooldown_of(kind)
 	ability_cast.rpc(kind, global_position)
+
+
+## Каст доведён до конца. Откат ставим ЗДЕСЬ, а не в начале: сорванный каст не
+## должен стоить заклинания, иначе прерывание превращается в двойное наказание.
+func _finish_cast(kind: int) -> void:
+	if kind < 0 or not health.alive:
+		return
+	if not _run_ability(kind):
+		return
+	sync_ability_cd[kind] = ABILITIES.cooldown_of(kind)
+	ability_cast.rpc(kind, global_position)
+
+
+func _run_ability(kind: int) -> bool:
+	match kind:
+		ABILITIES.Kind.HEAL:
+			return _server_cast_heal()
+		ABILITIES.Kind.RALLY:
+			return _server_cast_rally()
+		ABILITIES.Kind.SUMMON:
+			return _server_cast_summon()
+		ABILITIES.Kind.PARALYSIS:
+			return _server_cast_paralysis()
+		ABILITIES.Kind.WITHER:
+			return _server_cast_curse(ABILITIES.Kind.WITHER)
+		ABILITIES.Kind.BLIND:
+			return _server_cast_curse(ABILITIES.Kind.BLIND)
+	return false
+
+
+# --- магия злодея (GDD 3.2) ------------------------------------------------
+
+## Паралич воли. По ИГРОКУ — жёсткий контроль и ничего больше. По НАЁМНОМУ
+## существу — переход под контроль кастующего: это юнит, а не человек.
+##
+## Разница не косметическая, она и есть решение: отобрать управление у живого
+## человека нельзя, а перевербовать чужого волка — законный контрприём против
+## друидических призывов.
+func _server_cast_paralysis() -> bool:
+	var target: Node3D = _nearest_enemy(ABILITIES.range_of(ABILITIES.Kind.PARALYSIS))
+	if target == null:
+		_refuse("паралич некому наложить: врага рядом нет")
+		return false
+
+	if target.has_method("apply_paralysis"):
+		if not target.apply_paralysis(ABILITIES.PARALYSIS_HOLD):
+			_refuse("цель ещё не отошла от прошлого паралича")
+			return false
+		print("[магия] игрок %d парализован на %.0f с" % [int(target.peer_id), ABILITIES.PARALYSIS_HOLD])
+		return true
+
+	if target.has_method("charm"):
+		target.charm(int(faction), ABILITIES.PARALYSIS_CHARM)
+		print("[магия] боец перевербован на %.0f с" % ABILITIES.PARALYSIS_CHARM)
+		return true
+	return false
+
+
+## Увядание и слепота: обе бьют по одной цели и обе просто ставят срок.
+func _server_cast_curse(kind: int) -> bool:
+	var target: Node3D = _nearest_enemy(ABILITIES.range_of(kind))
+	if target == null:
+		_refuse("%s некому наложить: врага рядом нет" % ABILITIES.name_of(kind))
+		return false
+	if kind == ABILITIES.Kind.WITHER:
+		if target.has_method("apply_wither"):
+			target.apply_wither(ABILITIES.WITHER_DURATION)
+		elif target.has_method("take_damage"):
+			# У бойца системы ранений нет: увядание для него — чистый урон
+			# вместо кровотечения, чтобы заклинание не было по нему пустым.
+			target.take_damage(ABILITIES.WITHER_DURATION * 3.0, peer_id, "torso",
+				target.global_position, Vector3.UP)
+		return true
+	if target.has_method("apply_blind"):
+		target.apply_blind(ABILITIES.BLIND_DURATION)
+		return true
+	# Слепота по бойцу бессмысленна: у него нет экрана. Пусть лучше откажет
+	# честно, чем сработает вхолостую и спишет откат.
+	_refuse("слепота действует только на игрока")
+	return false
+
+
+## Ближайший враг в радиусе: персонаж другой стороны или чужой боец.
+func _nearest_enemy(radius: float) -> Node3D:
+	var world := get_parent().get_parent()
+	var best: Node3D = null
+	var best_distance := radius
+	for other in get_parent().get_children():
+		if other == self or not ("faction" in other) or int(other.faction) == int(faction):
+			continue
+		if not other.health.alive:
+			continue
+		var d: float = global_position.distance_to(other.global_position)
+		if d < best_distance:
+			best_distance = d
+			best = other
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if not is_instance_valid(unit) or not ("faction" in unit):
+			continue
+		if int(unit.faction) == int(faction):
+			continue
+		var d: float = global_position.distance_to(unit.global_position)
+		if d < best_distance:
+			best_distance = d
+			best = unit
+	return best
 
 
 ## Лечение: поднимает здоровье и останавливает кровотечение себе и своим рядом.
@@ -674,22 +882,27 @@ func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
 	if aim.length() < 0.5:
 		return
 
-	if kind == WEAPONS.Kind.SWORD:
+	if sync_stagger > 0.0:
+		# Сбитый не бьёт. Проверяем и здесь: клиент шлёт заявку раньше, чем до него
+		# доедет то, что его сбили, и без этой проверки удар всё равно прошёл бы.
+		return
+	if WEAPONS.is_melee(kind):
 		# Тем же ударом рубим дерево и бьём камень: отдельной кнопки добычи нет.
-		if not _server_try_harvest(aim):
-			_server_swing_sword(aim)
+		if not _server_try_harvest(aim, kind):
+			_server_swing_melee(aim, kind)
 	else:
 		# Снаряд создаёт и ведёт мир — он владеет спавнером снарядов.
 		projectile_requested.emit(kind, host_origin, aim, peer_id, gear_tier)
 
 
-## Хост разрешает удар мечом: ищет зоны попадания в секторе перед персонажем.
-func _server_swing_sword(aim: Vector3) -> void:
+## Хост разрешает удар в ближнем бою: ищет зоны попадания в секторе перед
+## персонажем. Оружие задаёт дальность, урон и то, что случится сверх урона.
+func _server_swing_melee(aim: Vector3, kind: int) -> void:
 	var origin := aim_origin()
 	var space := get_world_3d().direct_space_state
 	var query := PhysicsShapeQueryParameters3D.new()
 	var sphere := SphereShape3D.new()
-	sphere.radius = WEAPONS.SWORD_RANGE
+	sphere.radius = WEAPONS.melee_range(kind)
 	query.shape = sphere
 	query.transform = Transform3D(Basis(), origin)
 	query.collision_mask = HITBOX_LAYER
@@ -714,9 +927,26 @@ func _server_swing_sword(aim: Vector3) -> void:
 
 	for target in best.keys():
 		var zone: Area3D = best[target]
-		var damage: float = (WEAPONS.DAMAGE[WEAPONS.Kind.SWORD] * zone.damage_multiplier
-			* WEAPONS.gear_damage(gear_tier))
+		var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier
+			* WEAPONS.gear_damage(gear_tier) * curse_damage_scale())
 		target.take_damage(damage, peer_id, zone.zone, zone.global_position, aim)
+		_apply_melee_effect(kind, target)
+
+
+## Что оружие делает сверх урона.
+##
+## Это и есть разница между тремя видами ближнего боя: по числам они близки
+## (51, 50 и 42 урона в секунду), а играются по-разному именно из-за этого.
+func _apply_melee_effect(kind: int, target: Node3D) -> void:
+	if kind == WEAPONS.Kind.AXE:
+		# Топор оставляет кровоточащую рану. Не каждым ударом: постоянное
+		# кровотечение превратило бы его в «меч, который всегда лучше».
+		if randf() < WEAPONS.AXE_BLEED_CHANCE and "body" in target and target.body != null:
+			target.body.start_bleeding()
+	elif kind == WEAPONS.Kind.HAMMER:
+		# Молот сбивает: цель не бьёт и не колдует, пока не оправится.
+		if target.has_method("stagger"):
+			target.stagger(WEAPONS.HAMMER_STAGGER)
 
 
 ## Принять урон. Вызывается ТОЛЬКО на хосте (из оружия или снаряда).
@@ -726,6 +956,13 @@ func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, 
 	var dealt: float = health.apply_damage(amount, attacker_id)
 	if dealt <= 0.0:
 		return
+	# Два обязательных контрплея против магии злодея (GDD 3.2) — оба здесь,
+	# потому что оба про «по цели попали».
+	interrupt_cast()
+	if sync_paralysis > 0.0:
+		# Любой урон снимает паралич досрочно: у союзников есть чем выручить
+		# парализованного, пусть и грубо.
+		sync_paralysis = 0.0
 	# Судьбу конечности считает тело — отдельно от общего здоровья.
 	body.register_hit(zone, dealt)
 	show_hit.rpc(point, dir, dealt, zone)
@@ -1049,7 +1286,7 @@ func _server_buy_gear() -> void:
 ##
 ## Добыча руками — решение из DESIGN_ANSWERS.md, пункт 14. Наёмные рабочие
 ## появятся позже, когда будет на что их нанимать.
-func _server_try_harvest(aim: Vector3) -> bool:
+func _server_try_harvest(aim: Vector3, kind: int = WEAPONS.Kind.SWORD) -> bool:
 	var origin := aim_origin()
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + aim * RES.HARVEST_RANGE)
 	query.collision_mask = WORLD_LAYER
@@ -1063,9 +1300,13 @@ func _server_try_harvest(aim: Vector3) -> bool:
 	if target == null or not target.is_in_group("harvestable"):
 		return false
 
-	var kind: int = int(target.get_meta("resource", RES.Kind.WOOD))
-	var taken: int = stock.add(kind, RES.YIELD_PER_HIT)
-	harvested.rpc(hit.get("position", origin), kind, taken)
+	var resource: int = int(target.get_meta("resource", RES.Kind.WOOD))
+	# Топором рубят дерево, молотом бьют камень — тем же ударом, которым дерутся.
+	# Отдельного режима добычи нет и не нужно: инструмент и оружие это одно и то
+	# же, и выбор оружия становится ещё и выбором, чем ты сегодня работаешь.
+	var yield_now: int = int(round(RES.YIELD_PER_HIT * WEAPONS.harvest_bonus(kind, resource)))
+	var taken: int = stock.add(resource, yield_now)
+	harvested.rpc(hit.get("position", origin), resource, taken)
 
 	# Дерево из forest.gd адресуется индексом, а не путём ноды: объёмное дерево
 	# существует только пока рядом кто-то есть, и путь неустойчив.
@@ -1443,8 +1684,16 @@ func faction_spawn() -> Vector3:
 	return base + Vector3(float(spawn_slot) * 3.0, 0.0, 0.0)
 
 
+## Сбить с ног на столько секунд. Только на хосте. Повторный удар не суммируется,
+## а продлевает: иначе двое с молотами держали бы цель сбитой бесконечно.
+func stagger(seconds: float) -> void:
+	if not Net.hosting():
+		return
+	sync_stagger = maxf(sync_stagger, seconds)
+
+
 func _select_weapon(kind: int) -> void:
-	if FACTIONS.allows_weapon(faction, kind):
+	if kind >= 0 and FACTIONS.allows_weapon(faction, kind):
 		sync_weapon = kind
 
 

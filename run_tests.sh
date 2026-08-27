@@ -38,6 +38,8 @@ SUITES=(
 	"lab:--labtest:0:"
 	"steward:--stewardtest:1:"
 	"sfx:--sfxtest::"
+	"weapon:--weapontest:1:"
+	"magic:--magictest:0,1:"
 	"walk:--walktest::"
 	"forest:--foresttest::"
 	"econ:--econtest::"

@@ -35,6 +35,8 @@ extends Node
 ##   --labtest       автопроверка батраков: наём, роли, добыча (headless)
 ##   --stewardtest   автопроверка хозяйства ИИ: наём, стройка, войско (headless)
 ##   --sfxtest       автопроверка звука: синтез и точки вызова (headless)
+##   --weapontest    автопроверка эксклюзивного оружия сторон (headless)
+##   --magictest     автопроверка магии злодея и её контрплея (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
 ##   --world=ИМЯ     работать с отдельным файлом мира
@@ -164,6 +166,7 @@ func _process(delta: float) -> void:
 					line += "   B — перевязать (стоя на месте)"
 			if FACTIONS.has_abilities(me.faction):
 				line += "\n" + _abilities_hint(me)
+			line += _curse_hint(me)
 			if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
 				line += "\nприказ: %s — %s" % [
 					ORDERS.name_of(me.order_kind),
@@ -184,7 +187,7 @@ func _process(delta: float) -> void:
 				line += "\nF — командир: %s" % _order_hint(me)
 			elif me.at_workbench():
 				line += "\nF — верстак: протезы и коляска"
-		_hud.text = line + "\nWASD — движение, Space — прыжок, ЛКМ — удар, 1/2/3 — меч/лук/шар, Tab — вид сверху, F10 — в меню" + _refusal_line()
+		_hud.text = line + "\n" + _weapon_hint(me) + ", Tab — вид сверху, F10 — в меню" + _refusal_line()
 	_update_blindness()
 
 
@@ -398,6 +401,18 @@ func _apply_cmdline() -> void:
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
 
+	if args.has("--magictest"):
+		var magic_test: Node = preload("res://tools/magic_test.gd").new()
+		add_child(magic_test)
+		magic_test.start(_world)
+		needs_session = true
+
+	if args.has("--weapontest"):
+		var weapon_test: Node = preload("res://tools/weapons_test.gd").new()
+		add_child(weapon_test)
+		weapon_test.start(_world)
+		needs_session = true
+
 	if args.has("--sfxtest"):
 		var sfx_test: Node = preload("res://tools/sfx_test.gd").new()
 		add_child(sfx_test)
@@ -584,6 +599,11 @@ func _update_blindness() -> void:
 	var lost := 0
 	if me != null:
 		lost = int(me.body.eyes_lost)
+		# Слепящее проклятие закрывает половину экрана тем же способом, что и
+		# потерянный глаз, — только на таймере (GDD 3.2). Отдельный эффект
+		# рисовать незачем: увечье и проклятие ощущаются одинаково, и это верно.
+		if me.sync_blind > 0.0:
+			lost = maxi(lost, 1)
 	_blind_right.visible = lost >= 1
 	_blind_left.visible = lost >= 2
 
@@ -748,6 +768,25 @@ F1-F4 строй, G следовать, ПКМ идти в точку   |   T м
 	]
 
 
+## Какое оружие на какой клавише у этой стороны.
+##
+## Раньше подсказка была прибита гвоздями — «1/2/3 меч/лук/шар», — и годилась
+## только злодею: у эльфов третьей клавиши не было вовсе. Теперь набор свой у
+## каждой стороны (GDD 3.1), и подсказка собирается по нему.
+func _weapon_hint(me: Node3D) -> String:
+	if me == null:
+		return "WASD — движение, Space — прыжок, ЛКМ — удар"
+	var parts := PackedStringArray()
+	for slot in 4:
+		var kind: int = FACTIONS.weapon_on_slot(int(me.faction), slot)
+		if kind < 0:
+			continue
+		var key := str(slot + 1) if slot < 3 else "7"
+		var mark := "»" if int(me.sync_weapon) == kind else ""
+		parts.append("%s %s%s" % [key, WEAPONS.NAMES[kind], mark])
+	return "WASD — движение, Space — прыжок, ЛКМ — удар   |   " + "   ".join(parts)
+
+
 ## Чем заняты стороны, за которые никто не сел. Мир теперь воюет сам, и игрок
 ## должен видеть, что кроме него в партии кто-то есть. Строка появляется только
 ## когда свободные стороны действительно есть — втроём её не будет вовсе.
@@ -882,18 +921,42 @@ func _on_console_submitted(line: String) -> void:
 	me.ask_cheat(line)
 
 
+## Что сейчас наложено на персонажа. Молчит, когда ничего.
+##
+## Без этой строки паралич выглядит как зависшая игра, а увядание — как
+## непонятно откуда взявшаяся слабость. Игрок должен знать, что с ним, и
+## сколько это продлится.
+func _curse_hint(me: Node3D) -> String:
+	var parts := PackedStringArray()
+	if me.sync_paralysis > 0.0:
+		parts.append("ПАРАЛИЧ %.1f с" % me.sync_paralysis)
+	if me.sync_stagger > 0.0:
+		parts.append("сбит с ног %.1f с" % me.sync_stagger)
+	if me.sync_wither > 0.0:
+		parts.append("увядание %.0f с (урон x%.2f)" % [me.sync_wither, ABILITIES.WITHER_DAMAGE_SCALE])
+	if me.sync_blind > 0.0:
+		parts.append("ослеплён %.0f с" % me.sync_blind)
+	if me.casting():
+		parts.append("идёт каст — удар по вам его сорвёт")
+	if parts.is_empty():
+		return ""
+	return "\n>>> " + "   ".join(parts)
+
+
 ## Строка способностей друида: что готово, что на откате, сколько держится клич.
 ## Показываем только тем сторонам, у которых магия поддержки есть (эльфы).
 func _abilities_hint(me: Node3D) -> String:
 	var parts := PackedStringArray()
+	var slot := 0
 	for kind in ABILITIES.COUNT:
 		if not FACTIONS.allows_ability(me.faction, kind):
 			continue
+		slot += 1
 		var left: float = me.sync_ability_cd[kind]
 		if left > 0.0:
-			parts.append("%d %s (%.0f с)" % [kind + 4, ABILITIES.name_of(kind), ceil(left)])
+			parts.append("%d %s (%.0f с)" % [slot + 3, ABILITIES.name_of(kind), ceil(left)])
 		else:
-			parts.append("%d %s" % [kind + 4, ABILITIES.name_of(kind)])
+			parts.append("%d %s" % [slot + 3, ABILITIES.name_of(kind)])
 	var line := "магия: " + "   ".join(parts)
 	if me.sync_buff_left > 0.0:
 		line += "   клич действует ещё %.0f с" % ceil(me.sync_buff_left)
