@@ -118,6 +118,18 @@ var is_beast := false
 
 ## Распорядитель стражи: боец с многократным запасом, см. CHAMPION_*.
 var is_champion := false
+
+## Приказ ИИ свободной стороны (Этап 10, шаг 8, ступень «б»).
+##
+## Боец не знает, кто им командует, — игрок или `ai/warband.gd`. Он получает
+## якорь строя, разворот и вид построения, и дальше идёт тем же кодом, что и
+## отряд живого игрока. Это не экономия строк: если бы у ИИ был свой путь
+## движения, у него был бы и свой набор ошибок, которого не видно в игре за
+## людей.
+var ai_led := false
+var ai_anchor := Vector3.ZERO
+var ai_yaw := 0.0
+var ai_formation := 0
 ## Сколько зверю осталось жить. Считает и обнуляет только хост.
 var life_left := 0.0
 
@@ -281,12 +293,23 @@ func _physics_process(delta: float) -> void:
 		facing_target = true
 	elif commander != null:
 		destination = _slot_point(commander)
+	elif ai_led:
+		# Место в строю, назначенном ИИ. Тот же расчёт, что и у отряда игрока.
+		destination = ai_anchor + Basis(Vector3.UP, ai_yaw) * FORMATIONS.slot_offset(
+			_formation(), slot, 0)
 	elif leash > 0.0:
 		# Врага рядом нет — возвращаемся на пост.
 		destination = home
 	else:
 		destination = global_position
 
+	if not destination.is_finite():
+		# Неконечная точка расползается по всему отряду: NaN попадает в позицию,
+		# оттуда в расталкивание соседей, и через кадр весь строй перестаёт
+		# существовать. Так однажды и вышло — ИИ выдал якорь, которого не было.
+		# Дешевле не пустить, чем потом искать источник в мегабайтах лога.
+		push_error("Бойцу назначена неконечная точка — приказ отброшен")
+		destination = global_position
 	var to_dest := destination - global_position
 	to_dest.y = 0.0
 	var distance := to_dest.length()
@@ -329,7 +352,11 @@ func _physics_process(delta: float) -> void:
 func _within_leash(point: Vector3) -> bool:
 	if leash <= 0.0:
 		return true
-	return home.distance_to(point) <= leash
+	# Под приказом ИИ поводок считается от ЯКОРЯ ОТРЯДА, а не от базы: отряд в
+	# походе должен драться с тем, что встретил по дороге. От базы поводок
+	# означал бы, что вышедший в набег отряд перестаёт замечать врагов.
+	var centre: Vector3 = ai_anchor if ai_led else home
+	return centre.distance_to(point) <= leash
 
 
 ## Куда встать по построению. Якорь и разворот берём у командира или у точки,
@@ -343,7 +370,9 @@ func _slot_point(commander: Node3D) -> Vector3:
 
 func _formation() -> int:
 	var commander := _commander()
-	return int(commander.squad_formation) if commander != null else 0
+	if commander != null:
+		return int(commander.squad_formation)
+	return ai_formation if ai_led else 0
 
 
 ## Командир бойца. У гарнизона ИИ его нет: он стоит дома, а не ходит за кем-то.

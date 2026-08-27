@@ -77,6 +77,8 @@ signal camera_mode_changed(strategy: bool)
 @onready var diplomacy: Node = $Diplomacy
 @onready var savegame: Node = $Save
 @onready var garrison: Node = $Garrison
+## ÐÐ ÑÐ²Ð¾Ð±Ð¾Ð´Ð½ÑÑ ÑÑÐ¾ÑÐ¾Ð½, ÑÑÑÐ¿ÐµÐ½Ñ Â«Ð±Â»: ÐºÑÐ¾ Ð¸ ÐºÑÐ´Ð° ÑÐ¾Ð´Ð¸Ñ Ð²Ð¾ÐµÐ²Ð°ÑÑ.
+@onready var warband: Node = $Warband
 
 var strategy_mode := false
 

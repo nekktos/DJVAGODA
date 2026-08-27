@@ -80,6 +80,16 @@ func _reinforce(faction: int) -> void:
 			kept.append(unit)
 
 	var world := get_parent()
+	# Пополняем только тех, кто дома. Пока отряд в набеге, павшие не
+	# восполняются — иначе потери не значат ничего: отряд восстанавливался бы за
+	# три секунды прямо посреди боя, а правило отхода (`warband.gd`,
+	# RETREAT_FRACTION) не срабатывало бы никогда. Именно так и вышло в первом
+	# прогоне ступени «б»: отряд скармливал бойцов по одному и не отходил.
+	var warband := world.get_node_or_null("Warband")
+	if warband != null and not warband.at_home(faction):
+		_garrisons[faction] = kept
+		return
+
 	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
 	while kept.size() < SIZE:
 		var index := kept.size()

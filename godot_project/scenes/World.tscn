@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/diplomacy.gd" id="12_diplomacy"]
 [ext_resource type="Script" path="res://scripts/savegame.gd" id="13_save"]
 [ext_resource type="Script" path="res://scripts/ai/garrison.gd" id="14_garrison"]
+[ext_resource type="Script" path="res://scripts/ai/warband.gd" id="15_warband"]
 
 [sub_resource type="SceneReplicationConfig" id="Repl_objective"]
 properties/0/path = NodePath(".:palace_owner")
@@ -152,6 +153,9 @@ script = ExtResource("8_commander")
 
 [node name="Garrison" type="Node" parent="."]
 script = ExtResource("14_garrison")
+
+[node name="Warband" type="Node" parent="."]
+script = ExtResource("15_warband")
 
 [node name="Save" type="Node" parent="."]
 script = ExtResource("13_save")
