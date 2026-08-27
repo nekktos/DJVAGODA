@@ -55,10 +55,17 @@ const SQUAD_WANTED := 6
 const CARAVANS_WANTED := 1
 
 ## Где искать место под постройку: кольцами вокруг базы.
-const SPOT_RADII := [26.0, 38.0, 52.0, 68.0]
-const SPOT_ANGLES := 8
+## Кольца доходят до ста с лишним метров, и это не запас на будущее. С прежними
+## четырьмя кольцами до 68 м ИИ за три минуты живого прогона построил склад и
+## ВСТАЛ НАСОВСЕМ: двор форта тесный, склад занял единственное годное место, а
+## казарма 14 на 9 метров больше никуда не влезала. Молча — ресурсы копились,
+## караваны ходили, стройка не начиналась.
+const SPOT_RADII := [26.0, 38.0, 52.0, 68.0, 86.0, 106.0, 128.0]
+const SPOT_ANGLES := 12
 
 var _think_t := 0.0
+## Стороны, которым уже сказали, что строить негде: чтобы не повторяться.
+var _cramped := {}
 
 
 func _process(delta: float) -> void:
@@ -125,7 +132,15 @@ func _build(faction: int) -> void:
 		return
 	var spot := _find_spot(faction, kind)
 	if spot == Vector3.INF:
+		# Есть на что, но негде. Раньше это молчало, и сторона стояла до конца
+		# партии с полной казной. Говорим один раз на сторону: само по себе
+		# положение не изменится, пока что-нибудь не снесут.
+		if not _cramped.has(faction):
+			_cramped[faction] = true
+			print("[хозяйство] %s: есть на %s, но негде строить"
+				% [FACTIONS.name_of(faction), RES.BUILDING_NAMES[kind]])
 		return
+	_cramped.erase(faction)
 	if not wallet.spend(RES.BUILDING_COST[kind]):
 		return
 	get_parent().spawn_building(kind, spot, 0, faction, false)

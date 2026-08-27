@@ -27,7 +27,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 21
+	expected_host = 24
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -50,6 +50,7 @@ func _run() -> void:
 	await _test_gathers_and_delivers(me)
 	await _test_roles(me)
 	await _test_builders(me)
+	await _test_delivers_to_storage(me)
 	await _test_flees(me)
 	finish()
 
@@ -213,6 +214,51 @@ func _test_builders(me: Node3D) -> void:
 			break
 	check(rate > 1.0, "строители у стройки ускоряют её",
 		"множитель %.1f" % rate)
+
+
+## Батрак доносит груз ДО СКЛАДА, а не только до дома.
+##
+## Прежняя проверка доставки шла без склада вовсе — груз сдавался «домой», в
+## точку базы, и проходила зелёной. А в игре, где склад построен, батрак упирался
+## в его стену за пять метров от середины и стоял там с полными руками навсегда:
+## дальность сдачи мерилась до начала координат постройки, а склад 12 на 10
+## метров. Сторона голодала без дерева, ИИ не мог построить ничего дальше склада.
+##
+## Поэтому проверяем именно случай СО СКЛАДОМ: он и был сломан.
+func _test_delivers_to_storage(me: Node3D) -> void:
+	var base: Vector3 = FACTIONS.SPAWN[int(me.faction)]
+	var storage: Node3D = _world.spawn_building(RES.Building.STORAGE,
+		base + Vector3(18.0, 0.0, 0.0), int(me.peer_id), int(me.faction), true)
+	await get_tree().physics_frame
+	if storage == null:
+		fail("склад поставить не удалось")
+		return
+	check(_world.storage_of(int(me.faction)) != null, "склад стороны есть", "есть")
+
+	var worker: Node3D = null
+	for candidate in _crew(me):
+		worker = candidate
+		break
+	if worker == null:
+		fail("батраков нет")
+		return
+	worker.set_role(LABOURER.Role.LUMBERJACK)
+	worker.global_position = storage.global_position + Vector3(9.0, 0.5, 0.0)
+	worker.load = PackedInt32Array([LABOURER.LOAD_LIMIT, 0, 0, 0])
+	await get_tree().physics_frame
+
+	var wallet: Node = _world.treasury.of(int(me.faction))
+	var before: int = wallet.get_amount(RES.Kind.WOOD)
+	var delivered := false
+	for i in 25:
+		await get_tree().create_timer(1.0).timeout
+		if wallet.get_amount(RES.Kind.WOOD) > before:
+			delivered = true
+			break
+	check(delivered, "гружёный батрак сдал груз в склад",
+		"дерево %d -> %d" % [before, wallet.get_amount(RES.Kind.WOOD)])
+	check(int(worker.carrying()) == 0, "и руки у него свободны",
+		"несёт %d" % worker.carrying())
 
 
 ## Небоевой батрак уходит от врага, а не стоит и рубит, пока его убивают.

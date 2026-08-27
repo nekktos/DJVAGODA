@@ -74,6 +74,8 @@ var _retarget_t := 0.0
 var _site: Node3D = null
 ## Куда нести груз. Пересчитывается, когда груз набран.
 var _drop := Vector3.INF
+## Склад, к которому несём: до постройки надо мерить от КРАЯ, а не от середины.
+var _drop_site: Node3D = null
 
 
 func setup(data: Dictionary) -> void:
@@ -156,7 +158,16 @@ func _idle_destination(delta: float) -> Vector3:
 func _deliver(delta: float) -> Vector3:
 	if not _drop.is_finite():
 		_drop = _drop_point()
-	if _flat_to(_drop) > WORK_RANGE:
+	# Дальность сдачи — от КРАЯ склада, а не от его середины. Склад 12 на 10
+	# метров: батрак упирается в стену за пять метров от центра и не может
+	# подойти ближе физически. Он так и стоял с полными руками у собственного
+	# склада, пока сторона голодала без дерева.
+	#
+	# Это ПЯТЫЙ случай одной и той же ошибки: до этого так же не доставали до
+	# дерева (начало координат на середине ствола), до стройки строитель, и
+	# бойцы не могли разрушить здание. Расстояние до середины большого объекта
+	# не значит ничего.
+	if _flat_to(_drop) > _work_reach(_drop_site):
 		return _drop
 
 	var world := get_parent().get_parent()
@@ -176,6 +187,7 @@ func _deliver(delta: float) -> Vector3:
 					wallet.add(kind, left)
 	load = PackedInt32Array([0, 0, 0, 0])
 	_drop = Vector3.INF
+	_drop_site = null
 	_work_t = 0.0
 	return global_position
 
@@ -231,6 +243,7 @@ func _flat_to(point: Vector3) -> float:
 ## Дом — это точка базы. Без склада батрак всё равно должен куда-то носить,
 ## иначе первые руки бесполезны до первой постройки, а строить не на что.
 func _drop_point() -> Vector3:
+	_drop_site = null
 	var best: Vector3 = home if home != Vector3.ZERO else global_position
 	var best_distance := INF
 	for node in get_tree().get_nodes_in_group("building"):
@@ -245,6 +258,7 @@ func _drop_point() -> Vector3:
 		if d < best_distance:
 			best_distance = d
 			best = building.global_position
+			_drop_site = building
 	return best
 
 

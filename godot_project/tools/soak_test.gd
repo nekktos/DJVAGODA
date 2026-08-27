@@ -87,25 +87,6 @@ func _run() -> void:
 		await get_tree().create_timer(SAMPLE_INTERVAL).timeout
 		elapsed += SAMPLE_INTERVAL
 		_counts.append(_units())
-		if is_instance_valid(_bait) and int(elapsed) % 20 == 0:
-			var near := INF
-			var picked := "нет"
-			for unit in get_tree().get_nodes_in_group("unit"):
-				if not is_instance_valid(unit) or int(unit.faction) != FACTIONS.Kind.GUARD:
-					continue
-				var d: float = unit.global_position.distance_to(_bait.global_position)
-				if d < near:
-					near = d
-					var t: Node3D = unit._find_target()
-					picked = "нет" if t == null else str(t.name)
-			var wb: Node = _world.warband
-			var anchor: Vector3 = wb.anchor_of(FACTIONS.Kind.GUARD)
-			var centre: Vector3 = wb._centre_of(FACTIONS.Kind.GUARD)
-			var route: Array = wb._route.get(FACTIONS.Kind.GUARD, [])
-			note("%ds: склад %d hp, страж в %.0f м (цель %s) | якорь %s, отряд в %.0f м от якоря, точек %d, %s"
-				% [int(elapsed), int(_bait.health), near, picked, str(anchor.round()),
-					(centre.distance_to(anchor) if centre.is_finite() else -1.0), route.size(),
-					WARBAND.STATE_NAMES[wb.state_of(FACTIONS.Kind.GUARD)]])
 		for faction in FACTIONS.COUNT:
 			_states[_world.warband.state_of(faction)] = true
 			var anchor: Vector3 = _world.warband.anchor_of(faction)
@@ -140,6 +121,31 @@ func _report() -> void:
 		low = mini(low, value)
 	note("бойцов в мире: начало %d, минимум %d, максимум %d, замеров %d"
 		% [first, low, peak, _counts.size()])
+
+	# Чем сторона ИИ располагает к концу. Это НЕ проверка: чисел, которые тут
+	# обязаны получиться, никто не знает — они и есть предмет баланса. Но без
+	# них нельзя ответить на простой вопрос «почему ИИ не построил казарму»:
+	# негде, не на что или не успел. Первый же раз это заняло три прогона.
+	var villain: Node = _world.treasury.of(FACTIONS.Kind.VILLAIN)
+	if villain != null:
+		note("казна злодея: %s" % villain.summary())
+	var built := PackedStringArray()
+	for node in get_tree().get_nodes_in_group("building"):
+		if "faction" in node and int(node.faction) == FACTIONS.Kind.VILLAIN:
+			built.append("%s %d%%" % [node.label(), int(float(node.progress) * 100.0)])
+	note("постройки злодея: %s" % ("нет" if built.is_empty() else "   ".join(built)))
+	var LAB := preload("res://scripts/units/labourer.gd")
+	var by_role := PackedInt32Array()
+	by_role.resize(LAB.ROLE_COUNT)
+	var fleeing := 0
+	for worker in _world.labourers_of(FACTIONS.Kind.VILLAIN):
+		by_role[int(worker.sync_role)] += 1
+		if worker._threat_nearby() != null:
+			fleeing += 1
+	var parts := PackedStringArray()
+	for role in LAB.ROLE_COUNT:
+		parts.append("%s %d" % [LAB.ROLE_NAMES[role], by_role[role]])
+	note("батраки злодея: %s   убегают: %d" % ["   ".join(parts), fleeing])
 
 	# Потолок населения. Каждая свободная сторона держит GARRISON.SIZE бойцов,
 	# плюс распорядитель стражи. Запас вдвое — на бойцов, которые уже мертвы, но
