@@ -1408,7 +1408,7 @@ func request_send_caravan(points: PackedVector3Array) -> void:
 		return
 
 	var world := get_parent().get_parent()
-	var storage: Node3D = world.storage_of(peer_id)
+	var storage: Node3D = world.storage_of(int(faction))
 	if storage == null:
 		_refuse("каравану некуда возвращаться: сначала дострой склад")
 		return
@@ -1652,7 +1652,7 @@ func request_train_unit(archer: bool = false) -> void:
 		return
 	var world := get_parent().get_parent()
 	var kind: int = RES.Building.ARCHER_BARRACKS if archer else RES.Building.SWORD_BARRACKS
-	var barracks: Node3D = world.barracks_of(peer_id, kind)
+	var barracks: Node3D = world.barracks_of(int(faction), kind)
 	if barracks == null:
 		_refuse("нанимать негде: сначала построй %s (клавиша %d)"
 			% [RES.BUILDING_NAMES[kind], kind + 1])

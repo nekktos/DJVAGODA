@@ -57,7 +57,7 @@ func _test_hiring(me: Node3D) -> void:
 
 	me.request_build(RES.Building.SWORD_BARRACKS, Vector3(-60.0, 0.0, 90.0))
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.SWORD_BARRACKS] + 1.5).timeout
-	check(_world.barracks_of(me.peer_id) != null, "казарма достроена", "казарма есть")
+	check(_world.barracks_of(int(me.faction)) != null, "казарма достроена", "казарма есть")
 
 	var gold_before: int = me.stock.get_amount(RES.Kind.GOLD)
 	for i in 8:
@@ -114,7 +114,7 @@ func _test_formations(me: Node3D) -> void:
 		return
 	# Командира ставим рядом с отрядом: иначе бойцы меряются на марше к нему,
 	# так и не успев построиться, и проверка прошла бы при сломанных слотах.
-	var barracks: Node3D = _world.barracks_of(me.peer_id)
+	var barracks: Node3D = _world.barracks_of(int(me.faction))
 	me.global_position = barracks.global_position + Vector3(0.0, 2.0, 20.0)
 	me.sync_position = me.global_position
 	me.rotation.y = 0.0
@@ -222,7 +222,7 @@ func _test_archers(me: Node3D) -> void:
 
 	me.request_build(RES.Building.ARCHER_BARRACKS, Vector3(-90.0, 0.0, 90.0))
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.ARCHER_BARRACKS] + 2.0).timeout
-	check(_world.barracks_of(me.peer_id, RES.Building.ARCHER_BARRACKS) != null,
+	check(_world.barracks_of(int(me.faction), RES.Building.ARCHER_BARRACKS) != null,
 		"казарма лучников достроена", "есть")
 
 	me.ask_train_unit(true)
@@ -265,7 +265,7 @@ func _test_spacing_and_animation(me: Node3D) -> void:
 		return
 
 	# Ставим командира рядом и даём построиться в самый плотный строй.
-	var barracks: Node3D = _world.barracks_of(me.peer_id)
+	var barracks: Node3D = _world.barracks_of(int(me.faction))
 	if barracks != null:
 		me.teleport.rpc(barracks.global_position + Vector3(0.0, 2.0, 24.0))
 	me.request_squad_follow()

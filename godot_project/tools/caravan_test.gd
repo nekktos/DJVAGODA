@@ -65,8 +65,8 @@ func _test_needs_storage(me: Node3D) -> void:
 func _build_storage(me: Node3D) -> void:
 	me.request_build(RES.Building.STORAGE, Vector3(-380.0, 0.0, 400.0))
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.STORAGE] + 1.5).timeout
-	check(_world.storage_of(me.peer_id) != null, "склад достроен и найден",
-		"склад %s" % ("есть" if _world.storage_of(me.peer_id) != null else "нет"))
+	check(_world.storage_of(int(me.faction)) != null, "склад достроен и найден",
+		"склад %s" % ("есть" if _world.storage_of(int(me.faction)) != null else "нет"))
 
 
 func _test_delivery(me: Node3D) -> void:

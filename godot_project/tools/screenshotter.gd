@@ -343,7 +343,7 @@ func _stage_squad(formation: int) -> void:
 	await get_tree().create_timer(11.0).timeout
 	var squad: Array = _world.units_of(me.peer_id)
 	print("[shot] отряд: бойцов %d, казарма %s" % [
-		squad.size(), "есть" if _world.barracks_of(me.peer_id) != null else "НЕТ"
+		squad.size(), "есть" if _world.barracks_of(int(me.faction)) != null else "НЕТ"
 	])
 	for unit in squad:
 		if is_instance_valid(unit):

@@ -164,7 +164,7 @@ func _tick_deposit(delta: float) -> void:
 			continue
 		if child.stock.carried_total() <= 0:
 			continue
-		var storage := storage_of(int(child.peer_id))
+		var storage := storage_of(int(child.faction))
 		if storage == null:
 			continue
 		if child.global_position.distance_to(storage.global_position) > DEPOSIT_RANGE:
@@ -641,14 +641,21 @@ func set_route_mode(on: bool) -> void:
 
 
 ## Ближайший ДОСТРОЕННЫЙ склад игрока. Без него каравану некуда возвращаться.
-func storage_of(owner_id: int) -> Node3D:
+## Достроенный склад СТОРОНЫ.
+##
+## По стороне, а не по владельцу-персонажу: казна и так принадлежит стороне
+## (`treasury.gd`), и склад обязан ей же. Иначе выходила нелепость — игрок не мог
+## сложить добытое в склад, который построил не он, хотя ресурсы всё равно шли в
+## общий кошелёк. И тем более не мог сложить в склад, построенный ИИ до того, как
+## он сел за эту сторону.
+func storage_of(faction: int) -> Node3D:
 	for node in get_tree().get_nodes_in_group("building"):
 		var building := node as Node3D
 		if building == null:
 			continue
 		if int(building.kind) != RES.Building.STORAGE:
 			continue
-		if int(building.owner_id) != owner_id:
+		if int(building.faction) != faction:
 			continue
 		if float(building.progress) < 1.0:
 			continue
@@ -789,14 +796,16 @@ func caravans_of(owner_id: int) -> Array:
 # --- отряд -----------------------------------------------------------------
 
 ## Ближайшая ДОСТРОЕННАЯ казарма игрока.
-func barracks_of(owner_id: int, kind: int = RES.Building.SWORD_BARRACKS) -> Node3D:
+## Достроенная казарма СТОРОНЫ нужного рода войск. По той же причине, что и
+## склад: постройка принадлежит стороне, а не тому, кто её поставил.
+func barracks_of(faction: int, kind: int = RES.Building.SWORD_BARRACKS) -> Node3D:
 	for node in get_tree().get_nodes_in_group("building"):
 		var building := node as Node3D
 		if building == null:
 			continue
 		if int(building.kind) != kind:
 			continue
-		if int(building.owner_id) != owner_id or float(building.progress) < 1.0:
+		if int(building.faction) != faction or float(building.progress) < 1.0:
 			continue
 		return building
 	return null

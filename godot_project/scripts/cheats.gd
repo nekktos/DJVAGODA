@@ -183,7 +183,7 @@ static func _prosthetic(player: Node3D, args: Array) -> String:
 
 ## Караван по прямой: консоли не нужен нарисованный маршрут.
 static func _caravan(world: Node3D, player: Node3D) -> String:
-	var storage: Node3D = world.storage_of(int(player.peer_id))
+	var storage: Node3D = world.storage_of(int(player.faction))
 	if storage == null:
 		return "нет достроенного склада — каравану некуда возвращаться"
 	world.spawn_caravan(PackedVector3Array([
