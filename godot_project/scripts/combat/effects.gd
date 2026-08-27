@@ -7,6 +7,8 @@ extends RefCounted
 ## одновременно у всех, но сам по себе ни на что в игре не влияет.
 ##
 
+const RES := preload("res://scripts/economy/resources.gd")
+
 const BLOOD_COLOR := Color(0.72, 0.05, 0.04)
 const FIRE_COLOR := Color(1.0, 0.55, 0.12)
 
@@ -15,11 +17,13 @@ const FIRE_COLOR := Color(1.0, 0.55, 0.12)
 ## тем больше частиц.
 static func blood(world: Node, point: Vector3, direction: Vector3, amount: float) -> void:
 	var count := clampi(int(amount * 0.8), 8, 64)
+	Sfx.at(Sfx.Kind.HIT_FLESH, point)
 	_burst(world, point, direction, count, BLOOD_COLOR, 0.16, 5.0, 1.6)
 
 
 ## Вспышка взрыва огненного шара.
 static func explosion(world: Node, point: Vector3, radius: float) -> void:
+	Sfx.at(Sfx.Kind.EXPLOSION, point, 4.0)
 	_burst(world, point, Vector3.UP, 64, FIRE_COLOR, 0.35, radius * 1.6, 0.9)
 
 
@@ -74,6 +78,7 @@ static func _burst(
 ## Щепки и осколки при добыче. Цвет по типу ресурса, чтобы по кадру было
 ## понятно, что именно добыли.
 static func chips(world: Node, point: Vector3, resource_kind: int) -> void:
+	Sfx.at(Sfx.Kind.HIT_STONE if resource_kind == RES.Kind.STONE else Sfx.Kind.HIT_WOOD, point)
 	const CHIP_COLORS := [
 		Color(0.45, 0.30, 0.16),   # дерево
 		Color(0.55, 0.55, 0.58),   # камень
@@ -87,6 +92,7 @@ static func chips(world: Node, point: Vector3, resource_kind: int) -> void:
 ## Вспышка друидической способности. Цвет по виду: лечение зелёное, клич
 ## золотой, призыв синеватый — чтобы по кадру было понятно, что сработало.
 static func druid(world: Node, point: Vector3, ability_kind: int) -> void:
+	Sfx.at(Sfx.Kind.MAGIC, point)
 	const DRUID_COLORS := [
 		Color(0.35, 0.90, 0.45),   # лечение
 		Color(0.95, 0.80, 0.30),   # клич леса

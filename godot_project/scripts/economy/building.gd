@@ -129,6 +129,7 @@ func _process(delta: float) -> void:
 	_apply_progress()
 	if progress >= 1.0 and not _done:
 		_done = true
+		Sfx.at(Sfx.Kind.BUILD_DONE, global_position, 3.0)
 		completed.emit()
 
 

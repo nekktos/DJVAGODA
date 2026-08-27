@@ -689,6 +689,7 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 	if health > 0.0:
 		return
 	_alive = false
+	show_death.rpc(global_position)
 	if is_champion:
 		print("[распорядитель] пал от руки игрока %d" % attacker_id)
 	else:
@@ -701,6 +702,17 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 		world.report_unit_kill(attacker_id, faction)
 	died_on_server.emit(self)
 	queue_free()
+
+
+## Гибель бойца слышна у всех. Отдельное оповещение нужно потому, что своей
+## репликации у смерти нет: боец просто исчезает из дерева, и клиенту не с чем
+## связать звук.
+@rpc("any_peer", "call_local", "unreliable")
+func show_death(point: Vector3) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != 1:
+		return
+	Sfx.at(Sfx.Kind.DEATH, point, -2.0)
 
 
 @rpc("any_peer", "call_local", "unreliable")

@@ -194,6 +194,11 @@ func _ready() -> void:
 	body.limb_severed.connect(_on_limb_severed)
 	body.state_changed.connect(_refresh_posture)
 
+	# Звук смерти — у каждого пира: `died` эмитится локально, когда до пира
+	# доезжает нулевое здоровье. Ставить его в хостовый обработчик значило бы
+	# слышать чужую смерть только хозяину сессии.
+	health.died.connect(func(_killer: int) -> void:
+		Sfx.at(Sfx.Kind.DEATH, global_position, 2.0))
 	if Net.hosting():
 		health.died.connect(_on_died_on_server)
 

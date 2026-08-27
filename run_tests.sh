@@ -27,6 +27,7 @@ SUITES=(
 	"nav:--navtest::"
 	"lab:--labtest:0:"
 	"steward:--stewardtest:1:"
+	"sfx:--sfxtest::"
 	"walk:--walktest::"
 	"forest:--foresttest::"
 	"econ:--econtest::"

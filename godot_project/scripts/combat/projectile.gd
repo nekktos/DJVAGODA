@@ -49,6 +49,8 @@ func _ready() -> void:
 
 
 func _build_mesh() -> void:
+	# Снаряд появляется у каждого пира — здесь и слышен его вылет.
+	Sfx.at(Sfx.Kind.SPELL if kind == WEAPONS.Kind.SPELL else Sfx.Kind.BOW, global_position)
 	_mesh = MeshInstance3D.new()
 	var mat := StandardMaterial3D.new()
 	if kind == WEAPONS.Kind.BOW:
