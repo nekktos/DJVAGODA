@@ -67,6 +67,26 @@ const BEAST_COOLDOWN := 0.8
 const BEAST_SCALE := 0.55
 const BEAST_COLOR := Color(0.32, 0.30, 0.36)
 
+## Распорядитель стражи (Этап 10). Тот же боец, но чемпион: убить его можно, и
+## это осмысленная цель — пока он лежит, стража не получает приказов и не может
+## повысить своего до командира. Но убивать его в одиночку не следует.
+##
+## Числа взяты от существующего баланса, а не с потолка. Игрок — 100 HP и около
+## 50 dps мечом; рядовой боец — 90 HP и 20 dps. Чемпион бьёт втрое сильнее
+## рядового: у игрока с полным здоровьем есть примерно четыре его удара, то есть
+## размен «в лоб» злодей проигрывает всегда. Запас в 700 — это тридцать секунд
+## непрерывной рубки мечом, которых у одиночки не будет; впятером отряд сносит
+## его за семь секунд, потеряв двоих. Чемпион чуть быстрее игрока, поэтому
+## бегать вокруг и клевать его бесполезно — а вот отойти, перевязаться и
+## вернуться можно: за поводок он не пойдёт.
+const CHAMPION_HEALTH := 700.0
+const CHAMPION_SPEED := 6.6
+const CHAMPION_DAMAGE := 32.0
+const CHAMPION_COOLDOWN := 1.0
+const CHAMPION_ENGAGE := 20.0
+const CHAMPION_SCALE := 1.18
+const CHAMPION_COLOR := Color(0.78, 0.20, 0.18)
+
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
 
@@ -95,6 +115,9 @@ var leash := 0.0
 ## Зверь ли это. Приезжает в пакете спавна и потому одинаков на всех пирах —
 ## реплицировать отдельно не нужно, как owner_id и slot.
 var is_beast := false
+
+## Распорядитель стражи: боец с многократным запасом, см. CHAMPION_*.
+var is_champion := false
 ## Сколько зверю осталось жить. Считает и обнуляет только хост.
 var life_left := 0.0
 
@@ -117,9 +140,12 @@ func setup(data: Dictionary) -> void:
 	home = data.get("home", Vector3.ZERO)
 	leash = float(data.get("leash", 0.0))
 	is_beast = bool(data.get("beast", false))
+	is_champion = bool(data.get("champion", false))
 	if is_beast:
 		health = BEAST_HEALTH
 		life_left = ABILITIES.SUMMON_LIFETIME
+	elif is_champion:
+		health = CHAMPION_HEALTH
 
 
 func _ready() -> void:
@@ -141,18 +167,31 @@ func _build_model() -> void:
 	# Волка среди бесплатных ассетов нет, поэтому зверь — приземистая и тёмная
 	# версия той же модели. Заглушка ровно того же сорта, что и grey-box карты:
 	# силуэт читается как «не человек», остальное подождёт художника.
-	var model_scale := MODEL_SCALE * (BEAST_SCALE if is_beast else 1.0)
+	var model_scale := MODEL_SCALE
+	if is_beast:
+		model_scale *= BEAST_SCALE
+	elif is_champion:
+		model_scale *= CHAMPION_SCALE
 	_model.scale = Vector3(model_scale, model_scale * 0.7, model_scale * 1.5) if is_beast else Vector3.ONE * model_scale
 	# Модель смотрит в +Z, игра считает передом -Z — см. player.gd::_build_model.
 	_model.rotation.y = PI
 	add_child(_model)
 	if is_beast:
-		_tint_beast(_model)
+		_tint(_model, BEAST_COLOR)
+	elif is_champion:
+		# Крупнее и в красном: в толпе стражи он должен читаться с первого
+		# взгляда, иначе нападать на него будут по незнанию.
+		_tint(_model, CHAMPION_COLOR)
 
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.35 * (BEAST_SCALE if is_beast else 1.0)
-	capsule.height = 1.8 * (BEAST_SCALE if is_beast else 1.0)
+	var body_scale := 1.0
+	if is_beast:
+		body_scale = BEAST_SCALE
+	elif is_champion:
+		body_scale = CHAMPION_SCALE
+	capsule.radius = 0.35 * body_scale
+	capsule.height = 1.8 * body_scale
 	shape.shape = capsule
 	shape.position = Vector3(0.0, capsule.height * 0.5, 0.0)
 	add_child(shape)
@@ -237,7 +276,7 @@ func _physics_process(delta: float) -> void:
 	if target != null and not _within_leash(target.global_position):
 		target = null
 
-	if target != null and global_position.distance_to(target.global_position) <= ENGAGE_RANGE:
+	if target != null and global_position.distance_to(target.global_position) <= _engage_range():
 		destination = target.global_position
 		facing_target = true
 	elif commander != null:
@@ -261,7 +300,7 @@ func _physics_process(delta: float) -> void:
 	var desired := Vector3.ZERO
 	if distance > stop_at:
 		var dir := to_dest.normalized()
-		var speed := BEAST_SPEED if is_beast else BASE_SPEED * FORMATIONS.speed_scale(_formation())
+		var speed := _move_speed()
 		desired = dir * speed
 		rotation.y = atan2(-dir.x, -dir.z)
 		sync_moving = true
@@ -323,7 +362,7 @@ func _commander() -> Node3D:
 ## Ближайший враг: игрок, боец или караван ЧУЖОЙ СТОРОНЫ.
 func _find_target() -> Node3D:
 	var best: Node3D = null
-	var best_distance := ENGAGE_RANGE
+	var best_distance := _engage_range()
 	var world := get_parent().get_parent()
 	if world == null:
 		return null
@@ -368,13 +407,43 @@ func _faction_of(node: Node) -> int:
 	return int(world.faction_of(int(node.owner_id)))
 
 
+## Боевые числа зависят от вида бойца. Вынесено в методы: видов стало три, и
+## цепочки тернарников по месту вызова перестали читаться.
+func _engage_range() -> float:
+	return CHAMPION_ENGAGE if is_champion else ENGAGE_RANGE
+
+
+func _move_speed() -> float:
+	if is_beast:
+		return BEAST_SPEED
+	if is_champion:
+		return CHAMPION_SPEED
+	return BASE_SPEED * FORMATIONS.speed_scale(_formation())
+
+
+func _strike_damage() -> float:
+	if is_beast:
+		return BEAST_DAMAGE
+	if is_champion:
+		return CHAMPION_DAMAGE
+	return STRIKE_DAMAGE
+
+
+func _strike_cooldown() -> float:
+	if is_beast:
+		return BEAST_COOLDOWN
+	if is_champion:
+		return CHAMPION_COOLDOWN
+	return STRIKE_COOLDOWN
+
+
 func _strike(target: Node3D) -> void:
 	if _cooldown > 0.0 or target == null:
 		return
-	_cooldown = BEAST_COOLDOWN if is_beast else STRIKE_COOLDOWN
+	_cooldown = _strike_cooldown()
 	var point := target.global_position + Vector3.UP * 1.1
 	var dir := (target.global_position - global_position).normalized()
-	target.take_damage(BEAST_DAMAGE if is_beast else STRIKE_DAMAGE, owner_id, "torso", point, dir)
+	target.take_damage(_strike_damage(), owner_id, "torso", point, dir)
 
 
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон
@@ -388,10 +457,16 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 	if health > 0.0:
 		return
 	_alive = false
-	print("[отряд] боец игрока %d убит игроком %d" % [owner_id, attacker_id])
+	if is_champion:
+		print("[распорядитель] пал от руки игрока %d" % attacker_id)
+	else:
+		print("[отряд] боец игрока %d убит игроком %d" % [owner_id, attacker_id])
 	var world := get_parent().get_parent()
 	if world != null and world.has_method("report_unit_kill"):
-		world.report_unit_kill(attacker_id, owner_id)
+		# Докладываем СВОЮ сторону, а не владельца. У гарнизона и распорядителя
+		# владельца нет вовсе (owner_id = 0), и по нему сторона считалась как -1:
+		# приказ «убить бойцов злодея» не засчитывал убитых из его гарнизона.
+		world.report_unit_kill(attacker_id, faction)
 	died_on_server.emit(self)
 	queue_free()
 
@@ -434,13 +509,13 @@ func animation_state() -> Dictionary:
 	}
 
 
-## Перекрасить призванного зверя в тёмное. Идём по дереву модели: у ассетов
-## Kenney меши лежат на разной глубине.
-func _tint_beast(node: Node) -> void:
+## Перекрасить модель целиком: зверя в тёмное, распорядителя в красное.
+## Идём по дереву — у ассетов Kenney меши лежат на разной глубине.
+func _tint(node: Node, color: Color) -> void:
 	if node is MeshInstance3D:
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = BEAST_COLOR
+		mat.albedo_color = color
 		mat.roughness = 0.95
 		(node as MeshInstance3D).material_override = mat
 	for child in node.get_children():
-		_tint_beast(child)
+		_tint(child, color)

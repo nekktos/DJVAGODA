@@ -869,6 +869,8 @@ func _refresh_commander(me: Node3D) -> void:
 	promote.disabled = not _world.commander.can_promote(me)
 	if not promote.disabled:
 		promote.text = "Принять командование"
+	elif not _world.commander.on_duty():
+		promote.text = "Распорядитель пал"
 	elif me.is_leader:
 		promote.text = "Ты уже командир"
 	else:
@@ -919,8 +921,10 @@ func _on_report() -> void:
 
 ## Короткая строка про текущий приказ — для подсказки у командира и в HUD.
 func _order_hint(me: Node3D) -> String:
+	if not _world.commander.on_duty():
+		return "распорядитель пал, вернётся через %d с" % int(ceil(_world.commander.respawn_left()))
 	if int(me.faction) != FACTIONS.Kind.GUARD:
-		return "распорядитель стражи — не боец: он говорит только со стражей, убить его нельзя"
+		return "распорядитель стражи говорит только со стражей — но убить его можно, если хватит сил"
 	if me.order_kind < 0:
 		return "получить приказ"
 	return "%s (%s)" % [

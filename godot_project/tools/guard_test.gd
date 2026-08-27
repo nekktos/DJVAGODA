@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "стража"
-	expected_host = 31
+	expected_host = 42
 	expected_client = 3
 	_world = world
 	_run.call_deferred()
@@ -41,6 +41,7 @@ func _run() -> void:
 	await _test_raid(me)
 	await _test_faction_guard(me)
 	await _test_arc(me)
+	await _test_champion(me)
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(10.0).timeout
 	finish()
@@ -131,14 +132,24 @@ func _test_slay(me: Node3D) -> void:
 	check(me.order_progress == before + 1, "чужие убийства не засчитываются",
 		"прогресс %d" % me.order_progress)
 
-	# Путь от бойца до командира: мир должен перевести владельца бойца в сторону.
-	# В соло-прогоне злодея-игрока нет, тогда эту связку проверить нечем.
-	var villain_id := _villain_peer()
-	if villain_id > 0:
-		_world.report_unit_kill(int(me.peer_id), villain_id)
+	# Путь от бойца до командира. Сторону докладывает сам боец: у гарнизона и
+	# распорядителя владельца нет, и раньше их гибель не засчитывалась.
+	_world.report_unit_kill(int(me.peer_id), FACTIONS.Kind.VILLAIN)
+	await get_tree().physics_frame
+	check(me.order_progress == before + 2, "убитый боец злодея засчитан",
+		"прогресс %d" % me.order_progress)
+
+	# Боец БЕЗ владельца (гарнизон, распорядитель) — тоже боец стороны.
+	var ownerless: Node3D = _world.spawn_garrison_unit(FACTIONS.Kind.VILLAIN, 7,
+		Vector3(-300.0, 2.0, 300.0), Vector3(-300.0, 2.0, 300.0), 40.0)
+	await get_tree().physics_frame
+	var was: int = me.order_progress
+	if ownerless != null:
+		ownerless.take_damage(9999.0, int(me.peer_id), "torso",
+			ownerless.global_position, Vector3.FORWARD)
 		await get_tree().physics_frame
-		check(me.order_progress == before + 2, "убитый боец злодея засчитан",
-			"прогресс %d" % me.order_progress)
+	check(me.order_progress == was + 1, "боец гарнизона без владельца тоже засчитан",
+		"прогресс %d -> %d" % [was, me.order_progress])
 
 	me.order_progress = ORDERS.target_of(ORDERS.Kind.SLAY)
 	await _go_to_commander(me)
@@ -179,7 +190,11 @@ func _test_faction_guard(me: Node3D) -> void:
 
 
 func _go_to_commander(me: Node3D) -> void:
-	me.teleport.rpc(_commander().POSITION + Vector3(0.0, 2.0, 2.0))
+	# К ТЕЛУ, а не к помосту: распорядитель отходит драться и возвращается.
+	var spot: Vector3 = _commander().POSITION
+	if _commander().on_duty():
+		spot = _commander()._body.global_position
+	me.teleport.rpc(spot + Vector3(0.0, 2.0, 2.0))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
@@ -279,6 +294,63 @@ func _test_arc(me: Node3D) -> void:
 		"личное убийство злодея закрывает финал", "прогресс %d" % me.order_progress)
 
 
+## Распорядитель убиваем, но очень силён, и его гибель закрывает страже приказы.
+##
+## Живой тестер сообщил, что он бессмертный: он был голой сеткой без коллизии, и
+## удары проходили насквозь. Проверяем не «есть здоровье», а всю цепочку —
+## тело на посту, урон доходит, в одиночку не по зубам, после гибели говорить
+## не с кем, потом он возвращается.
+func _test_champion(me: Node3D) -> void:
+	var commander := _commander()
+	check(commander.on_duty(), "распорядитель на посту", "on_duty=%s" % commander.on_duty())
+	var body: Node3D = commander._body
+	if body == null:
+		fail("тела распорядителя нет — проверять нечего")
+		return
+
+	check(body.is_champion, "тело распорядителя — чемпион, а не рядовой",
+		"is_champion=%s" % body.is_champion)
+	check(int(body.faction) == FACTIONS.Kind.GUARD, "он за стражу",
+		FACTIONS.name_of(int(body.faction)))
+
+	# Урон доходит: именно этого не было, когда он был декорацией.
+	var before: float = body.health
+	body.take_damage(50.0, int(me.peer_id), "torso", body.global_position, Vector3.FORWARD)
+	await get_tree().physics_frame
+	check(body.health < before, "удар по распорядителю снимает здоровье",
+		"%.0f -> %.0f" % [before, body.health])
+
+	# «Очень сильный» — это проверяемое число, а не пожелание: запас должен
+	# переживать больше времени непрерывной рубки, чем одиночка проживёт под
+	# его ответными ударами.
+	var UNIT := preload("res://scripts/units/unit.gd")
+	var seconds_to_kill: float = UNIT.CHAMPION_HEALTH / 50.0
+	var seconds_player_lives: float = 100.0 / (UNIT.CHAMPION_DAMAGE / UNIT.CHAMPION_COOLDOWN)
+	check(seconds_to_kill > seconds_player_lives * 3.0,
+		"в одиночку размен заведомо проигран",
+		"рубить %.0f с, живёшь %.0f с" % [seconds_to_kill, seconds_player_lives])
+
+	# Гибель: приказы и повышение закрываются, об этом объявляют.
+	body.take_damage(9999.0, int(me.peer_id), "torso", body.global_position, Vector3.FORWARD)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check(not commander.on_duty(), "после гибели распорядителя на посту нет",
+		"on_duty=%s" % commander.on_duty())
+	check(not commander.in_range(me.global_position), "говорить не с кем",
+		"in_range=%s" % commander.in_range(me.global_position))
+	check(not commander.can_promote(me), "повысить некому",
+		"can_promote=%s" % commander.can_promote(me))
+	check(commander.respawn_left() > 0.0, "отсчёт до возвращения пошёл",
+		"%.0f с" % commander.respawn_left())
+
+	# Возвращение. Ждать три минуты в тесте нельзя — подводим отсчёт к концу.
+	commander._respawn_left = 0.2
+	await get_tree().create_timer(1.0).timeout
+	check(commander.on_duty(), "распорядитель вернулся на пост",
+		"on_duty=%s" % commander.on_duty())
+
+
 func _clear(guard: Node3D) -> void:
+
 	guard.order_kind = -1
 	guard.order_progress = 0

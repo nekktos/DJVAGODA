@@ -20,7 +20,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "гарнизон"
-	expected_host = 14
+	expected_host = 16
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -77,6 +77,18 @@ func _test_appears_only_on_free_side(me: Node3D) -> void:
 		"owner_id=%d" % int(units[0].owner_id))
 	check(units[0].leash > 0.0, "у бойца гарнизона есть поводок",
 		"%.0f м" % units[0].leash)
+
+	# Распорядитель стражи — тоже боец без владельца и тоже за стражу, но в штат
+	# гарнизона не входит: он стоит на посту всегда, занята сторона или нет.
+	# Без этой проверки гарнизон стражи молча считался бы на одного больше.
+	var champions := 0
+	for node in get_tree().get_nodes_in_group("unit"):
+		if is_instance_valid(node) and "is_champion" in node and node.is_champion:
+			champions += 1
+	check(champions == 1, "распорядитель в мире ровно один", "%d" % champions)
+	check(_garrison().size_of(FACTIONS.Kind.GUARD) != 1,
+		"распорядитель не попал в штат гарнизона",
+		"в штате стражи: %d" % _garrison().size_of(FACTIONS.Kind.GUARD))
 
 
 ## Свой-чужой определяется СТОРОНОЙ, а не владельцем. Иначе отряды двух игроков
@@ -160,11 +172,19 @@ func _free_faction() -> int:
 	return -1
 
 
+## Бойцы стороны, КРОМЕ распорядителя стражи. Он тоже боец без владельца и
+## тоже за стражу, но к гарнизону отношения не имеет: он стоит на посту всегда,
+## занята сторона или нет, и в штат не входит.
 func _units_of_faction(faction: int) -> Array:
 	var result := []
 	for node in get_tree().get_nodes_in_group("unit"):
-		if "faction" in node and int(node.faction) == faction and is_instance_valid(node):
-			result.append(node)
+		if not is_instance_valid(node) or not ("faction" in node):
+			continue
+		if int(node.faction) != faction:
+			continue
+		if "is_champion" in node and node.is_champion:
+			continue
+		result.append(node)
 	return result
 
 

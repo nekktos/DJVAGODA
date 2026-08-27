@@ -637,10 +637,10 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 
 ## Боец погиб. Приказ стражи «проредить войско злодея» засчитывает и бойцов,
 ## а не только самого злодея.
-func report_unit_kill(killer_id: int, unit_owner: int) -> void:
+func report_unit_kill(killer_id: int, victim_faction: int) -> void:
 	if not Net.hosting():
 		return
-	commander.report_kill(killer_id, faction_of(unit_owner))
+	commander.report_kill(killer_id, victim_faction)
 
 
 ## Караваны игрока, живые в этот момент.
@@ -747,7 +747,8 @@ func players_of(faction: int) -> Array:
 ## Отличается от бойца игрока двумя вещами: у него нет владельца-пира (сторона
 ## задана прямо) и есть ДОМ с поводком — он обороняет зону, а не ходит за
 ## командиром.
-func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3, leash: float) -> Node:
+func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3, leash: float,
+		champion := false) -> Node:
 	if not Net.hosting():
 		return null
 	_spawn_counter += 1
@@ -760,6 +761,7 @@ func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3,
 		"slot": slot,
 		"point": point,
 		"beast": false,
+		"champion": champion,
 		"faction": faction,
 		"home": home,
 		"leash": leash,

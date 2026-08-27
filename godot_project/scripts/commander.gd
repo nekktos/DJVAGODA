@@ -10,44 +10,51 @@ extends Node3D
 ## Считает и выдаёт всё ТОЛЬКО хост. Клиент рисует панель по реплицированным
 ## числам и присылает заявку «доложить».
 ##
+## РАСПОРЯДИТЕЛЬ УБИВАЕМ. Раньше он был голой сеткой без коллизии: удары и
+## огненные шары пролетали насквозь, и живой тестер разумно решил, что это баг.
+## Теперь его тело — обычный боец (`unit.gd`) в варианте «чемпион»: у него есть
+## здоровье, зоны попадания, кровь и смерть, и дерётся он тем же кодом, что все
+## остальные. Отдельной боевой логики здесь нет намеренно — дублировать бой
+## ради одного NPC значило бы завести вторую, непроверенную его версию.
+##
+## Убить его — осмысленная цель для злодея и эльфов: пока он лежит, стража не
+## получает приказов и не может повысить своего до командира. Но в одиночку
+## это не размен, а самоубийство, см. CHAMPION_* в `unit.gd`.
+##
+## Смерть у него НЕ окончательная: через RESPAWN_DELAY он снова встаёт на пост.
+## Окончательно гибнут только вожаки — злодей и командир стражи, — а
+## распорядитель вожаком не является: через него идёт вся арка кампании стражи,
+## и вырезав его насовсем, злодей на первой минуте закрывал бы чужой стороне
+## всю ветку до конца партии.
+##
 
 const ORDERS := preload("res://scripts/orders.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
-const MODEL_ANIM := preload("res://scripts/model_anim.gd")
-
-## Модель командира. Отличается от солдатских, чтобы его было видно в толпе.
-const MODEL_PATH := "res://assets/characters/character-f.glb"
-const MODEL_SCALE := 0.78
-
 ## Где стоит: во дворе дворца, в стороне от точки спавна стражи.
 const POSITION := Vector3(270.0, 6.0, -235.0)
 
-var _model: Node3D
+## Через сколько секунд после гибели распорядитель снова встаёт на пост.
+## Три минуты — это налёт с последствиями, а не выключенная сторона: за это
+## время стража успевает заметить потерю, но партию она не ломает.
+const RESPAWN_DELAY := 180.0
+
+## Зона, которую он обороняет. За неё за целью не идёт: он охраняет двор, а не
+## воюет по карте, и стража должна знать, где его искать.
+const LEASH := 45.0
+
+## Живое тело распорядителя. Пока его нет — он пал и ещё не вернулся.
+var _body: Node3D = null
+var _respawn_left := 0.0
 
 
 func _ready() -> void:
 	position = POSITION
-	_build_figure()
+	_build_stand()
 
 
-func _build_figure() -> void:
-	# Тело для столкновений. Раньше распорядитель был голой сеткой без
-	# коллизии: удары и огненные шары пролетали насквозь, ни попадания,
-	# ни отдачи. Живой тестер решил, что NPC бессмертный из-за бага.
-	# Теперь он хотя бы твёрдый: удар в него упирается, а не проходит
-	# сквозь пустоту. Здоровья у него по-прежнему нет — он распорядитель,
-	# а не боец, и убивать его пока нечем и незачем.
-	var body := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.6
-	capsule.height = 2.0
-	shape.shape = capsule
-	shape.position = Vector3(0.0, 1.4, 0.0)
-	body.add_child(shape)
-	add_child(body)
-
-	# Помост, чтобы фигуру было видно и она не терялась на фоне мрамора.
+## Помост на посту. Он остаётся на месте, даже когда распорядитель пал или
+## отошёл драться: по нему видно, куда он вернётся.
+func _build_stand() -> void:
 	var stand := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(3.0, 0.4, 3.0)
@@ -58,41 +65,48 @@ func _build_figure() -> void:
 	stand.material_override = stand_mat
 	add_child(stand)
 
-	var packed: PackedScene = load(MODEL_PATH)
-	if packed == null:
+
+## Поставить распорядителя на пост. Тело — обычный боец в варианте «чемпион»,
+## поэтому спавнит его мир, а не мы: так оно реплицируется тем же каналом, что
+## все остальные бойцы, и клиенту ничего специально знать не нужно.
+func _spawn_body() -> void:
+	if not Net.hosting():
 		return
-	_model = packed.instantiate()
-	_model.name = "Model"
-	_model.scale = Vector3.ONE * MODEL_SCALE
-	_model.position = Vector3(0.0, 0.4, 0.0)
-	# Модель смотрит в +Z, игра считает передом -Z — см. player.gd::_build_model.
-	# Разворачиваем лицом к воротам, то есть на юг.
-	_model.rotation.y = 0.0
-	add_child(_model)
-	var anim := _find_anim(_model)
-	if anim != null:
-		MODEL_ANIM.make_looping(anim)
-		if anim.has_animation("idle"):
-			anim.play("idle")
+	var world := get_parent()
+	if world == null or not world.has_method("spawn_garrison_unit"):
+		return
+	_body = world.spawn_garrison_unit(FACTIONS.Kind.GUARD, 2, POSITION, POSITION, LEASH, true)
+	if _body != null and _body.has_signal("died_on_server"):
+		_body.died_on_server.connect(_on_body_died)
 
 
-## Найти AnimationPlayer в дереве модели: у ассетов Kenney он лежит на разной
-## глубине.
-func _find_anim(node: Node) -> AnimationPlayer:
-	if node is AnimationPlayer:
-		return node
-	for child in node.get_children():
-		var found := _find_anim(child)
-		if found != null:
-			return found
-	return null
+func _on_body_died(_unit: Node3D) -> void:
+	_body = null
+	_respawn_left = RESPAWN_DELAY
+	print("[распорядитель] пал, вернётся через %d с" % int(RESPAWN_DELAY))
+	_announce("Распорядитель стражи пал. Приказы и повышение недоступны.")
+
+
+## Стоит ли распорядитель на посту. Пока он лежит, говорить не с кем.
+func on_duty() -> bool:
+	return _body != null and is_instance_valid(_body)
+
+
+## Сколько секунд до его возвращения. Ноль — если он на посту.
+func respawn_left() -> float:
+	return 0.0 if on_duty() else _respawn_left
 
 
 ## Стоит ли игрок достаточно близко, чтобы говорить. Клиент считает это же
 ## значение для подсказки, но решает всё равно хост.
 func in_range(point: Vector3) -> bool:
-	var flat := Vector3(point.x, POSITION.y, point.z)
-	return flat.distance_to(POSITION) <= ORDERS.TALK_RANGE
+	# Считаем до ЖИВОГО тела, а не до поста: распорядитель отходит драться и
+	# возвращается, и говорить надо с ним, а не с пустым помостом.
+	if not on_duty():
+		return false
+	var here: Vector3 = _body.global_position
+	var flat := Vector3(point.x, here.y, point.z)
+	return flat.distance_to(here) <= ORDERS.TALK_RANGE
 
 
 # --- логика хоста ----------------------------------------------------------
@@ -100,8 +114,26 @@ func in_range(point: Vector3) -> bool:
 func _physics_process(delta: float) -> void:
 	if not Net.hosting():
 		return
+	_tick_body(delta)
 	for guard in _guards():
 		_tick_order(guard, delta)
+
+
+## Поставить распорядителя на пост, если его там нет. Первый раз — на старте
+## партии, дальше — после гибели, выждав RESPAWN_DELAY.
+func _tick_body(delta: float) -> void:
+	if on_duty():
+		return
+	if _body != null:
+		# Ссылка есть, но нода уже уничтожена: считаем это гибелью.
+		_on_body_died(null)
+		return
+	if _respawn_left > 0.0:
+		_respawn_left -= delta
+		if _respawn_left > 0.0:
+			return
+		_announce("Распорядитель стражи вернулся на пост.")
+	_spawn_body()
 
 
 ## Все живые стражи в мире. Приказы получает только эта сторона (GDD 2.2).
@@ -298,6 +330,15 @@ func _notify(guard: Node3D, text: String) -> void:
 		objective.announce.rpc_id(int(guard.peer_id), text)
 
 
+## Объявить всем. Гибель распорядителя и его возвращение касаются не только
+## стражи: для злодея и эльфов это результат налёта, и знать о нём они должны.
+func _announce(text: String) -> void:
+	var objective: Node3D = get_parent().get_node_or_null("Objective")
+	if objective == null:
+		return
+	objective.announce.rpc(text)
+
+
 # --- повышение до командира стражи -----------------------------------------
 
 ## Есть ли у стражи живой командир прямо сейчас.
@@ -313,6 +354,8 @@ func guard_has_leader() -> bool:
 ## Клиент считает то же самое для кнопки, решает всё равно хост.
 func can_promote(guard: Node3D) -> bool:
 	if guard == null or int(guard.faction) != FACTIONS.Kind.GUARD:
+		return false
+	if not on_duty():
 		return false
 	if not guard.health.alive or guard.is_leader:
 		return false
