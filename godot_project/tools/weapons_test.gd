@@ -23,7 +23,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "оружие"
-	expected_host = 20
+	expected_host = 23
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -45,6 +45,7 @@ func _run() -> void:
 	await _test_axe_bleeds(me)
 	await _test_hammer_staggers(me)
 	_test_crossbow_pierces_formation()
+	_test_archer_stands_behind()
 	await _test_harvest_tools(me)
 	finish()
 
@@ -159,6 +160,33 @@ func _test_crossbow_pierces_formation() -> void:
 	var pierced: float = lerpf(wall, 1.0, WEAPONS.CROSSBOW_PIERCE)
 	check(pierced > wall and pierced < 1.0, "болт пробивает строй лишь ЧАСТИЧНО",
 		"%.2f вместо %.2f, но не 1.0" % [pierced, wall])
+
+
+## Лучник стоит ПОЗАДИ своего места в строю.
+##
+## Без этого он вставал в первую шеренгу наравне с мечником и умирал первым —
+## при том что вся его ценность в стрельбе с двадцати четырёх метров. Проверяем
+## смещение, а не позицию в мире: позиция зависит ещё и от того, дошёл ли он.
+func _test_archer_stands_behind() -> void:
+	var UNIT := preload("res://scripts/units/unit.gd")
+	var sword: Node3D = _world.spawn_garrison_unit(FACTIONS.Kind.GUARD, 0,
+		Vector3(0.0, 0.5, 0.0), Vector3.ZERO, 40.0, false, false)
+	var bow: Node3D = _world.spawn_garrison_unit(FACTIONS.Kind.GUARD, 0,
+		Vector3(0.0, 0.5, 0.0), Vector3.ZERO, 40.0, false, true)
+	if sword == null or bow == null:
+		fail("бойцов для проверки строя создать не удалось")
+		return
+	check(bow.is_archer and not sword.is_archer, "один лучник, другой мечник",
+		"да")
+	# +z в осях строя — «назад».
+	check(bow._formation_offset().z > sword._formation_offset().z,
+		"лучник на том же месте в строю стоит дальше назад",
+		"%.1f против %.1f" % [bow._formation_offset().z, sword._formation_offset().z])
+	check(is_equal_approx(bow._formation_offset().z - sword._formation_offset().z,
+			UNIT.ARCHER_REAR),
+		"ровно на заданную величину", "%.0f м" % UNIT.ARCHER_REAR)
+	sword.queue_free()
+	bow.queue_free()
 
 
 ## Топор рубит дерево лучше, молот бьёт камень лучше — тем же ударом, которым

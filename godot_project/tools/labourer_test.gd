@@ -27,7 +27,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 18
+	expected_host = 21
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -50,6 +50,7 @@ func _run() -> void:
 	await _test_gathers_and_delivers(me)
 	await _test_roles(me)
 	await _test_builders(me)
+	await _test_flees(me)
 	finish()
 
 
@@ -212,6 +213,45 @@ func _test_builders(me: Node3D) -> void:
 			break
 	check(rate > 1.0, "строители у стройки ускоряют её",
 		"множитель %.1f" % rate)
+
+
+## Небоевой батрак уходит от врага, а не стоит и рубит, пока его убивают.
+##
+## Ополченца это не касается: он для того и ополченец. Проверяем именно РАЗНИЦУ
+## между ролями — «батрак убежал» само по себе ничего не значит, если ополченец
+## убегает тоже.
+func _test_flees(me: Node3D) -> void:
+	var crew := _crew(me)
+	if crew.is_empty():
+		fail("батраков нет")
+		return
+	var worker: Node3D = crew[0]
+	worker.set_role(LABOURER.Role.LUMBERJACK)
+	worker.global_position = FACTIONS.SPAWN[int(me.faction)] + Vector3(0.0, 0.5, 24.0)
+	await get_tree().physics_frame
+
+	var enemy: Node3D = _world.spawn_garrison_unit(FACTIONS.Kind.ELVES, 3,
+		worker.global_position + Vector3(5.0, 0.5, 0.0), worker.global_position, 60.0)
+	await get_tree().physics_frame
+	if enemy == null:
+		fail("врага создать не удалось")
+		return
+
+	check(worker._threat_nearby() != null, "батрак видит врага рядом", "видит")
+	var before: float = worker.global_position.distance_to(enemy.global_position)
+	await get_tree().create_timer(3.0).timeout
+	var after := before + 99.0
+	if is_instance_valid(worker) and is_instance_valid(enemy):
+		after = worker.global_position.distance_to(enemy.global_position)
+	check(after > before, "и уходит от него", "%.0f -> %.0f м" % [before, after])
+
+	if is_instance_valid(worker):
+		worker.set_role(LABOURER.Role.MILITIA)
+		check(worker._wants_fight(), "а ополченец на его месте дерётся", "дерётся")
+	else:
+		fail("батрак не пережил проверку")
+	if is_instance_valid(enemy):
+		enemy.queue_free()
 
 
 func _count_by_role(me: Node3D) -> PackedInt32Array:

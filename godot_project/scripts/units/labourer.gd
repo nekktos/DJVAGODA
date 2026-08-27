@@ -49,6 +49,16 @@ const WORK_RANGE := 4.5
 ## среди сотен источников — впустую жечь время хоста.
 const RETARGET_INTERVAL := 2.0
 
+## Ближе этого батрак бросает работу и уходит.
+##
+## Небоевой батрак, который стоит и рубит, пока его убивают, — это не стойкость,
+## а потерянные руки: он ничего не может сделать в ответ. Бежит он к дому, а не
+## куда попало: дома гарнизон, и там его хотя бы прикроют.
+##
+## Радиус меньше дальности, с которой его заметит боец (ENGAGE_RANGE 14): уходить
+## надо ДО того, как по тебе ударили, а не после.
+const FLEE_RADIUS := 18.0
+
 ## Насколько быстрее идёт стройка с каждым строителем — см. `building.gd`.
 ## Здесь только для документации: само число применяет постройка.
 
@@ -101,6 +111,21 @@ func _idle_destination(delta: float) -> Vector3:
 	if sync_role == Role.MILITIA:
 		# Ополченец ведёт себя как обычный боец: строй, поводок, пост.
 		return super(delta)
+
+	# Враг рядом — бросаем всё и уходим. Проверяем это ПЕРВЫМ: и работа, и
+	# доставка груза подождут, а батрак — нет.
+	var danger := _threat_nearby()
+	if danger != null:
+		_site = null
+		var away := global_position - danger.global_position
+		away.y = 0.0
+		if away.length() < 0.1:
+			away = Vector3.FORWARD
+		# Уходим в сторону дома, а не просто от врага: иначе первый же боец
+		# загонит батрака в угол карты.
+		var homeward: Vector3 = home if home != Vector3.ZERO else global_position
+		return global_position + (away.normalized() * 0.5
+			+ (homeward - global_position).normalized() * 0.5).normalized() * FLEE_RADIUS
 
 	# Набрал груз — несём на склад. Работа подождёт: батрак, продолжающий рубить
 	# с полными руками, просто теряет время.
@@ -166,6 +191,29 @@ func _work_reach(site: Node3D) -> float:
 		var size: Vector3 = RES2.BUILDING_SIZE.get(int(site.kind), Vector3.ZERO)
 		return WORK_RANGE + maxf(size.x, size.z) * 0.5
 	return WORK_RANGE
+
+
+## Ближайший враг, от которого стоит уйти. Ополченца это не касается — он для
+## того и ополченец.
+func _threat_nearby() -> Node3D:
+	var world := get_parent().get_parent()
+	if world == null:
+		return null
+	for other in world.get_node("Players").get_children():
+		if not ("faction" in other) or int(other.faction) == faction:
+			continue
+		if not other.health.alive:
+			continue
+		if _flat_to(other.global_position) <= FLEE_RADIUS:
+			return other
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if not is_instance_valid(unit) or not ("faction" in unit):
+			continue
+		if int(unit.faction) == faction:
+			continue
+		if _flat_to(unit.global_position) <= FLEE_RADIUS:
+			return unit
+	return null
 
 
 ## Расстояние до места работы ПО ГОРИЗОНТАЛИ.

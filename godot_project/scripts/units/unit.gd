@@ -139,6 +139,15 @@ const ARCHER_ENGAGE := 32.0
 const ARCHER_RANGE := 24.0
 const ARCHER_COLOR := Color(0.36, 0.46, 0.28)
 
+## Насколько лучник стоит ПОЗАДИ своего места в строю.
+##
+## Без этого он вставал в первую шеренгу наравне с мечниками и умирал первым —
+## притом что вся его ценность в том, чтобы стрелять с двадцати четырёх метров.
+## Строй при этом не переделываем: место в нём остаётся его местом, лучник просто
+## держится за спинами. Так же это работает и у отряда живого игрока, и у ИИ —
+## одним числом, а не двумя разными правилами.
+const ARCHER_REAR := 7.0
+
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
 
@@ -438,12 +447,20 @@ func _idle_destination(_delta: float) -> Vector3:
 		return _slot_point(commander)
 	if ai_led:
 		# Место в строю, назначенном ИИ. Тот же расчёт, что и у отряда игрока.
-		return ai_anchor + Basis(Vector3.UP, ai_yaw) * FORMATIONS.slot_offset(
-			_formation(), slot, 0)
+		return ai_anchor + Basis(Vector3.UP, ai_yaw) * _formation_offset()
 	if leash > 0.0:
 		# Врага рядом нет — возвращаемся на пост.
 		return home
 	return global_position
+
+
+## Смещение от якоря строя: место по построению плюс отставание для лучника.
+func _formation_offset() -> Vector3:
+	var offset: Vector3 = FORMATIONS.slot_offset(_formation(), slot, 0)
+	if is_archer:
+		# +z в местных осях строя — это «назад» (см. formations.gd::slot_offset).
+		offset.z += ARCHER_REAR
+	return offset
 
 
 ## Ищет ли этот боец, кого ударить. Батрак на работе — нет.
@@ -493,8 +510,7 @@ func _within_leash(point: Vector3) -> bool:
 func _slot_point(commander: Node3D) -> Vector3:
 	var anchor: Vector3 = commander.squad_anchor()
 	var yaw: float = commander.squad_facing()
-	var offset: Vector3 = FORMATIONS.slot_offset(_formation(), slot, 0)
-	return anchor + Basis(Vector3.UP, yaw) * offset
+	return anchor + Basis(Vector3.UP, yaw) * _formation_offset()
 
 
 func _formation() -> int:
