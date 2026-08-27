@@ -26,6 +26,7 @@ LOGS="${LOGS:-/c/Temp/claude/dzhvagoda-tests}"
 SUITES=(
 	"nav:--navtest::"
 	"lab:--labtest:0:"
+	"steward:--stewardtest:1:"
 	"walk:--walktest::"
 	"forest:--foresttest::"
 	"econ:--econtest::"

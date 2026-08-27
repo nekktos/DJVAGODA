@@ -33,6 +33,7 @@ extends Node
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
 ##   --navtest       автопроверка путей по карте (headless)
 ##   --labtest       автопроверка батраков: наём, роли, добыча (headless)
+##   --stewardtest   автопроверка хозяйства ИИ: наём, стройка, войско (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
 ##   --world=ИМЯ     работать с отдельным файлом мира
@@ -395,6 +396,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--stewardtest"):
+		var steward_test: Node = preload("res://tools/steward_test.gd").new()
+		add_child(steward_test)
+		steward_test.start(_world)
+		needs_session = true
 
 	if args.has("--labtest"):
 		var lab_test: Node = preload("res://tools/labourer_test.gd").new()

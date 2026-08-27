@@ -87,6 +87,8 @@ signal camera_mode_changed(strategy: bool)
 @onready var warband: Node = $Warband
 ## Пути по карте. Печёт сетку после стройки, считает только у хоста.
 @onready var navigation: Node = $Navigation
+## Хозяйство свободных сторон, ступень «в»: наём, стройка, войско.
+@onready var steward: Node = $Steward
 
 var strategy_mode := false
 
@@ -584,10 +586,16 @@ func _on_building_completed(node: Node) -> void:
 		return
 	if int(node.kind) != RES.Building.STORAGE:
 		return
-	var owner_player := _players.get_node_or_null(str(int(node.owner_id)))
-	if owner_player != null:
-		owner_player.stock.raise_capacity(RES.STORAGE_BONUS)
-		print("[стройка] склад достроен, потолок игрока %d поднят" % int(node.owner_id))
+	# Потолок поднимаем СТОРОНЕ, а не владельцу-персонажу. Казна и так
+	# принадлежит стороне (treasury.gd), а искать владельца среди игроков
+	# значит не заметить склад, построенный ИИ: у него владельца нет вовсе,
+	# и его склад оставался украшением — сторона по-прежнему не могла
+	# ничего сложить, а батраки носили добычу в никуда.
+	var wallet: Node = treasury.of(int(node.faction))
+	if wallet != null:
+		wallet.raise_capacity(RES.STORAGE_BONUS)
+		print("[стройка] склад достроен, потолок стороны «%s» поднят"
+			% FACTIONS.name_of(int(node.faction)))
 
 
 ## Клик по земле в режиме стройки: заявку отправляет свой персонаж — у него
@@ -844,7 +852,7 @@ func players_of(faction: int) -> Array:
 ## задана прямо) и есть ДОМ с поводком — он обороняет зону, а не ходит за
 ## командиром.
 func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3, leash: float,
-		champion := false) -> Node:
+		champion := false, archer := false) -> Node:
 	if not Net.hosting():
 		return null
 	_spawn_counter += 1
@@ -858,6 +866,7 @@ func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3,
 		"point": point,
 		"beast": false,
 		"champion": champion,
+		"archer": archer,
 		"faction": faction,
 		"home": home,
 		"leash": leash,

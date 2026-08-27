@@ -25,6 +25,7 @@ extends Node
 const FACTIONS := preload("res://scripts/factions.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
+const LABOURER := preload("res://scripts/units/labourer.gd")
 
 enum State { HOLD, MARCH, FIGHT, RETURN }
 
@@ -480,8 +481,13 @@ func _enemy_near(faction: int, point: Vector3) -> bool:
 	return false
 
 
-## Бойцы отряда: гарнизон этой стороны без распорядителя стражи. Распорядитель
-## в набеги не ходит — он стоит на посту, через него идёт арка стражи.
+## Бойцы отряда: безвладельческие бойцы этой стороны, кроме распорядителя стражи
+## и кроме работающих батраков.
+##
+## Распорядитель в набеги не ходит: он стоит на посту, через него идёт арка
+## стражи. Батраки — тем более: они принадлежат стороне и владельца у них тоже
+## нет, поэтому без этой проверки отряд уводил бы в набег лесорубов и шахтёров.
+## Исключение — ополченец: он для того и ополченец, чтобы драться в общем строю.
 func _band(faction: int) -> Array:
 	var result := []
 	for unit in get_tree().get_nodes_in_group("unit"):
@@ -490,6 +496,8 @@ func _band(faction: int) -> Array:
 		if int(unit.faction) != faction or int(unit.owner_id) != 0:
 			continue
 		if "is_champion" in unit and unit.is_champion:
+			continue
+		if "sync_role" in unit and int(unit.sync_role) != LABOURER.Role.MILITIA:
 			continue
 		result.append(unit)
 	return result
