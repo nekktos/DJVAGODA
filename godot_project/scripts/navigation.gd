@@ -87,6 +87,14 @@ func bake(terrain: Node3D) -> void:
 	# ИИ ходил бы без сетки, а автопроверки стали бы зависеть от того, успел ли
 	# поток. Мир строится один раз при входе в сессию — там эта пауза уместна.
 	_region.bake_navigation_mesh(false)
+	# Сетка испечена, но сервер навигации регистрирует область и синхронизирует
+	# карту в конце кадра. Спросить путь раньше — получить ошибку «запрос до
+	# первой синхронизации»; ловится это только тем, кто спрашивает путь в
+	# первом же кадре, как батраки на старте партии. Ждём кадр и лишь потом
+	# объявляем себя готовыми: до этого `path_between` честно возвращает
+	# пустой путь, а бойцы идут напрямую.
+	await get_tree().physics_frame
+	NavigationServer3D.map_force_update(_region.get_navigation_map())
 	_ready_to_path = true
 	print("[навигация] сетка испечена за %d мс, полигонов %d"
 		% [Time.get_ticks_msec() - started, mesh.get_polygon_count()])
@@ -98,27 +106,38 @@ func bake(terrain: Node3D) -> void:
 ## Первая точка пути — проекция начала на сетку, поэтому вызывающий её обычно
 ## пропускает: идти к тому месту, где стоишь, незачем.
 func path_between(from: Vector3, to: Vector3) -> PackedVector3Array:
-	if not _ready_to_path or _region == null:
-		return PackedVector3Array()
-	var map := _region.get_navigation_map()
+	var map := _live_map()
 	if not map.is_valid():
 		return PackedVector3Array()
 	return NavigationServer3D.map_get_path(map, from, to, true)
 
 
+## Карта, у которой уже прошла хотя бы одна синхронизация.
+##
+## Проверять свой флаг «испекли» недостаточно: сервер навигации регистрирует
+## область и считает первую итерацию карты сам, в конце кадра, и любой запрос до
+## этого валится с ошибкой. Спрашиваем номер итерации — это единственный
+## надёжный признак, и он же назван в самом сообщении об ошибке.
+func _live_map() -> RID:
+	if not _ready_to_path or _region == null:
+		return RID()
+	var map := _region.get_navigation_map()
+	if not map.is_valid() or NavigationServer3D.map_get_iteration_id(map) == 0:
+		return RID()
+	return map
+
+
 ## Есть ли вообще сетка. Автопроверки и вызывающие код отличают «пути нет» от
 ## «навигация не работает».
 func is_ready() -> bool:
-	return _ready_to_path
+	return _live_map().is_valid()
 
 
 ## Ближайшая проходимая точка к заданной. Нужна, когда цель стоит вплотную к
 ## стене или внутри постройки: путь в саму цель не проложится, а к её краю —
 ## вполне.
 func closest_point(to: Vector3) -> Vector3:
-	if not _ready_to_path or _region == null:
-		return to
-	var map := _region.get_navigation_map()
+	var map := _live_map()
 	if not map.is_valid():
 		return to
 	return NavigationServer3D.map_get_closest_point(map, to)

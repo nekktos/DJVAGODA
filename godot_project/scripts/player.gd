@@ -23,6 +23,7 @@ const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const LABOURER := preload("res://scripts/units/labourer.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 
@@ -1314,6 +1315,85 @@ func _refuse(reason: String) -> void:
 @rpc("authority", "reliable")
 func _show_refusal(reason: String) -> void:
 	refused.emit(reason)
+
+
+# --- батраки ---------------------------------------------------------------
+#
+# Батраки принадлежат СТОРОНЕ, а не персонажу, поэтому заявка идёт от игрока, а
+# считает и спавнит хост — как со стройкой и наймом мечников.
+
+func ask_hire_labourer() -> void:
+	if Net.hosting():
+		request_hire_labourer()
+	else:
+		request_hire_labourer.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_hire_labourer() -> void:
+	if not Net.hosting() or not _sender_is_owner():
+		return
+	if not health.alive:
+		return
+	if not FACTIONS.can_build(faction):
+		_refuse("батраки есть только у злодея")
+		return
+	var world := get_parent().get_parent()
+	var have: int = world.labourers_of(int(faction)).size()
+	if have >= RES.LABOURER_LIMIT:
+		_refuse("больше батраков не прокормить: потолок %d" % RES.LABOURER_LIMIT)
+		return
+	if not stock.spend(RES.LABOURER_COST):
+		_refuse("не хватает на батрака — нужно %s" % RES.format_cost(RES.LABOURER_COST))
+		return
+	var base: Vector3 = FACTIONS.SPAWN[clampi(int(faction), 0, FACTIONS.COUNT - 1)]
+	var angle := float(have) * 0.9
+	var spot := base + Vector3(cos(angle) * (5.0 + float(have)), 0.5, sin(angle) * (5.0 + float(have)))
+	world.spawn_labourer(int(faction), spot, base, LABOURER.Role.LUMBERJACK)
+
+
+func ask_set_labourer_role(role: int) -> void:
+	if Net.hosting():
+		request_set_labourer_role(role)
+	else:
+		request_set_labourer_role.rpc_id(1, role)
+
+
+## Перевести одного батрака на другое дело.
+##
+## Берём того, кто сейчас занят самым многолюдным делом: без выбора мышью это
+## единственный порядок, который не требует от игрока помнить, кого он уже
+## переводил, и не оставляет роль пустой при первом же нажатии.
+@rpc("any_peer", "reliable")
+func request_set_labourer_role(role: int) -> void:
+	if not Net.hosting() or not _sender_is_owner():
+		return
+	if not health.alive:
+		return
+	var world := get_parent().get_parent()
+	var crew: Array = world.labourers_of(int(faction))
+	if crew.is_empty():
+		_refuse("батраков нет — сначала найми")
+		return
+	var wanted: int = clampi(role, 0, LABOURER.ROLE_COUNT - 1)
+
+	var counts := {}
+	for worker in crew:
+		counts[int(worker.sync_role)] = int(counts.get(int(worker.sync_role), 0)) + 1
+	var busiest := -1
+	var most := 0
+	for kind in counts.keys():
+		if int(kind) != wanted and int(counts[kind]) > most:
+			most = int(counts[kind])
+			busiest = int(kind)
+	if busiest < 0:
+		_refuse("все батраки уже %s" % LABOURER.ROLE_NAMES[wanted])
+		return
+	for worker in crew:
+		if int(worker.sync_role) == busiest:
+			worker.set_role(wanted)
+			print("[батраки] %s -> %s" % [LABOURER.ROLE_NAMES[busiest], LABOURER.ROLE_NAMES[wanted]])
+			return
 
 
 @rpc("any_peer", "reliable")

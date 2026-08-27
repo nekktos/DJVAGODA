@@ -320,8 +320,7 @@ func _physics_process(delta: float) -> void:
 
 	_cooldown = maxf(0.0, _cooldown - delta)
 
-	var commander := _commander()
-	var target := _find_target()
+	var target: Node3D = _find_target() if _wants_fight() else null
 	var destination: Vector3
 	var facing_target := false
 
@@ -334,17 +333,8 @@ func _physics_process(delta: float) -> void:
 	if target != null and global_position.distance_to(target.global_position) <= _engage_range():
 		destination = target.global_position
 		facing_target = true
-	elif commander != null:
-		destination = _slot_point(commander)
-	elif ai_led:
-		# Место в строю, назначенном ИИ. Тот же расчёт, что и у отряда игрока.
-		destination = ai_anchor + Basis(Vector3.UP, ai_yaw) * FORMATIONS.slot_offset(
-			_formation(), slot, 0)
-	elif leash > 0.0:
-		# Врага рядом нет — возвращаемся на пост.
-		destination = home
 	else:
-		destination = global_position
+		destination = _idle_destination(delta)
 
 	if not destination.is_finite():
 		# Неконечная точка расползается по всему отряду: NaN попадает в позицию,
@@ -406,6 +396,30 @@ func _physics_process(delta: float) -> void:
 	sync_position = global_position
 	sync_yaw = rotation.y
 	_play("walk" if sync_moving else "idle")
+
+
+## Куда идти, когда драться не с кем.
+##
+## Развилка вынесена отдельно, потому что у батрака (`labourer.gd`) на этом
+## месте своё дело: он идёт работать, а не стоять в строю. Мечник и гарнизон
+## ведут себя как раньше.
+func _idle_destination(_delta: float) -> Vector3:
+	var commander := _commander()
+	if commander != null:
+		return _slot_point(commander)
+	if ai_led:
+		# Место в строю, назначенном ИИ. Тот же расчёт, что и у отряда игрока.
+		return ai_anchor + Basis(Vector3.UP, ai_yaw) * FORMATIONS.slot_offset(
+			_formation(), slot, 0)
+	if leash > 0.0:
+		# Врага рядом нет — возвращаемся на пост.
+		return home
+	return global_position
+
+
+## Ищет ли этот боец, кого ударить. Батрак на работе — нет.
+func _wants_fight() -> bool:
+	return true
 
 
 ## Внутри ли точка зоны, которую этот боец обороняет. Без поводка (бойцы

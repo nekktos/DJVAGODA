@@ -125,11 +125,30 @@ func _material() -> StandardMaterial3D:
 
 func _process(delta: float) -> void:
 	if Net.hosting() and progress < 1.0:
-		progress = minf(1.0, progress + delta / float(RES.BUILD_TIME[kind]))
+		progress = minf(1.0, progress + delta * _build_rate() / float(RES.BUILD_TIME[kind]))
 	_apply_progress()
 	if progress >= 1.0 and not _done:
 		_done = true
 		completed.emit()
+
+
+## Во сколько раз быстрее идёт стройка. Каждый приставленный строитель добавляет
+## свою долю к базовой скорости.
+##
+## Базовая единица — это сам хозяин стройки: постройка возводится и без батраков,
+## иначе первая же партия вставала бы намертво (батраков нанимают за золото, а
+## золото добывают батраки). Строители не заменяют её, а ускоряют: двое дают
+## тройную скорость.
+func _build_rate() -> float:
+	var rate := 1.0
+	for node in get_tree().get_nodes_in_group("unit"):
+		if not is_instance_valid(node) or not node.has_method("builds"):
+			continue
+		if int(node.faction) != faction:
+			continue
+		if node.builds(self):
+			rate += 1.0
+	return rate
 
 
 ## Пока строится — коробка растёт из земли и просвечивает.

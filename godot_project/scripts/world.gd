@@ -25,6 +25,11 @@ const BUILDING_SCENE := preload("res://scenes/Building.tscn")
 const CARAVAN_SCENE := preload("res://scenes/Caravan.tscn")
 const LOOT_SCENE := preload("res://scenes/Loot.tscn")
 const UNIT_SCENE := preload("res://scenes/Unit.tscn")
+const LABOURER_SCENE := preload("res://scenes/Labourer.tscn")
+const LABOURER := preload("res://scripts/units/labourer.gd")
+
+## Сколько батраков у злодея в начале партии.
+const STARTING_LABOURERS := 2
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 
@@ -229,11 +234,32 @@ func _on_session_started() -> void:
 		# существовать к моменту, когда первый персонаж встанет в мир.
 		savegame.load_world()
 		_spawn_guard_barracks()
+		_spawn_starting_labourers()
 		_spawn_player(1, Net.chosen_faction, Net.profile_id)
 	else:
 		# Клиент сам просит хоста о спавне — к этому моменту его World точно
 		# готов принять реплицированную ноду.
 		_request_spawn.rpc_id(1, Net.chosen_faction, Net.profile_id)
+
+
+## Два батрака злодея на старте партии.
+##
+## Именно два, и это не круглое число ради круглого: батрак стоит золота, а
+## золото добывают батраки. С нуля петля не запускается вовсе, с одним — тянется
+## томительно долго. Двое дают выбор с первой минуты: оба на лес, оба в шахту
+## или один туда, другой сюда.
+##
+## Сторона, а не игрок: батраки принадлежат злодею как СТОРОНЕ и существуют,
+## даже если за неё ещё никто не сел. Иначе ИИ, добывающий «как игрок», начинал
+## бы партию с пустыми руками.
+func _spawn_starting_labourers() -> void:
+	if not labourers_of(FACTIONS.Kind.VILLAIN).is_empty():
+		return
+	var base: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN]
+	for i in STARTING_LABOURERS:
+		var angle := TAU * float(i) / float(STARTING_LABOURERS)
+		var spot := base + Vector3(cos(angle) * 5.0, 0.5, sin(angle) * 5.0)
+		spawn_labourer(FACTIONS.Kind.VILLAIN, spot, base, LABOURER.Role.LUMBERJACK)
 
 
 ## Казарма стражи во дворце. Ставится один раз на старте сессии и принадлежит
@@ -353,6 +379,8 @@ func _make_spawned(data: Dictionary) -> Node:
 			node = LOOT_SCENE.instantiate()
 		"unit":
 			node = UNIT_SCENE.instantiate()
+		"labourer":
+			node = LABOURER_SCENE.instantiate()
 		_:
 			node = CORPSE_SCENE.instantiate()
 	node.name = "%s_%d" % [data["type"], int(data["id"])]
@@ -647,6 +675,45 @@ func report_unit_kill(killer_id: int, victim_faction: int) -> void:
 	if not Net.hosting():
 		return
 	commander.report_kill(killer_id, victim_faction)
+
+
+## Нанять батрака. Считает и спавнит ТОЛЬКО хост.
+##
+## Владельца батрак не имеет (owner_id = 0), как гарнизон: он принадлежит
+## СТОРОНЕ, а не персонажу. Так его переживают смерть игрока и смена персонажа,
+## и так же его сможет нанимать ИИ, когда до этого дойдёт.
+func spawn_labourer(faction: int, point: Vector3, home_point: Vector3, role: int) -> Node:
+	if not Net.hosting():
+		return null
+	_spawn_counter += 1
+	var node := _world_spawner.spawn({
+		"type": "labourer",
+		"id": _spawn_counter,
+		"owner": 0,
+		"slot": labourers_of(faction).size(),
+		"point": point,
+		"beast": false,
+		"champion": false,
+		"faction": faction,
+		"home": home_point,
+		"leash": 0.0,
+		"role": role,
+	})
+	if node != null:
+		print("[батраки] %s: нанят %s, всего %d" % [FACTIONS.name_of(faction),
+			node.role_name(), labourers_of(faction).size()])
+	return node
+
+
+## Батраки стороны, живые в этот момент.
+func labourers_of(faction: int) -> Array:
+	var found := []
+	for node in get_tree().get_nodes_in_group("unit"):
+		if not is_instance_valid(node) or not ("sync_role" in node):
+			continue
+		if int(node.faction) == faction:
+			found.append(node)
+	return found
 
 
 ## Караваны игрока, живые в этот момент.

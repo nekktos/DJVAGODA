@@ -12,33 +12,46 @@ extends Node3D
 
 const RES := preload("res://scripts/economy/resources.gd")
 
-## Сколько единиц в секунду добавляется в каждый добываемый ресурс.
-const RATE_PER_SECOND := 2.0
-## Больше этого шахта не накапливает — забирайте караваном.
+## Сколько единиц в секунду даёт шахта по каждому ресурсу.
+##
+## Состав намеренно неровный: камень — основная добыча (больше половины), железа
+## заметно больше золота, золота мало. Из этого следует, зачем вообще ходить в
+## шахту: камень и железо в мире больше взять негде в таком количестве, а золото
+## остаётся редким и потому дорогим.
+const RATE := {
+	RES.Kind.STONE: 3.0,
+	RES.Kind.IRON: 1.6,
+	RES.Kind.GOLD: 0.4,
+}
+## Больше этого шахта не накапливает — забирайте караваном или батраками.
 const STOCKPILE_CAP := 300
 
-## Что тут добывают.
-const PRODUCES := [RES.Kind.IRON, RES.Kind.GOLD]
+## Что тут добывают. Порядок для показа, доли — в RATE.
+const PRODUCES := [RES.Kind.STONE, RES.Kind.IRON, RES.Kind.GOLD]
 
 ## Реплицируемое состояние: накопленное по каждому ресурсу.
 @export var stored: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
 
-var _fraction := 0.0
+## Накопленные доли по каждому ресурсу: скорости дробные, а запас целый.
+var _fractions := {}
 
 
 func _process(delta: float) -> void:
 	if not Net.hosting():
 		return
-	_fraction += RATE_PER_SECOND * delta
-	if _fraction < 1.0:
-		return
-	var whole := int(_fraction)
-	_fraction -= float(whole)
-
 	var copy := stored.duplicate()
+	var changed := false
 	for kind in PRODUCES:
+		var carry: float = float(_fractions.get(kind, 0.0)) + float(RATE[kind]) * delta
+		var whole := int(carry)
+		if whole <= 0:
+			_fractions[kind] = carry
+			continue
+		_fractions[kind] = carry - float(whole)
 		copy[kind] = mini(STOCKPILE_CAP, copy[kind] + whole)
-	stored = copy
+		changed = true
+	if changed:
+		stored = copy
 
 
 ## Забрать до limit единиц каждого ресурса. Только на хосте.

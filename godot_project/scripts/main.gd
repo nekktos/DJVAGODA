@@ -32,6 +32,7 @@ extends Node
 ##   --warbandtest   автопроверка воюющего ИИ свободных сторон (headless)
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
 ##   --navtest       автопроверка путей по карте (headless)
+##   --labtest       автопроверка батраков: наём, роли, добыча (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
 ##   --world=ИМЯ     работать с отдельным файлом мира
@@ -50,6 +51,7 @@ const FORMATIONS := preload("res://scripts/units/formations.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
+const LABOURER := preload("res://scripts/units/labourer.gd")
 const ORDERS := preload("res://scripts/orders.gd")
 
 ## Сколько секунд держится объявление о результате.
@@ -141,6 +143,7 @@ func _process(delta: float) -> void:
 		if boss != null:
 			line += "\nсклад: %s" % boss.stock.summary()
 		line += "\n" + _build_hint()
+		line += "\n" + _crew_hint()
 		line += "\n" + _squad_hint()
 		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню" + _refusal_line()
 	else:
@@ -211,6 +214,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if key == KEY_T:
 			_squad_order("train", 0)
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_B:
+			var boss: Node3D = _world.local_player()
+			if boss != null:
+				boss.ask_hire_labourer()
+			get_viewport().set_input_as_handled()
+			return
+		# 4-7 переводят одного батрака на соответствующее дело. Выбора мышью в
+		# стратегическом режиме нет, и роль — это и есть «куда его отправить».
+		if key >= KEY_4 and key <= KEY_7:
+			var chief: Node3D = _world.local_player()
+			if chief != null:
+				chief.ask_set_labourer_role(key - KEY_4)
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -369,6 +386,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--labtest"):
+		var lab_test: Node = preload("res://tools/labourer_test.gd").new()
+		add_child(lab_test)
+		lab_test.start(_world)
+		needs_session = true
 
 	if args.has("--navtest"):
 		var nav_test: Node = preload("res://tools/nav_test.gd").new()
@@ -622,6 +645,30 @@ func _build_hint() -> String:
 	for caravan in mine_caravans:
 		line += "
 караван: %s, здоровье %d" % [caravan.state_text(), int(caravan.health)]
+	return line
+
+
+## Кто чем занят у злодея. Без этой строки батраки — невидимая механика: они
+## работают где-то на карте, а игрок видит только, что ресурсы прибывают.
+func _crew_hint() -> String:
+	var me: Node3D = _world.local_player()
+	if me == null or not FACTIONS.can_build(me.faction):
+		return ""
+	var crew: Array = _world.labourers_of(int(me.faction))
+	var counts := PackedInt32Array()
+	counts.resize(LABOURER.ROLE_COUNT)
+	var carrying := 0
+	for worker in crew:
+		counts[int(worker.sync_role)] += 1
+		carrying += int(worker.carrying())
+
+	var parts := PackedStringArray()
+	for role in LABOURER.ROLE_COUNT:
+		parts.append("%d %s (%d)" % [role + 4, LABOURER.ROLE_NAMES[role], counts[role]])
+	var line := "батраки %d/%d: " % [crew.size(), RES.LABOURER_LIMIT] + "   ".join(parts)
+	line += "   |   B — нанять (%s)" % RES.format_cost(RES.LABOURER_COST)
+	if carrying > 0:
+		line += "   несут: %d" % carrying
 	return line
 
 
