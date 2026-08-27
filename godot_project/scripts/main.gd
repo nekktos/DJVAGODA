@@ -31,6 +31,7 @@ extends Node
 ##   --garrisontest  автопроверка гарнизонов свободных сторон (headless)
 ##   --warbandtest   автопроверка воюющего ИИ свободных сторон (headless)
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
+##   --navtest       автопроверка путей по карте (headless)
 ##   --faction=N     выбрать сторону: 0 злодей, 1 эльфы, 2 стража
 ##   --profile=ИМЯ   подменить профиль игрока (нужно для двух окон на одной машине)
 ##   --world=ИМЯ     работать с отдельным файлом мира
@@ -368,6 +369,12 @@ func _apply_cmdline() -> void:
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
+
+	if args.has("--navtest"):
+		var nav_test: Node = preload("res://tools/nav_test.gd").new()
+		add_child(nav_test)
+		nav_test.start(_world)
+		needs_session = true
 
 	if args.has("--soaktest"):
 		var soak_test: Node = preload("res://tools/soak_test.gd").new()

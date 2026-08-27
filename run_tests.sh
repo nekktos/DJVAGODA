@@ -24,6 +24,7 @@ LOGS="${LOGS:-/c/Temp/claude/dzhvagoda-tests}"
 
 # имя : флаг : стороны пиров через запятую (первый — хост) : общие доп. ключи
 SUITES=(
+	"nav:--navtest::"
 	"walk:--walktest::"
 	"forest:--foresttest::"
 	"econ:--econtest::"

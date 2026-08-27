@@ -88,6 +88,42 @@ const CHAMPION_ENGAGE := 20.0
 const CHAMPION_SCALE := 1.18
 const CHAMPION_COLOR := Color(0.78, 0.20, 0.18)
 
+## Путь по карте (Этап 10). Раньше боец шёл к цели ПО ПРЯМОЙ и о препятствиях
+## не знал вовсе: для отряда живого игрока это терпели с Этапа 6, потому что
+## командир обходит стены сам. Отряду ИИ вести некому — он упирался в стену и
+## стоял там до конца партии.
+##
+## Ближе DIRECT_RANGE боец идёт НАПРЯМУЮ, не спрашивая пути. Порог намеренно
+## большой, и вот почему.
+##
+## Точки пути лежат на рёбрах полигонов сетки, и у четверых бойцов, идущих
+## рядом, они получаются почти одинаковыми. Если каждый пойдёт по своему пути,
+## строй схлопнется: все четверо двинутся в одну точку, упрутся друг в друга, а
+## расталкивание погасит остаток скорости. Так и вышло в первом прогоне с
+## навигацией — отряд встал в шестидесяти метрах от цели с нулевой скоростью и
+## простоял так до конца.
+##
+## Строй держится ОТНОСИТЕЛЬНО ЯКОРЯ, а путь по карте прокладывает якорь
+## (`warband.gd`) — или живой командир своими глазами. Бойцу сетка нужна только
+## когда он отстал и догоняет в одиночку: место в строю в двадцати пяти метрах —
+## это уже не строй.
+const DIRECT_RANGE := 25.0
+
+## Сколько секунд боец должен упираться, чтобы перестать верить прямой дороге.
+##
+## Строй держится относительно якоря, а якорь идёт по сетке — и обходит то, что
+## боец, срезающий угол к своему месту в строю, встречает лбом. Так отряд и встал
+## у восточной стены полосы препятствий на перекрёстке: якорь обогнул её с
+## севера, а четверо шли прямо в неё и стояли там до конца прогона.
+##
+## Поэтому прямая дорога — это предположение, а не правило. Не сработало за
+## полсекунды — идём по сетке, даже если место в строю в двух шагах.
+const BLOCKED_SECONDS := 0.5
+## Насколько цель должна уехать, чтобы перекладывать путь.
+const REPATH_DISTANCE := 6.0
+## Ближе этого точка пути считается пройденной.
+const WAYPOINT_RADIUS := 2.5
+
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
 
@@ -140,6 +176,12 @@ var _parts := {}
 var _cooldown := 0.0
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var _current_anim := ""
+## Путь до цели и место в нём. Только у хоста: клиент получает готовые позиции.
+var _path := PackedVector3Array()
+var _path_index := 0
+var _path_goal := Vector3.INF
+## Сколько времени боец упирается, никуда не двигаясь.
+var _blocked_t := 0.0
 var _alive := true
 
 
@@ -311,6 +353,9 @@ func _physics_process(delta: float) -> void:
 		# Дешевле не пустить, чем потом искать источник в мегабайтах лога.
 		push_error("Бойцу назначена неконечная точка — приказ отброшен")
 		destination = global_position
+	# Приход считаем по НАСТОЯЩЕЙ цели, а шагаем по пути к ней. Если считать
+	# приход по точке пути, боец начнёт бить воздух на первом же повороте.
+	var step_to := _next_step(destination)
 	var to_dest := destination - global_position
 	to_dest.y = 0.0
 	var distance := to_dest.length()
@@ -323,7 +368,9 @@ func _physics_process(delta: float) -> void:
 
 	var desired := Vector3.ZERO
 	if distance > stop_at:
-		var dir := to_dest.normalized()
+		var to_step := step_to - global_position
+		to_step.y = 0.0
+		var dir := to_step.normalized() if to_step.length() > 0.01 else to_dest.normalized()
 		var speed := _move_speed()
 		desired = dir * speed
 		rotation.y = atan2(-dir.x, -dir.z)
@@ -335,7 +382,19 @@ func _physics_process(delta: float) -> void:
 
 	# Расталкивание работает всегда, в том числе на месте: иначе бойцы, пришедшие
 	# в соседние слоты, стоят внахлёст.
+	#
+	# Но гасить ХОД оно не должно. Убираем встречную составляющую: пусть разводит
+	# бойцов боками, а не останавливает идущего сзади тем, кто идёт впереди.
+	# Без этого четвёрка, сходящаяся к соседним местам в строю, запирала себя
+	# намертво — каждый упирался в переднего, сумма скоростей выходила нулевой, и
+	# отряд стоял так до конца партии в шестидесяти метрах от цели. Снаружи это
+	# не отличить от препятствия, и я честно искал стену, которой там не было.
 	var push := _separation()
+	if desired.length() > 0.01:
+		var forward := desired.normalized()
+		var against := push.dot(forward)
+		if against < 0.0:
+			push -= forward * against
 	var flat := Vector3(desired.x + push.x, 0.0, desired.z + push.z)
 	if flat.length() > MAX_FLAT_SPEED:
 		flat = flat.normalized() * MAX_FLAT_SPEED
@@ -343,6 +402,7 @@ func _physics_process(delta: float) -> void:
 	velocity.z = flat.z
 
 	move_and_slide()
+	_note_blocked(delta)
 	sync_position = global_position
 	sync_yaw = rotation.y
 	_play("walk" if sync_moving else "idle")
@@ -465,6 +525,55 @@ func _strike_cooldown() -> float:
 	if is_champion:
 		return CHAMPION_COOLDOWN
 	return STRIKE_COOLDOWN
+
+
+## Куда шагать прямо сейчас, чтобы прийти к цели.
+##
+## Возвращает саму цель, если она рядом или навигации нет: пусть лучше боец
+## пойдёт напрямую, чем встанет.
+func _next_step(goal: Vector3) -> Vector3:
+	if global_position.distance_to(goal) <= DIRECT_RANGE and _blocked_t < BLOCKED_SECONDS:
+		_path.clear()
+		_path_goal = Vector3.INF
+		return goal
+
+	var nav := _navigation()
+	if nav == null or not nav.is_ready():
+		return goal
+
+	if _path.is_empty() or _path_index >= _path.size() \
+			or _path_goal.distance_to(goal) > REPATH_DISTANCE:
+		# Цель может стоять внутри постройки — туда пути нет по определению.
+		# Спрашиваем ближайшее проходимое место рядом с ней.
+		_path = nav.path_between(global_position, nav.closest_point(goal))
+		_path_index = 0
+		_path_goal = goal
+
+	while _path_index < _path.size():
+		var point: Vector3 = _path[_path_index]
+		if Vector2(point.x, point.z).distance_to(Vector2(global_position.x, global_position.z)) \
+				> WAYPOINT_RADIUS:
+			return point
+		_path_index += 1
+	return goal
+
+
+## Заметить, что боец упёрся: хотел идти, но не сдвинулся. Отпускаем вдвое
+## быстрее, чем копим, — освободившийся боец должен вернуться в строй сразу, а
+## не идти по сетке ещё секунду.
+func _note_blocked(delta: float) -> void:
+	var speed := Vector2(velocity.x, velocity.z).length()
+	if sync_moving and is_on_wall() and speed < 0.5:
+		_blocked_t += delta
+	else:
+		_blocked_t = maxf(0.0, _blocked_t - delta * 2.0)
+
+
+func _navigation() -> Node:
+	var world := get_parent().get_parent()
+	if world == null or not ("navigation" in world):
+		return null
+	return world.navigation
 
 
 ## На каком расстоянии боец достаёт до цели.

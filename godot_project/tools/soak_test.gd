@@ -22,6 +22,7 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const UNIT := preload("res://scripts/units/unit.gd")
 
 ## Сколько варить мир. Три минуты — это больше десятка циклов «выйти в набег,
 ## подраться, отойти, пополниться», и уже видно, копится ли что-нибудь.
@@ -97,8 +98,14 @@ func _run() -> void:
 					near = d
 					var t: Node3D = unit._find_target()
 					picked = "нет" if t == null else str(t.name)
-			note("%ds: склад %d hp, ближний страж в %.1f м, его цель: %s"
-				% [int(elapsed), int(_bait.health), near, picked])
+			var wb: Node = _world.warband
+			var anchor: Vector3 = wb.anchor_of(FACTIONS.Kind.GUARD)
+			var centre: Vector3 = wb._centre_of(FACTIONS.Kind.GUARD)
+			var route: Array = wb._route.get(FACTIONS.Kind.GUARD, [])
+			note("%ds: склад %d hp, страж в %.0f м (цель %s) | якорь %s, отряд в %.0f м от якоря, точек %d, %s"
+				% [int(elapsed), int(_bait.health), near, picked, str(anchor.round()),
+					(centre.distance_to(anchor) if centre.is_finite() else -1.0), route.size(),
+					WARBAND.STATE_NAMES[wb.state_of(FACTIONS.Kind.GUARD)]])
 		for faction in FACTIONS.COUNT:
 			_states[_world.warband.state_of(faction)] = true
 			var anchor: Vector3 = _world.warband.anchor_of(faction)
@@ -154,7 +161,9 @@ func _report() -> void:
 	# бы ноль, а бесконечная смена цели — неправдоподобно много.
 	check(_travelled > 100.0, "отряды действительно ходят по карте",
 		"суммарно %.0f м" % _travelled)
-	check(_travelled < WARBAND.ANCHOR_SPEED * SOAK_SECONDS * FACTIONS.COUNT,
+	# Верхняя граница — по скорости самого бойца: якорь теперь стоит на точках
+	# маршрута и не может уехать быстрее тех, кто до них доходит.
+	check(_travelled < UNIT.BASE_SPEED * 1.5 * SOAK_SECONDS * FACTIONS.COUNT,
 		"и не мечутся быстрее, чем физически могут идти",
 		"%.0f м за %.0f с" % [_travelled, SOAK_SECONDS])
 

@@ -1,0 +1,124 @@
+extends Node
+##
+## Навигация по карте (Этап 10). Пути для бойцов и отрядов ИИ.
+##
+## ЗАЧЕМ. До этого всё, что двигалось само, ходило ПО ПРЯМОЙ: `unit.gd` не знал
+## о препятствиях вообще. Для отряда живого игрока это терпели с Этапа 6 —
+## командир ведёт их сам и обходит стены глазами. Отряду ИИ вести некому, и
+## первый же долгий прогон показал итог: стража вышла в набег, упёрлась в стену
+## дворца в ста тридцати метрах от базы и простояла там до конца партии.
+##
+## Обходились это заранее заданными точками прохода, но подпорка лечила только
+## те препятствия, о которых я знал заранее. Здесь — настоящий путь по карте.
+##
+## КАК. Карта строится процедурно (`world_builder.gd`) с фиксированным сидом,
+## одинаково на всех пирах. Значит и навигационную сетку можно испечь на месте,
+## после стройки, и ничего не реплицировать.
+##
+## СЧИТАЕТ ТОЛЬКО ХОСТ. Движение бойцов и решения ИИ — его дело, клиент получает
+## готовые позиции. Поэтому и печём мы только у хоста: клиенту сетка не нужна, а
+## печь её — это секунды на ровном месте.
+##
+## ЧЕГО СЕТКА НЕ ЗНАЕТ: деревьев. Лес — это MultiMesh с 1700 стволами, из
+## которых объёмными в каждый момент лишь те, что рядом с игроками
+## (`forest.gd`). Их в сетку не запечь: они появляются и исчезают. Бойцы об них
+## по-прежнему спотыкаются — от этого спасает сторож «застрял» в `warband.gd`.
+##
+
+## Размер клетки сетки, метры. Карта 1200 на 1200, и это прямо решает, сколько
+## печь: при 0.5 клеток вчетверо больше, чем при 1.0. Метр достаточен для
+## grey-box из коробок, где узких проходов нет: самый тесный — ворота дворца,
+## 34 метра.
+const CELL_SIZE := 1.0
+const CELL_HEIGHT := 0.5
+
+## Габариты того, кто ходит. Все три величины КРАТНЫ размеру клетки: движок
+## округляет их до вокселей сам и на каждое некратное значение ругается в лог.
+## Радиус — метр: капсула бойца 0.35, остальное запас, чтобы он не тёрся о
+## стены плечом. Проходы на карте широкие, самый тесный — ворота дворца в 34 м.
+const AGENT_RADIUS := 1.0
+const AGENT_HEIGHT := 2.0
+
+## Уступ, на который боец способен взойти. Полклетки по высоте. Ступеньки полосы
+## препятствий у спавна начинаются с 0.8 м, шестиметровый уступ плато
+## непроходим — и это правильно: наверх ведёт пандус, сетка обязана знать
+## именно это.
+const AGENT_MAX_CLIMB := 0.5
+const AGENT_MAX_SLOPE := 45.0
+
+## Группа, из которой берётся геометрия для выпечки.
+const SOURCE_GROUP := "navsource"
+
+var _region: NavigationRegion3D
+var _ready_to_path := false
+
+
+## Испечь сетку по уже построенной карте. Зовёт `world.gd` сразу после
+## `WorldBuilder.build()` — раньше нечего печь, позже незачем ждать.
+func bake(terrain: Node3D) -> void:
+	if not Net.hosting():
+		return
+	if terrain == null:
+		push_error("Навигация: карты нет, печь нечего")
+		return
+	terrain.add_to_group(SOURCE_GROUP)
+
+	var mesh := NavigationMesh.new()
+	mesh.cell_size = CELL_SIZE
+	mesh.cell_height = CELL_HEIGHT
+	mesh.agent_radius = AGENT_RADIUS
+	mesh.agent_height = AGENT_HEIGHT
+	mesh.agent_max_climb = AGENT_MAX_CLIMB
+	mesh.agent_max_slope = AGENT_MAX_SLOPE
+	# Берём КОЛЛИЗИЮ, а не видимые меши. Это не мелочь: у дерева и коробки
+	# ресурса меш есть, а собирать по мешам значит запечь заодно дорожную
+	# разметку и прочую плоскую мишуру.
+	mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+	mesh.geometry_source_group_name = SOURCE_GROUP
+
+	_region = NavigationRegion3D.new()
+	_region.name = "NavRegion"
+	_region.navigation_mesh = mesh
+	add_child(_region)
+
+	var started := Time.get_ticks_msec()
+	# Печём СИНХРОННО. В потоке было бы вежливее, но тогда первые секунды партии
+	# ИИ ходил бы без сетки, а автопроверки стали бы зависеть от того, успел ли
+	# поток. Мир строится один раз при входе в сессию — там эта пауза уместна.
+	_region.bake_navigation_mesh(false)
+	_ready_to_path = true
+	print("[навигация] сетка испечена за %d мс, полигонов %d"
+		% [Time.get_ticks_msec() - started, mesh.get_polygon_count()])
+
+
+## Путь от точки до точки по карте. Пустой массив — идти некуда: либо сетки
+## нет, либо цель за пределами проходимого.
+##
+## Первая точка пути — проекция начала на сетку, поэтому вызывающий её обычно
+## пропускает: идти к тому месту, где стоишь, незачем.
+func path_between(from: Vector3, to: Vector3) -> PackedVector3Array:
+	if not _ready_to_path or _region == null:
+		return PackedVector3Array()
+	var map := _region.get_navigation_map()
+	if not map.is_valid():
+		return PackedVector3Array()
+	return NavigationServer3D.map_get_path(map, from, to, true)
+
+
+## Есть ли вообще сетка. Автопроверки и вызывающие код отличают «пути нет» от
+## «навигация не работает».
+func is_ready() -> bool:
+	return _ready_to_path
+
+
+## Ближайшая проходимая точка к заданной. Нужна, когда цель стоит вплотную к
+## стене или внутри постройки: путь в саму цель не проложится, а к её краю —
+## вполне.
+func closest_point(to: Vector3) -> Vector3:
+	if not _ready_to_path or _region == null:
+		return to
+	var map := _region.get_navigation_map()
+	if not map.is_valid():
+		return to
+	return NavigationServer3D.map_get_closest_point(map, to)

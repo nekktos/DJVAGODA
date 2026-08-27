@@ -25,7 +25,6 @@ extends Node
 const FACTIONS := preload("res://scripts/factions.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
-const BUILDER := preload("res://scripts/world_builder.gd")
 
 enum State { HOLD, MARCH, FIGHT, RETURN }
 
@@ -35,9 +34,29 @@ const STATE_NAMES := ["обороняет базу", "идёт в набег", "
 ## а частая смена цели превращает поход в топтание.
 const THINK_INTERVAL := 2.0
 
-## Скорость якоря строя. Медленнее самого бойца, чтобы отстающие успевали
-## подтянуться и колонна не растягивалась в цепочку.
-const ANCHOR_SPEED := 5.0
+## Насколько близко отряд должен подойти к точке маршрута, чтобы считать её
+## пройденной и перенести якорь на следующую.
+##
+## Мало намеренно. С двенадцатью метрами отряд «проходил» точки, до которых не
+## доходил, — то есть срезал углы маршрута, и срезал их СКВОЗЬ СТЕНЫ: точка
+## считалась взятой, пока между ней и отрядом стояла стена зоны людей. Весь
+## смысл маршрута в том, чтобы посетить его точки; расстояние по прямой о стенах
+## ничего не знает.
+##
+## Меряем по БЛИЖАЙШЕМУ бойцу, а не по середине строя. Места в строю лежат
+## позади якоря (FRONT_GAP), и середина отряда до точки не доходит никогда —
+## отряд встал бы перед каждой.
+const WAYPOINT_REACHED := 5.0
+
+## Насколько якорь строя опережает отряд.
+##
+## Якорь — это точка сбора впереди, а не сама точка маршрута. Разница
+## принципиальна: навигация сглаживает путь, и следующий его угол может лежать в
+## двухстах метрах по прямому участку. Поставив якорь прямо на угол, я получал
+## строй, растянутый через полкарты, и маршрут, который тут же пересчитывался
+## заново уже от этого угла — отряд оставался на месте, а якорь прыгал между
+## двумя точками.
+const LEAD_DISTANCE := 14.0
 
 ## Ближе этого до цели отряд считается пришедшим.
 const ARRIVE_RADIUS := 14.0
@@ -74,24 +93,17 @@ const FRIENDLY_ABOVE := 20.0
 ## глазами по коду не видно.
 const RAID_RANGE := 420.0
 
-## Насколько якорь строя может оторваться от отряда. Дальше он останавливается и
-## ждёт: якорь — это не бегун, а точка сбора, и уходить без бойцов ему незачем.
-## Без ожидания якорь ушёл к цели один, а отряд остался у стены, о которую
-## споткнулся, — и снаружи это выглядело как идущий набег.
-const LAG_LIMIT := 20.0
-
 ## Отряд считается застрявшим, если за столько секунд похода его середина не
 ## сдвинулась на STUCK_STEP метров. Тогда набег отменяется.
 ##
-## Это страховка, а не механика: известные проходы описаны в
-## `world_builder.gd::SORTIE_PATH`. Но бойцы ходят по прямой, карту им никто не
-## объясняет, и застрять они могут о что угодно. Лучше вернуться домой, чем
-## стоять у камня до конца партии.
-## Шаг заведомо меньше того, что отряд проходит между размышлениями на марше
-## (ANCHOR_SPEED × THINK_INTERVAL = 10 м): иначе идущий отряд копил бы секунды
-## застревания просто потому, что порог выбран впритык.
+## Это страховка, а не механика: путь по карте отряд получает от навигации
+## (`navigation.gd`). Но в сетке нет деревьев — лес появляется и исчезает по
+## мере приближения игроков, — да и вплотную друг к другу бойцы толкаются.
+## Лучше вернуться домой, чем стоять у ствола до конца партии.
+## Два метра — это «ползёт в обход», а не «стоит»: отряд, обходящий препятствие,
+## движется медленно, и записывать его в застрявшие нельзя.
 const STUCK_SECONDS := 24.0
-const STUCK_STEP := 6.0
+const STUCK_STEP := 2.0
 
 var _route := {}
 var _stuck_t := {}
@@ -118,46 +130,55 @@ func _process(delta: float) -> void:
 		_think(faction)
 
 
-## Якорь строя ползёт к цели каждый кадр, а решения принимаются раз в две
-## секунды. Иначе отряд дёргался бы рывками по интервалу размышления.
-func _move_anchors(delta: float) -> void:
+## Якорь строя СТОИТ НА ТЕКУЩЕЙ ТОЧКЕ МАРШРУТА и переходит к следующей, только
+## когда отряд до неё дошёл.
+##
+## Раньше якорь полз к цели сам, со своей скоростью, а отряд шёл за ним. Это
+## ломалось каждый раз одинаково: якорь идёт по сетке и обходит препятствие, а
+## бойцы срезают угол к своему месту в строю и упираются в него лбом. Пока они
+## обходили, якорь уезжал, и приходилось вводить допуск отставания — после чего
+## якорь замирал, ждал, место в строю переставало двигаться, и обходить
+## становилось некуда. Любой допуск лишь переносил место затыка дальше по
+## карте: 60 метров до цели, потом 36.
+##
+## Теперь оторваться он не может по построению: пока отряд не подошёл к точке,
+## следующей точки просто нет.
+func _move_anchors(_delta: float) -> void:
 	for faction in _anchor.keys():
-		var here: Vector3 = _anchor[faction]
-		var there: Vector3 = _next_point(faction, here)
-		var to := there - here
-		to.y = 0.0
-
-		# Ждём отстающих. Отряд идёт вокруг якоря, и если якорь уйдёт вперёд, они
-		# просто не догонят: скорость у них та же.
+		var route: Array = _route.get(faction, [])
 		var centre := _centre_of(faction)
-		if centre.is_finite() and centre.distance_to(here) > LAG_LIMIT:
-			_command(faction, here, to)
-			continue
-
-		var step := ANCHOR_SPEED * delta
-		if to.length() <= step:
-			here = Vector3(there.x, here.y, there.z)
-			_advance_route(faction)
-		else:
-			here += to.normalized() * step
-		_anchor[faction] = here
-		_command(faction, here, to)
-
-
-## Следующая точка маршрута. Пока маршрут не пройден, якорь идёт по нему, а не
-## напрямую к цели: базы стоят за стенами, а прямой путь ведёт в стену.
-func _next_point(faction: int, fallback: Vector3) -> Vector3:
-	var route: Array = _route.get(faction, [])
-	if route.is_empty():
-		return _goal.get(faction, fallback)
-	return route[0]
-
-
-func _advance_route(faction: int) -> void:
-	var route: Array = _route.get(faction, [])
-	if not route.is_empty():
-		route.remove_at(0)
+		while not route.is_empty() and _nearest_distance(faction, route[0]) <= WAYPOINT_REACHED:
+			route.remove_at(0)
 		_route[faction] = route
+
+		var target: Vector3 = _goal.get(faction, _anchor[faction])
+		if not route.is_empty():
+			target = route[0]
+
+		# Якорь — на поводке впереди отряда, в сторону следующей точки маршрута.
+		var here := target
+		if centre.is_finite():
+			var to_wp := target - centre
+			if to_wp.length() > LEAD_DISTANCE:
+				here = centre + to_wp.normalized() * LEAD_DISTANCE
+		var facing := here - centre if centre.is_finite() else Vector3.ZERO
+		_anchor[faction] = here
+		_command(faction, here, facing)
+
+
+## Насколько близко к точке подошёл ближайший боец отряда.
+func _nearest_distance(faction: int, point: Vector3) -> float:
+	var best := INF
+	for unit in _band(faction):
+		best = minf(best, _flat_distance(unit.global_position, point))
+	return best
+
+
+## Расстояние по горизонтали. Высота между якорем и отрядом законно расходится
+## на подъёмах и спусках, и мерить её вместе с горизонталью значит наказывать
+## отряд за рельеф.
+func _flat_distance(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z))
 
 
 ## Середина отряда. Vector3.INF, если отряда нет.
@@ -171,18 +192,32 @@ func _centre_of(faction: int) -> Vector3:
 	return sum / float(band.size())
 
 
-## Проложить маршрут: сначала выход из своей зоны, потом цель. При возвращении
-## порядок обратный. Точки прохода лежат в `world_builder.gd::SORTIE_PATH`.
-func _set_route(faction: int, target: Vector3, outbound: bool) -> void:
-	var gates: Array = BUILDER.SORTIE_PATH.get(faction, [])
+## Проложить маршрут по карте.
+##
+## Раньше здесь был список проходов, заданный руками: базы стоят за стенами, а
+## якорь шёл к цели по прямой и уводил отряд в стену. Подпорка лечила только те
+## препятствия, о которых я знал заранее. Теперь путь спрашивается у навигации
+## (`navigation.gd`), и знать заранее ничего не нужно.
+##
+## Если пути нет — идём напрямую, как раньше. Это не «на всякий случай»: цель
+## набега стоит внутри постройки, и попасть в её середину нельзя по определению.
+func _set_route(faction: int, target: Vector3) -> void:
+	# Путь считаем ОТ ОТРЯДА, а не от якоря: якорь — производная величина, он
+	# висит на поводке впереди, и строить маршрут от него значит строить его от
+	# точки, где никого нет.
+	var here: Vector3 = _centre_of(faction)
+	if not here.is_finite():
+		here = _anchor.get(faction, target)
+	var world := get_parent()
 	var route := []
-	if outbound:
-		for point in gates:
-			route.append(point)
-	else:
-		for i in range(gates.size() - 1, -1, -1):
-			route.append(gates[i])
-	route.append(target)
+	if "navigation" in world:
+		var path: PackedVector3Array = world.navigation.path_between(
+			here, world.navigation.closest_point(target))
+		# Первую точку пропускаем: это проекция того места, где мы и так стоим.
+		for i in range(1, path.size()):
+			route.append(path[i])
+	if route.is_empty():
+		route.append(target)
 	_route[faction] = route
 	_goal[faction] = target
 	_stuck_t[faction] = 0.0
@@ -287,11 +322,8 @@ func _plan_next(faction: int, band: Array, base: Vector3) -> void:
 		return
 	var same_goal: bool = _goal.get(faction, Vector3.INF).distance_to(target) <= ARRIVE_RADIUS
 	var fresh: bool = _state.get(faction, State.HOLD) != State.MARCH or not same_goal
-	var from_home: bool = _state.get(faction, State.HOLD) == State.HOLD
 	_set_state(faction, State.MARCH)
-	# Выход из зоны нужен только когда выходим ИЗ НЕЁ. Отряд, уже стоящий в поле,
-	# гнать обратно через собственные ворота незачем.
-	_set_route(faction, target, from_home)
+	_set_route(faction, target)
 	if fresh:
 		_announce_raid(faction, target)
 
@@ -387,7 +419,7 @@ func _stand_down(faction: int, base: Vector3) -> void:
 ## Отход домой тем же путём, каким шли.
 func _go_home(faction: int, base: Vector3) -> void:
 	_set_state(faction, State.RETURN)
-	_set_route(faction, base, false)
+	_set_route(faction, base)
 
 
 ## Застрял ли отряд: середина строя не двигается, хотя он в походе. Бойцы ходят

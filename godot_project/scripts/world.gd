@@ -79,6 +79,8 @@ signal camera_mode_changed(strategy: bool)
 @onready var garrison: Node = $Garrison
 ## ÐÐ ÑÐ²Ð¾Ð±Ð¾Ð´Ð½ÑÑ ÑÑÐ¾ÑÐ¾Ð½, ÑÑÑÐ¿ÐµÐ½Ñ Â«Ð±Â»: ÐºÑÐ¾ Ð¸ ÐºÑÐ´Ð° ÑÐ¾Ð´Ð¸Ñ Ð²Ð¾ÐµÐ²Ð°ÑÑ.
 @onready var warband: Node = $Warband
+## Пути по карте. Печёт сетку после стройки, считает только у хоста.
+@onready var navigation: Node = $Navigation
 
 var strategy_mode := false
 
@@ -104,6 +106,8 @@ func _ready() -> void:
 
 	var builder := WORLD_BUILDER.new()
 	builder.build(_terrain)
+	# Сетку печём сразу после стройки: ИИ ходит с первой секунды партии.
+	navigation.bake(_terrain)
 	# Лес зоны эльфов строит отдельная система: у него impostor-LOD и своя
 	# адресация деревьев по индексу (GDD раздел 5, forest.gd).
 	forest.build(
