@@ -102,6 +102,12 @@ func _run() -> void:
 		if int(elapsed) % 30 == 0:
 			var wb: Node = _world.warband
 			var centre: Vector3 = wb._centre_of(FACTIONS.Kind.VILLAIN)
+			var route: Array = wb._route.get(FACTIONS.Kind.VILLAIN, [])
+			var head := PackedStringArray()
+			for k in mini(4, route.size()):
+				head.append(str(Vector2(route[k].x, route[k].z).round()))
+			note("%ds маршрут злодея: %d точек, начало %s"
+				% [int(elapsed), route.size(), " ".join(head)])
 			note("%ds злодей: якорь %s, отряд %s, %s"
 				% [int(elapsed), str(wb.anchor_of(FACTIONS.Kind.VILLAIN).round()),
 					str(centre.round()) if centre.is_finite() else "нет",

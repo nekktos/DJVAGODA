@@ -52,7 +52,7 @@ const WAYPOINT_REACHED := 5.0
 ## И насколько близко должна быть СЕРЕДИНА отряда. Больше первого числа: строй
 ## растянут, и требовать от середины тех же пяти метров значило бы не проходить
 ## точки никогда.
-const BAND_REACHED := 16.0
+const BAND_REACHED := 8.0
 
 ## Насколько якорь строя опережает отряд.
 ##
@@ -152,7 +152,7 @@ func _process(delta: float) -> void:
 func _move_anchors(_delta: float) -> void:
 	for faction in _anchor.keys():
 		var route: Array = _route.get(faction, [])
-		var centre := _centre_of(faction)
+		var centre := _band_point(faction)
 		# Точку проходит ОТРЯД, а не разведчик. Пока хватало одного ближайшего
 		# бойца, вырвавшийся вперёд засчитывал точку за всех: якорь прыгал
 		# дальше, маршрут пересчитывался от оставшихся позади — и так по кругу.
@@ -225,6 +225,33 @@ func _centre_of(faction: int) -> Vector3:
 	return sum / float(band.size())
 
 
+## Место отряда, годное для навигации.
+##
+## Арифметическая середина для этого не годится, и это стоило пяти попыток
+## выпустить отряд злодея из собственных ворот. Середина — это среднее по
+## бойцам, и когда половина отряда прошла проём, а половина ещё нет, она
+## приходится РОВНО НА СТЕНУ между ними. Навигация честно цепляет такую точку к
+## ближайшему краю сетки — к наружной стороне стены, — и маршрут начинает
+## строиться с той стороны, куда отряду ещё только предстоит попасть. Якорь
+## уходит в камень, отряд упирается в него лбом и наматывает круги у ворот.
+##
+## Берём позицию бойца, ближайшего к середине. Боец — тело с формой
+## столкновения, внутри стены он оказаться не может, и потому его место всегда
+## законно для навигации.
+func _band_point(faction: int) -> Vector3:
+	var centre := _centre_of(faction)
+	if not centre.is_finite():
+		return centre
+	var best: Vector3 = centre
+	var closest := INF
+	for unit in _band(faction):
+		var gap: float = _flat_distance(unit.global_position, centre)
+		if gap < closest:
+			closest = gap
+			best = unit.global_position
+	return best
+
+
 ## Проложить маршрут по карте.
 ##
 ## Раньше здесь был список проходов, заданный руками: базы стоят за стенами, а
@@ -238,7 +265,7 @@ func _set_route(faction: int, target: Vector3) -> void:
 	# Путь считаем ОТ ОТРЯДА, а не от якоря: якорь — производная величина, он
 	# висит на поводке впереди, и строить маршрут от него значит строить его от
 	# точки, где никого нет.
-	var here: Vector3 = _centre_of(faction)
+	var here: Vector3 = _band_point(faction)
 	if not here.is_finite():
 		here = _anchor.get(faction, target)
 	var world := get_parent()
