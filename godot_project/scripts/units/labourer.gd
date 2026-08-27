@@ -116,7 +116,7 @@ func _idle_destination(delta: float) -> Vector3:
 		return home if home != Vector3.ZERO else global_position
 
 	var spot: Vector3 = _site.global_position
-	if global_position.distance_to(spot) > WORK_RANGE:
+	if _flat_to(spot) > _work_reach(_site):
 		return spot
 
 	_work_t -= delta
@@ -131,7 +131,7 @@ func _idle_destination(delta: float) -> Vector3:
 func _deliver(delta: float) -> Vector3:
 	if not _drop.is_finite():
 		_drop = _drop_point()
-	if global_position.distance_to(_drop) > WORK_RANGE:
+	if _flat_to(_drop) > WORK_RANGE:
 		return _drop
 
 	var world := get_parent().get_parent()
@@ -153,6 +153,29 @@ func _deliver(delta: float) -> Vector3:
 	_drop = Vector3.INF
 	_work_t = 0.0
 	return global_position
+
+
+## С какого расстояния можно работать на этом месте.
+##
+## У дерева и камня — длина руки. У ПОСТРОЙКИ — плюс её половина: расстояние
+## меряется до середины, а склад имеет 12 на 10 метров, и строитель упирается в
+## стену за шесть метров от неё. Дойти до середины он не может физически, и без
+## этой поправки стройка не ускорялась бы никогда — ни одним строителем.
+func _work_reach(site: Node3D) -> float:
+	if site != null and site.is_in_group("building") and "kind" in site:
+		var size: Vector3 = RES2.BUILDING_SIZE.get(int(site.kind), Vector3.ZERO)
+		return WORK_RANGE + maxf(size.x, size.z) * 0.5
+	return WORK_RANGE
+
+
+## Расстояние до места работы ПО ГОРИЗОНТАЛИ.
+##
+## Мерить в трёх измерениях здесь нельзя, и это не мелочь. Начало координат у
+## ствола — на середине его высоты: батрак стоит в полутора метрах от дерева, а
+## «по прямой» до точки отсчёта у него пять, и он вечно идёт к дереву, у которого
+## уже стоит. Ровно так роща и не рубилась, пока причину не нашли.
+func _flat_to(point: Vector3) -> float:
+	return Vector2(global_position.x, global_position.z).distance_to(Vector2(point.x, point.z))
 
 
 ## Куда нести добытое: ближайший достроенный склад своей стороны, иначе домой.
@@ -259,5 +282,6 @@ func _nearest_site_building() -> Node3D:
 
 ## Стоит ли этот батрак у стройки и помогает ли ей. Спрашивает сама постройка.
 func builds(building: Node3D) -> bool:
-	return sync_role == Role.BUILDER and _site == building \
-		and global_position.distance_to(building.global_position) <= WORK_RANGE
+	if sync_role != Role.BUILDER or _site != building:
+		return false
+	return _flat_to(building.global_position) <= _work_reach(building)

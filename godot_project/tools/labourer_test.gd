@@ -19,12 +19,15 @@ const RES := preload("res://scripts/economy/resources.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const MINE := preload("res://scripts/economy/mine.gd")
 
+## В пределах какого расстояния от базы лес считается «своим».
+const GROVE_RADIUS := 160.0
+
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 17
+	expected_host = 18
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -99,12 +102,24 @@ func _test_gathers_and_delivers(me: Node3D) -> void:
 		fail("батраков нет")
 		return
 
-	# Ставим источник у самой базы. Своего леса в зоне злодея нет вовсе:
-	# ближайшая роща — у перекрёстка, в четырёхстах метрах, и полный круг
-	# «дойти, нарубить, донести» занимает там больше двух минут. Проверять надо
-	# петлю, а не выносливость.
+	# Рубят НАСТОЯЩУЮ рощу за воротами форта, а не подставленное для проверки
+	# дерево. Раньше своего леса у злодея не было вовсе, и проверке приходилось
+	# сажать источник самой — то есть проверять петлю в условиях, которых в игре
+	# не существует. Роща посажена, и заодно проверяем, что она на месте: без неё
+	# батраки снова уйдут за брёвнами через полкарты.
 	var base: Vector3 = FACTIONS.SPAWN[int(me.faction)]
-	_plant_wood(base + Vector3(14.0, 0.0, 0.0))
+	var near_wood := 0
+	var nearest := INF
+	for node in get_tree().get_nodes_in_group("harvestable"):
+		var source := node as Node3D
+		if source == null or int(source.get_meta("resource", -1)) != RES.Kind.WOOD:
+			continue
+		var d: float = base.distance_to(source.global_position)
+		nearest = minf(nearest, d)
+		if d < GROVE_RADIUS:
+			near_wood += 1
+	check(near_wood >= 10, "у злодея своя роща под боком",
+		"деревьев ближе %d м: %d, ближайшее в %.0f м" % [int(GROVE_RADIUS), near_wood, nearest])
 
 	# Смотрим на казну СТОРОНЫ, а не на карман персонажа: батраки принадлежат
 	# стороне и носят в общий склад.
@@ -120,7 +135,8 @@ func _test_gathers_and_delivers(me: Node3D) -> void:
 	# Ждём полный круг: дойти, нарубить полные руки, донести, высыпать.
 	var delivered := false
 	var seen_load := false
-	for i in 40:
+	# Круг до рощи и обратно занимает под минуту: ждём с запасом.
+	for i in 90:
 		await get_tree().create_timer(1.0).timeout
 		for worker in _crew(me):
 			if int(worker.carrying()) > 0:
@@ -196,24 +212,6 @@ func _test_builders(me: Node3D) -> void:
 			break
 	check(rate > 1.0, "строители у стройки ускоряют её",
 		"множитель %.1f" % rate)
-
-
-## Поставить у базы дерево, которое можно рубить. Тот же вид источника, что и в
-## мире: группа «harvestable» плюс метки ресурса и остатка ударов.
-func _plant_wood(point: Vector3) -> void:
-	var body := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var cylinder := CylinderShape3D.new()
-	cylinder.radius = 1.1
-	cylinder.height = 10.0
-	shape.shape = cylinder
-	shape.position = Vector3(0.0, 5.0, 0.0)
-	body.add_child(shape)
-	body.position = point
-	body.add_to_group("harvestable")
-	body.set_meta("resource", RES.Kind.WOOD)
-	body.set_meta("hits_left", 200)
-	_world.get_node("Terrain").add_child(body)
 
 
 func _count_by_role(me: Node3D) -> PackedInt32Array:

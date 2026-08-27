@@ -43,42 +43,68 @@ func _run() -> void:
 
 
 ## Найти ближайший к точке источник нужного ресурса.
-func _nearest_source(kind: int, from: Vector3) -> Node3D:
-	var best: Node3D = null
-	var best_d := INF
+## Источники нужного вида, от ближнего к дальнему.
+##
+## Ближайший не всегда годится: между ним и персонажем может стоять что-то ещё.
+## Так и вышло, когда у злодея появилась своя роща — она встала между фортом и
+## горами, персонаж бил по стволу и «добыча камня» проваливалась на ровном месте.
+func _sources_by_distance(kind: int, from: Vector3) -> Array:
+	var found := []
 	for node in get_tree().get_nodes_in_group("harvestable"):
 		var body := node as Node3D
 		if body == null or int(body.get_meta("resource", -1)) != kind:
 			continue
-		var d: float = body.global_position.distance_to(from)
-		if d < best_d:
-			best_d = d
-			best = body
-	return best
+		found.append(body)
+	found.sort_custom(func(a: Node3D, b: Node3D) -> bool:
+		return a.global_position.distance_to(from) < b.global_position.distance_to(from))
+	return found
+
+
+## Смотрит ли персонаж прямо на источник. Тот же луч, которым добычу считает
+## сама игра (player.gd::_server_try_harvest).
+func _aims_at(me: Node3D, source: Node3D) -> bool:
+	var origin: Vector3 = me.aim_origin()
+	var forward := -me.global_transform.basis.z
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * RES.HARVEST_RANGE)
+	query.collision_mask = 1
+	var hit: Dictionary = me.get_world_3d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty() and hit.get("collider") == source
 
 
 func _test_harvest(me: Node3D, kind: int, label: String) -> void:
-	var source := _nearest_source(kind, me.global_position)
-	if source == null:
+	var candidates := _sources_by_distance(kind, me.global_position)
+	if candidates.is_empty():
 		check(false, label, "источник не найден на карте")
 		return
 
 	# Встаём у КРАЯ источника, а не в двух метрах от его центра: горы у злодея
 	# бывают шириной в десятки метров, и такая точка оказывается внутри скалы.
-	var reach := 2.0
-	for child in source.get_children():
-		if child is MeshInstance3D:
-			var box: AABB = (child as MeshInstance3D).get_aabb()
-			reach = maxf(reach, maxf(box.size.x, box.size.z) * 0.5 + 1.6)
-	var to_source := source.global_position - me.global_position
-	to_source.y = 0.0
-	var dir := to_source.normalized()
-	me.global_position = source.global_position - dir * reach
-	me.global_position.y = 2.0
-	me.sync_position = me.global_position
-	me.rotation.y = atan2(-dir.x, -dir.z)
-	me.velocity = Vector3.ZERO
-	await get_tree().create_timer(0.5).timeout
+	#
+	# И проверяем, что удар ПРИДЁТСЯ ПО НЕМУ: если между нами и источником что-то
+	# выросло, берём следующий. Иначе проверка добычи молча превращается в
+	# проверку того, что рядом стоит дерево.
+	var source: Node3D = null
+	for candidate in candidates:
+		var reach := 2.0
+		for child in candidate.get_children():
+			if child is MeshInstance3D:
+				var box: AABB = (child as MeshInstance3D).get_aabb()
+				reach = maxf(reach, maxf(box.size.x, box.size.z) * 0.5 + 1.6)
+		var to_source: Vector3 = candidate.global_position - me.global_position
+		to_source.y = 0.0
+		var dir := to_source.normalized()
+		me.global_position = candidate.global_position - dir * reach
+		me.global_position.y = 2.0
+		me.sync_position = me.global_position
+		me.rotation.y = atan2(-dir.x, -dir.z)
+		me.velocity = Vector3.ZERO
+		await get_tree().create_timer(0.3).timeout
+		if _aims_at(me, candidate):
+			source = candidate
+			break
+	if source == null:
+		check(false, label, "не нашлось источника, по которому получается ударить")
+		return
 
 	var before: int = me.stock.get_amount(kind)
 	me.sync_weapon = 0                      # меч

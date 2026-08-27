@@ -22,6 +22,16 @@ GODOT="${GODOT:-/c/Users/Noper/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.
 PROJECT="$(cd "$(dirname "$0")" && pwd)/godot_project"
 LOGS="${LOGS:-/c/Temp/claude/dzhvagoda-tests}"
 
+# Предел на один набор. Зависший набор — это не «долго идёт», это навсегда:
+# процесс Godot переживает и прогонщик, и сам инструмент, который его запустил,
+# и остаётся крутиться в фоне, съедая ядро. Однажды их накопилось шесть штук,
+# старшему было сутки, и вместе они намотали больше десяти часов процессорного
+# времени, пока это не заметили глазами.
+#
+# Семь минут с запасом: самый долгий набор — выдержка, три минуты варки плюс
+# запуск. Не уложился — убиваем и считаем провалом.
+SUITE_TIMEOUT="${SUITE_TIMEOUT:-420}"
+
 # имя : флаг : стороны пиров через запятую (первый — хост) : общие доп. ключи
 SUITES=(
 	"nav:--navtest::"
@@ -52,6 +62,18 @@ SUITES=(
 mkdir -p "$LOGS"
 [ -x "$GODOT" ] || { echo "Не найден Godot: $GODOT (задай через GODOT=...)"; exit 1; }
 
+# Чужой Godot в памяти — это почти наверняка недобитый прогон, и он держит порт
+# 24545. Новый прогон в такой обстановке не падает, а ЗАВИСАЕТ: наборы один за
+# другим не могут поднять сеть и ждут персонажа, которого не будет. Лучше
+# отказаться сразу и сказать, почему.
+running="$(ps -W 2>/dev/null | grep -ci 'Godot' || true)"
+if [ "${running:-0}" -gt 0 ]; then
+	echo "Уже запущено процессов Godot: $running."
+	echo "Это либо идущий прогон, либо недобитый предыдущий — он держит порт 24545."
+	echo "Закрой их и повтори (или задай FORCE=1, если знаешь, что делаешь)."
+	[ "${FORCE:-0}" = "1" ] || exit 1
+fi
+
 wanted=("$@")
 failed=()
 passed=0
@@ -78,10 +100,10 @@ run_suite() {
 		fi
 		local log="$LOGS/$name-$peer.log"
 		if [ ${#sides[@]} -eq 1 ]; then
-			"$GODOT" --headless --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1
+			timeout -k 5 "$SUITE_TIMEOUT" "$GODOT" --headless --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1
 			rcs+=($?)
 		else
-			"$GODOT" --headless --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1 &
+			timeout -k 5 "$SUITE_TIMEOUT" "$GODOT" --headless --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1 &
 			pids+=($!)
 			sleep 2
 		fi
@@ -97,7 +119,14 @@ run_suite() {
 	if [ $bad -eq 0 ]; then
 		echo "OK"; passed=$((passed+1))
 	else
-		echo "ПРОВАЛ (коды: ${rcs[*]})"; failed+=("$name")
+		var_timeout=0
+		for rc in "${rcs[@]}"; do [ "$rc" -eq 124 ] && var_timeout=1; done
+		if [ $var_timeout -eq 1 ]; then
+			echo "ПРОВАЛ: не уложился в ${SUITE_TIMEOUT} с и был убит"
+		else
+			echo "ПРОВАЛ (коды: ${rcs[*]})"
+		fi
+		failed+=("$name")
 		grep -hE "ПРОВАЛ" "$LOGS/$name-"*.log | sed 's/^/           /'
 	fi
 }
