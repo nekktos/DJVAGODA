@@ -69,9 +69,21 @@ func _run() -> void:
 	if me == null:
 		fail("персонаж не заспавнен")
 		return
+	# Ставим приманку между базой хоста и базой СВОБОДНОЙ стороны — той, что под
+	# ИИ. Раньше здесь стояла база стражи, и прогон за саму стражу вырождался:
+	# приманка оказывалась на её же базе, дотянуться до неё было некому, и три
+	# провала подряд означали не поломку игры, а негодную проверку.
 	var mine_base: Vector3 = FACTIONS.SPAWN[int(me.faction)]
-	var guard_base: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
-	var spot := mine_base.lerp(guard_base, 0.5)
+	var free_side := -1
+	for faction in FACTIONS.COUNT:
+		if _world.players_of(faction).is_empty():
+			free_side = faction
+			break
+	if free_side < 0:
+		fail("свободных сторон нет — набегать некому")
+		return
+	note("приманка рассчитана на сторону: %s" % FACTIONS.name_of(free_side))
+	var spot := mine_base.lerp(FACTIONS.SPAWN[free_side], 0.5)
 	spot.y = 0.0
 	_bait = _world.spawn_building(RES.Building.STORAGE, spot,
 		int(me.peer_id), int(me.faction), true)
@@ -87,6 +99,13 @@ func _run() -> void:
 		await get_tree().create_timer(SAMPLE_INTERVAL).timeout
 		elapsed += SAMPLE_INTERVAL
 		_counts.append(_units())
+		if int(elapsed) % 30 == 0:
+			var wb: Node = _world.warband
+			var centre: Vector3 = wb._centre_of(FACTIONS.Kind.VILLAIN)
+			note("%ds злодей: якорь %s, отряд %s, %s"
+				% [int(elapsed), str(wb.anchor_of(FACTIONS.Kind.VILLAIN).round()),
+					str(centre.round()) if centre.is_finite() else "нет",
+					WARBAND.STATE_NAMES[wb.state_of(FACTIONS.Kind.VILLAIN)]])
 		for faction in FACTIONS.COUNT:
 			_states[_world.warband.state_of(faction)] = true
 			var anchor: Vector3 = _world.warband.anchor_of(faction)
@@ -132,7 +151,7 @@ func _report() -> void:
 	var built := PackedStringArray()
 	for node in get_tree().get_nodes_in_group("building"):
 		if "faction" in node and int(node.faction) == FACTIONS.Kind.VILLAIN:
-			built.append("%s %d%%" % [node.label(), int(float(node.progress) * 100.0)])
+			built.append("%s %s" % [node.label(), str(node.global_position.round())])
 	note("постройки злодея: %s" % ("нет" if built.is_empty() else "   ".join(built)))
 	var LAB := preload("res://scripts/units/labourer.gd")
 	var by_role := PackedInt32Array()

@@ -49,6 +49,11 @@ const THINK_INTERVAL := 2.0
 ## отряд встал бы перед каждой.
 const WAYPOINT_REACHED := 5.0
 
+## И насколько близко должна быть СЕРЕДИНА отряда. Больше первого числа: строй
+## растянут, и требовать от середины тех же пяти метров значило бы не проходить
+## точки никогда.
+const BAND_REACHED := 16.0
+
 ## Насколько якорь строя опережает отряд.
 ##
 ## Якорь — это точка сбора впереди, а не сама точка маршрута. Разница
@@ -148,26 +153,53 @@ func _move_anchors(_delta: float) -> void:
 	for faction in _anchor.keys():
 		var route: Array = _route.get(faction, [])
 		var centre := _centre_of(faction)
-		while not route.is_empty() and _nearest_distance(faction, route[0]) <= WAYPOINT_REACHED:
+		# Точку проходит ОТРЯД, а не разведчик. Пока хватало одного ближайшего
+		# бойца, вырвавшийся вперёд засчитывал точку за всех: якорь прыгал
+		# дальше, маршрут пересчитывался от оставшихся позади — и так по кругу.
+		# Отряд злодея так и толкся в собственных воротах, наматывая километры
+		# на месте.
+		while not route.is_empty() and _band_passed(faction, centre, route[0]):
 			route.remove_at(0)
 		_route[faction] = route
 
-		var target: Vector3 = _goal.get(faction, _anchor[faction])
-		if not route.is_empty():
-			target = route[0]
-
-		# Якорь — на поводке впереди отряда, в сторону следующей точки маршрута.
-		var here := target
-		if centre.is_finite():
-			var to_wp := target - centre
-			if to_wp.length() > LEAD_DISTANCE:
-				here = centre + to_wp.normalized() * LEAD_DISTANCE
-		var facing := here - centre if centre.is_finite() else Vector3.ZERO
+		# Якорь — на поводке впереди отряда, ВДОЛЬ МАРШРУТА.
+		#
+		# Раньше он ставился по прямой к следующей точке. На повороте — например
+		# в воротах форта злодея — эта прямая уходит в стену, места в строю
+		# оказываются внутри камня, и отряд ползёт вдоль неё, застревая снова и
+		# снова. Так он за три минуты прошёл 181 метр из трёхсот и пять раз
+		# объявлял себя застрявшим.
+		var here: Vector3 = _lead_along(centre, route, _goal.get(faction, _anchor[faction]))
+		# Разворот строя берём по НАПРАВЛЕНИЮ МАРШРУТА, а не по прямой от отряда к
+		# якорю. На повороте — в воротах — эта прямая смотрит в стену, и места в
+		# строю оказываются внутри камня: отряд толчётся у стены, вместо того
+		# чтобы пройти проём.
+		var course := _route_course(centre, route)
 		_anchor[faction] = here
-		_command(faction, here, facing)
+		_command(faction, here, course)
 
 
 ## Насколько близко к точке подошёл ближайший боец отряда.
+## Прошёл ли ОТРЯД эту точку маршрута.
+##
+## Ближайшего бойца недостаточно: вырвавшийся вперёд засчитывал точку за всех,
+## якорь прыгал дальше, маршрут пересчитывался от оставшихся позади — и так по
+## кругу. Отряд злодея толокся в собственных воротах, наматывая километры на
+## месте. Требуем обоих: разведчик подошёл вплотную, а середина строя хотя бы
+## подтянулась.
+func _band_passed(faction: int, centre: Vector3, point: Vector3) -> bool:
+	if not centre.is_finite():
+		return _nearest_distance(faction, point) <= WAYPOINT_REACHED
+	# Точка считается пройденной, когда отряд рядом с ней, — и неважно, дошёл ли
+	# до неё кто-то вплотную.
+	#
+	# Путь из форта злодея наружу это 56 точек на 599 метров, по десятку метров
+	# на отрезок. Требовать, чтобы отряд прицельно посетил каждую, значит не
+	# выпустить его из ворот вовсе: он и не выходил, три минуты толкаясь у
+	# собственной стены. Точки, оставшиеся позади, надо просто отбрасывать.
+	return _flat_distance(centre, point) <= BAND_REACHED
+
+
 func _nearest_distance(faction: int, point: Vector3) -> float:
 	var best := INF
 	for unit in _band(faction):
@@ -223,6 +255,47 @@ func _set_route(faction: int, target: Vector3) -> void:
 	_goal[faction] = target
 	_stuck_t[faction] = 0.0
 	_last_centre[faction] = _centre_of(faction)
+
+
+## Точка в LEAD_DISTANCE метрах впереди отряда, отмеренных ПО МАРШРУТУ.
+##
+## Идти надо не «в сторону следующей точки», а по самой ломаной: только так
+## поводок остаётся внутри прохода, когда маршрут поворачивает.
+func _lead_along(centre: Vector3, route: Array, fallback: Vector3) -> Vector3:
+	if route.is_empty():
+		return fallback
+	if not centre.is_finite():
+		return route[0]
+	var left := LEAD_DISTANCE
+	var from := centre
+	for point in route:
+		var step: float = _flat_distance(from, point)
+		if step >= left:
+			var to: Vector3 = point - from
+			to.y = 0.0
+			if to.length() < 0.01:
+				return point
+			var lead: Vector3 = from + to.normalized() * left
+			# Высоту берём у точки маршрута: её дала навигация, и она на земле.
+			lead.y = point.y
+			return lead
+		left -= step
+		from = point
+	return from
+
+
+## Куда смотрит маршрут в том месте, где сейчас отряд.
+func _route_course(centre: Vector3, route: Array) -> Vector3:
+	if route.is_empty():
+		return Vector3.ZERO
+	var from: Vector3 = centre if centre.is_finite() else route[0]
+	var course: Vector3 = route[0] - from
+	course.y = 0.0
+	if course.length() < 1.0 and route.size() > 1:
+		# Стоим прямо на точке — смотрим на следующую.
+		course = route[1] - route[0]
+		course.y = 0.0
+	return course
 
 
 ## Раздать бойцам стороны текущий приказ: якорь, разворот, построение, поводок.

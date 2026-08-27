@@ -30,7 +30,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "навигация"
-	expected_host = 10
+	expected_host = 13
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -45,6 +45,7 @@ func _run() -> void:
 	_test_baked()
 	_test_leaves_plateau()
 	_test_enters_palace()
+	_test_every_base_has_a_way_out()
 	_test_open_ground_is_straight()
 	_test_unreachable()
 	finish()
@@ -102,6 +103,24 @@ func _test_enters_palace() -> void:
 	check(Vector2(last.x, last.z).distance_to(Vector2(PALACE.x, PALACE.z)) < 25.0,
 		"путь доводит до точки захвата", "конец в %.0f м от центра"
 		% Vector2(last.x, last.z).distance_to(Vector2(PALACE.x, PALACE.z)))
+
+
+## У КАЖДОЙ базы должен быть выход наружу.
+##
+## Проверка появилась после того, как отряд злодея три минуты не мог выйти из
+## собственного форта. Базы стоят за стенами, и «путь есть» тут не риторика: если
+## навигация не находит дороги с базы к середине карты, сторона заперта, и
+## сколько ни чини поведение отряда, он не выйдет.
+func _test_every_base_has_a_way_out() -> void:
+	var centre := Vector3(0.0, 0.0, 0.0)
+	for faction in FACTIONS.COUNT:
+		var base: Vector3 = FACTIONS.SPAWN[faction]
+		var path: PackedVector3Array = _nav().path_between(base, centre)
+		var length := _length(path)
+		var straight: float = base.distance_to(centre)
+		check(path.size() >= 2 and length < straight * 3.0,
+			"%s: с базы есть дорога наружу" % FACTIONS.name_of(faction),
+			"%d точек, %.0f м против %.0f по прямой" % [path.size(), length, straight])
 
 
 ## На чистом поле путь обязан быть прямым. Иначе бойцы будут наматывать круги
