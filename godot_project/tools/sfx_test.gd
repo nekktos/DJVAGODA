@@ -23,7 +23,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "звук"
-	expected_host = 8
+	expected_host = 10
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -54,20 +54,41 @@ func _test_samples_built() -> void:
 	check(built.sample_count() == kinds.size(), "собраны все виды звуков",
 		"%d из %d" % [built.sample_count(), kinds.size()])
 
+	# Тип здесь ОБЩИЙ, а не AudioStreamWAV. Звуки теперь приходят файлами, и это
+	# AudioStreamOggVorbis; строгий тип валил присваивание, функция обрывалась
+	# на середине, и две последние проверки молча не выполнялись. Поймал их
+	# счётчик выполненных — ради этого он и заведён.
 	var shortest := 1.0
 	var silent := 0
 	for kind in kinds:
-		var wav: AudioStreamWAV = built._samples.get(kind, null)
-		if wav == null:
+		var sound: AudioStream = built._samples.get(kind, null)
+		if sound == null:
 			continue
-		if wav.get_length() < shortest:
-			shortest = wav.get_length()
-		if _peak(wav) < 0.05:
+		if sound.get_length() < shortest:
+			shortest = sound.get_length()
+		# Тишину умеем мерить только у синтезированных: у сжатого файла образцы
+		# так просто не прочитать, да и проверять там нечего — он либо
+		# загрузился, либо его нет вовсе.
+		if sound is AudioStreamWAV and _peak(sound as AudioStreamWAV) < 0.05:
 			silent += 1
 	check(shortest > 0.05, "у каждого звука есть длительность",
 		"самый короткий %.2f с" % shortest)
-	check(silent == 0, "и ни один не оказался тишиной",
+	check(silent == 0, "и ни один синтезированный не оказался тишиной",
 		"беззвучных: %d" % silent)
+
+	# Файлы должны РЕАЛЬНО находиться. Без этой проверки набор остаётся зелёным
+	# и когда все файлы потерялись: синтез молча подменит их шумом, и заметить
+	# это можно будет только ушами.
+	var from_files := 0
+	for kind in built.FILES:
+		var sound: AudioStream = built._samples.get(kind, null)
+		if sound != null and not (sound is AudioStreamWAV):
+			from_files += 1
+	check(from_files >= built.FILES.size() - 1,
+		"звуки взяты из файлов, а не подменены синтезом",
+		"файлами %d из %d" % [from_files, built.FILES.size()])
+	check(not built._steps.is_empty(), "шаги загружены",
+		"вариантов шага: %d" % built._steps.size())
 	built.free()
 
 

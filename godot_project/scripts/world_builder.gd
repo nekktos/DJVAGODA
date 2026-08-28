@@ -44,6 +44,9 @@ const ZONE_NAMES := {
 }
 
 var _materials := {}
+## Какую модель дерева ставить следующей. Не случайно: карта строится
+## одинаково на всех пирах, и случайность здесь развела бы миры.
+var _tree_pick := 0
 var _root: Node3D
 
 
@@ -383,11 +386,84 @@ func _build_humans(c: Vector2) -> void:
 ##
 ## Крона — ребёнок ствола, поэтому исчезает вместе с ним и переносить её при
 ## этом не нужно ничем: тело уходит со всеми детьми разом.
+## Модели деревьев. Kenney Nature Kit, лицензия CC0 (LICENSE.txt рядом с ними).
+##
+## Из трёхсот тридцати моделей набора взято четыре: разнообразие тут нужно ровно
+## настолько, чтобы лес не выглядел одним деревом, скопированным сто раз.
+const TREE_MODELS := [
+	preload("res://assets/nature/tree_default.glb"),
+	preload("res://assets/nature/tree_detailed.glb"),
+	preload("res://assets/nature/tree_tall.glb"),
+	preload("res://assets/nature/tree_pineDefaultA.glb"),
+]
+
+## Модели набора ростом около четырёх метров: приводим к нашим девяти-пятнадцати.
+const TREE_MODEL_HEIGHT := 4.0
+
+
+## Дерево ЦЕЛИКОМ: ствол с коллизией и модель кроны на нём.
+##
+## Раньше и ствол, и крона рисовались коробкой и конусом. Модель ставится ВМЕСТО
+## них, но коллизия остаётся своя — цилиндр по стволу. Брать коллизию из модели
+## нельзя: у дерева она пришла бы вместе с кроной, и обойти дерево стало бы
+## можно только по большой дуге, а бойцы начали бы застревать в ветках.
+##
+## Крона — ребёнок ствола, поэтому исчезает вместе с ним при рубке. До этого она
+## висела отдельным узлом и оставалась в воздухе.
 func _tree(parent: Node3D, foot: Vector2, height: float) -> StaticBody3D:
-	var trunk := _cylinder(parent, Vector3(foot.x, height * 0.5, foot.y), 1.1, height, "trunk")
-	# Координата кроны местная: ствол уже стоит на своей середине.
-	_cone(trunk, Vector3(0.0, height * 0.5 + 4.0, 0.0), 5.0, 11.0, "foliage")
+	var trunk := StaticBody3D.new()
+	trunk.position = Vector3(foot.x, 0.0, foot.y)
+
+	var model: Node3D = TREE_MODELS[_tree_pick % TREE_MODELS.size()].instantiate()
+	_tree_pick += 1
+	var scale_to: float = height / TREE_MODEL_HEIGHT
+	model.scale = Vector3(scale_to, scale_to, scale_to)
+	_repaint(model)
+	trunk.add_child(model)
+
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 1.1
+	shape.height = height
+	col.shape = shape
+	col.position = Vector3(0.0, height * 0.5, 0.0)
+	trunk.add_child(col)
+
+	parent.add_child(trunk)
 	return trunk
+
+
+## Перекрасить модель под палитру мира.
+##
+## Материалы набора взяты как есть, и это было видно сразу: листва у Kenney
+## бирюзовая, а не зелёная, и вдобавок помечена полностью металлической — под
+## нашим светом дерево выходило блестящим и голубым, споря с дальним лесом,
+## который рисуют билборды нашего цвета.
+##
+## Меняем ЦВЕТ, а не модель: форма нам и нужна, ради неё модель и брали. Узнаём
+## части по имени материала — в наборе они названы честно (`woodBark`,
+## `leafsGreen`), и это надёжнее, чем угадывать по номеру поверхности.
+func _repaint(model: Node3D) -> void:
+	for node in _all_meshes(model):
+		var mesh: MeshInstance3D = node
+		for surface in mesh.mesh.get_surface_count():
+			var from: Material = mesh.mesh.surface_get_material(surface)
+			var name: String = from.resource_name if from != null else ""
+			var key := "trunk"
+			if name.containsn("leaf") or name.containsn("green"):
+				key = "foliage"
+			elif name.containsn("stone") or name.containsn("rock"):
+				key = "stone"
+			mesh.set_surface_override_material(surface, _materials[key])
+
+
+func _all_meshes(node: Node) -> Array[MeshInstance3D]:
+	var found: Array[MeshInstance3D] = []
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		found.append(node as MeshInstance3D)
+	for child in node.get_children():
+		found.append_array(_all_meshes(child))
+	return found
 
 
 func _harvestable(body: StaticBody3D, kind: int, hits: int = -1) -> void:

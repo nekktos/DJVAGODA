@@ -259,7 +259,63 @@ func _ready() -> void:
 	_build_model()
 
 
+## Волк из примитивов.
+##
+## Не модель из набора, и вот почему: хороших бесплатных волков хватает, но все
+## они лежат либо за кликом руками (itch, poly.pizza с проверкой «я не робот»),
+## либо в формате Blender, которого на машине сборки нет. Тащить в проект
+## случайный файл сомнительного происхождения ради силуэта — плохой размен.
+##
+## Из коробок собирается узнаваемо: низкое вытянутое тело, вытянутая морда,
+## четыре ноги, хвост. Читается как зверь с первого взгляда — а именно это от
+## него и требуется, пока не появится художник.
+func _build_beast() -> void:
+	_model = Node3D.new()
+	_model.name = "Model"
+
+	var hide := StandardMaterial3D.new()
+	hide.albedo_color = BEAST_COLOR
+
+	# Туловище низкое и длинное: главный признак четвероногого.
+	_beast_box(hide, Vector3(0.0, 0.62, 0.0), Vector3(0.52, 0.44, 1.20))
+	# Грудь чуть выше и шире крупа — силуэт перестаёт быть коробкой.
+	_beast_box(hide, Vector3(0.0, 0.70, -0.42), Vector3(0.58, 0.46, 0.44))
+	# Шея и голова вынесены ВПЕРЁД и ВНИЗ: волк держит голову на уровне спины,
+	# и именно это отличает его от собаки, задранной вверх.
+	_beast_box(hide, Vector3(0.0, 0.72, -0.78), Vector3(0.30, 0.30, 0.34))
+	_beast_box(hide, Vector3(0.0, 0.66, -1.02), Vector3(0.22, 0.20, 0.30))
+	# Уши.
+	_beast_box(hide, Vector3(-0.11, 0.92, -0.74), Vector3(0.09, 0.16, 0.06))
+	_beast_box(hide, Vector3(0.11, 0.92, -0.74), Vector3(0.09, 0.16, 0.06))
+	# Хвост поленом назад и вниз.
+	_beast_box(hide, Vector3(0.0, 0.60, 0.72), Vector3(0.16, 0.16, 0.46))
+	# Четыре ноги.
+	for leg in 4:
+		var side: float = -0.20 if leg % 2 == 0 else 0.20
+		var fore: float = -0.42 if leg < 2 else 0.42
+		_beast_box(hide, Vector3(side, 0.20, fore), Vector3(0.15, 0.40, 0.15))
+
+	add_child(_model)
+
+
+func _beast_box(mat: Material, at: Vector3, size: Vector3) -> void:
+	var part := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	part.mesh = box
+	part.material_override = mat
+	part.position = at
+	_model.add_child(part)
+
+
 func _build_model() -> void:
+	# Зверь собирается отдельно: он не человек, и человеческой моделью его не
+	# изобразить никак. Раньше это была та же модель, сплющенная и затемнённая, —
+	# в инструкции тестерам так и написано: «призванный волк выглядит как
+	# приземистый тёмный человек». Теперь это четвероногое.
+	if is_beast:
+		_build_beast()
+		return
 	var packed: PackedScene = load(MODELS[slot % MODELS.size()])
 	_model = packed.instantiate()
 	_model.name = "Model"

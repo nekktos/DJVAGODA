@@ -329,12 +329,45 @@ func _physics_process(delta: float) -> void:
 		sync_position = global_position
 		sync_yaw = rotation.y
 		sync_moving = Vector2(velocity.x, velocity.z).length() > 0.4
+		_tick_steps(delta)
 	else:
 		var t := clampf(delta * REMOTE_LERP, 0.0, 1.0)
 		global_position = global_position.lerp(sync_position, t)
 		rotation.y = lerp_angle(rotation.y, sync_yaw, t)
 
 	_update_animation()
+
+
+## Шаги.
+##
+## Их не было вовсе, и тестеры это отмечали: игра беззвучна ровно там, где звук
+## нужен больше всего — под ногами. Шаг важнее половины боевых звуков: по нему
+## слышно, что ты движешься, и слышно, что кто-то движется рядом.
+##
+## Шагаем ПО ВРЕМЕНИ, а не по анимации: анимации у нас чужие, их частота нам не
+## принадлежит, и привязка к ней ломается при первой замене модели. Верхом шаг
+## чаще — лошадь идёт быстрее.
+const STEP_INTERVAL := 0.42
+
+var _step_left := 0.0
+
+
+func _tick_steps(delta: float) -> void:
+	if not sync_moving or not is_on_floor():
+		_step_left = 0.0
+		return
+	_step_left -= delta
+	if _step_left > 0.0:
+		return
+	_step_left = STEP_INTERVAL / maxf(0.5, mount_speed_scale())
+	step_heard.rpc(global_position)
+
+
+## Шаг слышен ВСЕМ, а не только тому, кто идёт: подкрадывающегося противника
+## слышно — это и есть смысл звука шагов.
+@rpc("authority", "call_local", "unreliable")
+func step_heard(point: Vector3) -> void:
+	Sfx.step(point)
 
 
 ## Снимок ввода за кадр. Отдельный слой специально: когда авторитет над

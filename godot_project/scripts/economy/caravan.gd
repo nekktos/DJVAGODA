@@ -113,26 +113,22 @@ func _ready() -> void:
 	_build_harness_zone()
 
 
-func _build_visual() -> void:
-	var cart := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(2.6, 2.0, 4.4)
-	cart.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.45, 0.32, 0.20)
-	cart.mesh.material = mat
-	cart.position = Vector3(0.0, 1.2, 0.0)
-	add_child(cart)
+## Модель телеги: Kenney Fantasy Town Kit, лицензия CC0 (LICENSE.txt рядом).
+const CART_MODEL := preload("res://assets/props/cart.glb")
 
-	var cover := MeshInstance3D.new()
-	var top := BoxMesh.new()
-	top.size = Vector3(2.8, 0.5, 4.6)
-	cover.mesh = top
-	var top_mat := StandardMaterial3D.new()
-	top_mat.albedo_color = Color(0.72, 0.70, 0.62)
-	cover.mesh.material = top_mat
-	cover.position = Vector3(0.0, 2.4, 0.0)
-	add_child(cover)
+## Модель длиной около полутора метров — приводим к нашей телеге в четыре с
+## лишним.
+const CART_SCALE := 2.6
+
+
+func _build_visual() -> void:
+	# Телега — модель, а не коробка. Коллизия и зоны попадания остаются своими:
+	# брать их из модели значит получить форму со спицами колёс, вокруг которой
+	# бойцы будут ходить кругами.
+	var cart: Node3D = CART_MODEL.instantiate()
+	cart.scale = Vector3(CART_SCALE, CART_SCALE, CART_SCALE)
+	cart.position = Vector3(0.0, 0.0, 0.0)
+	add_child(cart)
 
 	# ГРУЗ ВИДЕН СНАРУЖИ. Пустой и полный обоз выглядели одинаково, и понять,
 	# стоит ли на него нападать, было нельзя ничем, кроме подхода вплотную.

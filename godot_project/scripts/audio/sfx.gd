@@ -2,15 +2,22 @@ extends Node
 ##
 ## Звук (Этап 10, шаг 9). Автозагрузка `Sfx`.
 ##
-## ПОЧЕМУ ЗВУКИ СИНТЕЗИРОВАННЫЕ, А НЕ ФАЙЛЫ. Ровно по той же причине, по которой
-## карта — процедурный grey-box из коробок: чтобы игра зазвучала СЕЙЧАС, не
-## дожидаясь ни художника, ни разбора бесплатных библиотек. Это заглушки того же
-## сорта, и заменить их файлами потом — работа на полдня: точки вызова уже
-## расставлены и не изменятся.
+## ЗВУКИ — ФАЙЛЫ, А СИНТЕЗ ОСТАЛСЯ ЗАПАСНЫМ ПУТЁМ.
 ##
-## Звучат они соответственно: удар — шум с резкой атакой, тетива — короткий
-## щелчок, взрыв — низкий рокот. Никакого «настоящего» звука тут нет и не
-## задумано.
+## Сначала здесь был только синтез: игра должна была зазвучать сразу, не
+## дожидаясь ни художника, ни разбора библиотек. Это сработало, и обещание из
+## того комментария — «заменить файлами потом, работа на полдня, точки вызова
+## уже расставлены» — сдержано буквально: точки вызова не изменились ни одна,
+## изменился только источник звука.
+##
+## Файлы взяты из наборов Kenney (RPG Audio и Impact Sounds), лицензия CC0 —
+## см. LICENSE.txt рядом с ними. Из полутора сотен взято по одному на звук:
+## класть в репозиторий оба набора целиком ради дюжины файлов значит навсегда
+## засорить поиск по проекту.
+##
+## Синтез НЕ выброшен и остаётся запасным: если файл не нашёлся (не доехал в
+## сборку, повреждён, переименован), звук всё равно будет — шумовой, но будет.
+## Молчащая игра хуже некрасиво звучащей, и отлаживать молчание втрое дороже.
 ##
 ## ГДЕ ЗВУК БЕРЁТСЯ. Не заводим ни одной новой точки синхронизации. Все события,
 ## которые слышно, уже вызываются на КАЖДОМ пире: попадание, щепки, взрыв и
@@ -33,9 +40,34 @@ enum Kind {
 	BUILD_DONE,     ## постройка достроена
 	MAGIC,          ## магия поддержки эльфов
 	NOTICE,         ## объявление в интерфейсе
+	STEP,           ## шаг
 }
 
 const MIX_RATE := 22050
+
+## Какой файл на какой звук. Пусто — синтезируем, как раньше.
+const FILES := {
+	Kind.HIT_FLESH: "res://assets/audio/knifeSlice.ogg",
+	Kind.HIT_WOOD: "res://assets/audio/impactPlank_medium_000.ogg",
+	Kind.HIT_STONE: "res://assets/audio/impactMining_000.ogg",
+	Kind.BOW: "res://assets/audio/impactGeneric_light_000.ogg",
+	Kind.SPELL: "res://assets/audio/impactBell_heavy_000.ogg",
+	Kind.EXPLOSION: "res://assets/audio/impactPlate_heavy_000.ogg",
+	Kind.DEATH: "res://assets/audio/dropLeather.ogg",
+	Kind.BUILD_DONE: "res://assets/audio/metalLatch.ogg",
+	Kind.MAGIC: "res://assets/audio/handleCoins.ogg",
+	Kind.NOTICE: "res://assets/audio/metalClick.ogg",
+	Kind.STEP: "res://assets/audio/footstep_grass_000.ogg",
+}
+
+## Шаги берём по кругу из нескольких файлов: один и тот же шаг подряд слышен как
+## заедающая пластинка, и это замечают все.
+const STEP_FILES := [
+	"res://assets/audio/footstep_grass_000.ogg",
+	"res://assets/audio/footstep_grass_001.ogg",
+	"res://assets/audio/footstep_grass_002.ogg",
+	"res://assets/audio/footstep_grass_003.ogg",
+]
 
 ## Сколько звуков может звучать одновременно. Больше не нужно: в бою и так каша,
 ## а каждый лишний проигрыватель — это узел в дереве.
@@ -48,6 +80,9 @@ var _samples := {}
 var _voices: Array[AudioStreamPlayer3D] = []
 var _flat: AudioStreamPlayer = null
 var _next := 0
+## Звуки шагов по кругу.
+var _steps: Array[AudioStream] = []
+var _next_step := 0
 var _enabled := true
 
 
@@ -84,6 +119,20 @@ func at(kind: int, point: Vector3, volume_db: float = 0.0) -> void:
 	voice.play()
 
 
+## Шаг в точке мира. Отдельно от `at()`: шагов много, они тише всего прочего и
+## идут по кругу, чтобы не звучать заезженной пластинкой.
+func step(point: Vector3) -> void:
+	if not _enabled or _voices.is_empty() or _steps.is_empty():
+		return
+	var voice := _voices[_next]
+	_next = (_next + 1) % _voices.size()
+	voice.stream = _steps[_next_step]
+	_next_step = (_next_step + 1) % _steps.size()
+	voice.global_position = point
+	voice.volume_db = -12.0
+	voice.play()
+
+
 ## Сыграть звук интерфейса — без позиции в мире.
 func flat(kind: int, volume_db: float = -6.0) -> void:
 	if not _enabled or _flat == null:
@@ -98,28 +147,56 @@ func flat(kind: int, volume_db: float = -6.0) -> void:
 
 # --- синтез ----------------------------------------------------------------
 
+## Собрать звуки: сперва файлы, синтез — только там, где файла нет.
 func _build_samples() -> void:
+	for kind in FILES:
+		var path: String = FILES[kind]
+		if ResourceLoader.exists(path):
+			var stream: AudioStream = load(path)
+			if stream != null:
+				_samples[kind] = stream
+	for path in STEP_FILES:
+		if ResourceLoader.exists(path):
+			var step: AudioStream = load(path)
+			if step != null:
+				_steps.append(step)
+	_build_fallback()
+
+
+## Синтез. Остаётся запасным путём и заполняет только то, чего не нашлось
+## файлом: молчащая игра хуже некрасиво звучащей.
+func _build_fallback() -> void:
 	# Удар по живому: короткий шумовой всплеск с быстрым спадом. Мясисто и
 	# коротко — в бою таких звуков десятки в секунду.
-	_samples[Kind.HIT_FLESH] = _noise(0.14, 0.9, 0.35)
+	if not _samples.has(Kind.HIT_FLESH):
+		_samples[Kind.HIT_FLESH] = _noise(0.14, 0.9, 0.35)
 	# Дерево: тот же шум, но выше и суше.
-	_samples[Kind.HIT_WOOD] = _noise(0.09, 0.55, 0.9)
+	if not _samples.has(Kind.HIT_WOOD):
+		_samples[Kind.HIT_WOOD] = _noise(0.09, 0.55, 0.9)
 	# Камень: ещё короче и звонче.
-	_samples[Kind.HIT_STONE] = _noise(0.07, 0.4, 1.6)
+	if not _samples.has(Kind.HIT_STONE):
+		_samples[Kind.HIT_STONE] = _noise(0.07, 0.4, 1.6)
 	# Тетива: щелчок с призвуком.
-	_samples[Kind.BOW] = _tone(0.12, 880.0, 220.0, 0.35)
+	if not _samples.has(Kind.BOW):
+		_samples[Kind.BOW] = _tone(0.12, 880.0, 220.0, 0.35)
 	# Бросок шара: восходящий гул.
-	_samples[Kind.SPELL] = _tone(0.30, 180.0, 420.0, 0.6)
+	if not _samples.has(Kind.SPELL):
+		_samples[Kind.SPELL] = _tone(0.30, 180.0, 420.0, 0.6)
 	# Разрыв: низкий рокот подлиннее.
-	_samples[Kind.EXPLOSION] = _noise(0.55, 1.0, 0.12)
+	if not _samples.has(Kind.EXPLOSION):
+		_samples[Kind.EXPLOSION] = _noise(0.55, 1.0, 0.12)
 	# Смерть: нисходящий тон.
-	_samples[Kind.DEATH] = _tone(0.55, 320.0, 90.0, 0.55)
+	if not _samples.has(Kind.DEATH):
+		_samples[Kind.DEATH] = _tone(0.55, 320.0, 90.0, 0.55)
 	# Стройка готова: две ноты вверх.
-	_samples[Kind.BUILD_DONE] = _chord(0.45, [440.0, 660.0])
+	if not _samples.has(Kind.BUILD_DONE):
+		_samples[Kind.BUILD_DONE] = _chord(0.45, [440.0, 660.0])
 	# Магия: чистая высокая нота.
-	_samples[Kind.MAGIC] = _tone(0.40, 620.0, 900.0, 0.4)
+	if not _samples.has(Kind.MAGIC):
+		_samples[Kind.MAGIC] = _tone(0.40, 620.0, 900.0, 0.4)
 	# Объявление: две ноты, тише и мягче.
-	_samples[Kind.NOTICE] = _chord(0.35, [520.0, 780.0])
+	if not _samples.has(Kind.NOTICE):
+		_samples[Kind.NOTICE] = _chord(0.35, [520.0, 780.0])
 
 
 ## Шумовой всплеск. `bright` поднимает высоту: 1.0 — белый шум, меньше — глуше.
