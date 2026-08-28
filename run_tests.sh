@@ -121,8 +121,24 @@ run_suite() {
 
 	local bad=0
 	for rc in "${rcs[@]}"; do [ "$rc" -ne 0 ] && bad=1; done
-	if [ $bad -eq 0 ]; then
+
+	# Ошибка движка в логе — тоже провал, даже если все проверки прошли.
+	#
+	# Набор «выдержка» однажды отчитался «все проверки пройдены» и оставил
+	# после себя лог на шесть мегабайт: батраки несли груз к снесённому складу,
+	# и каждый кадр каждого из них сыпал ошибкой обращения к освобождённому
+	# объекту. Ни одна проверка её не видела — они спрашивают про правила, а не
+	# про stderr, — и нашлась она только потому, что кто-то открыл лог глазами.
+	local noisy=0
+	noisy="$(grep -h "SCRIPT ERROR" "$LOGS/$name-"*.log 2>/dev/null | wc -l | tr -d ' ')"
+	[ -z "$noisy" ] && noisy=0
+
+	if [ $bad -eq 0 ] && [ "$noisy" -eq 0 ]; then
 		echo "OK"; passed=$((passed+1))
+	elif [ $bad -eq 0 ]; then
+		echo "ПРОВАЛ: проверки прошли, но движок ругался ($noisy раз)"
+		failed+=("$name")
+		grep -hE "SCRIPT ERROR" "$LOGS/$name-"*.log | sort -u | head -5 | sed 's/^/           /'
 	else
 		var_timeout=0
 		for rc in "${rcs[@]}"; do [ "$rc" -eq 124 ] && var_timeout=1; done

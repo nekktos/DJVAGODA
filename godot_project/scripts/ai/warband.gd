@@ -519,7 +519,9 @@ func _pick_target(faction: int) -> Vector3:
 	var cart: Node = null
 	if spawned != null:
 		for node in spawned.get_children():
-			if not node.has_method("state_text") or not ("owner_id" in node):
+			# Караван узнаём по `path_ahead`: `state_text` есть и у лошади, а
+			# гнаться отряду надо за обозом, а не за пасущейся лошадью.
+			if not node.has_method("path_ahead") or not ("owner_id" in node):
 				continue
 			if not _hostile(faction, _side_of(world, node)):
 				continue

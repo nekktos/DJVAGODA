@@ -11,7 +11,13 @@ extends RefCounted
 ##
 
 ## Начала имён анимаций, которые НЕ зацикливаем.
-const ONE_SHOT_PREFIXES := ["die", "attack", "emote", "interact", "pick-up"]
+## У Kenney смерть называется «die», у Quaternius «Death», прыжок в приземление
+## «Jump_ToIdle» — сравниваем в нижнем регистре и держим оба словаря названий в
+## одном списке. Зациклённая смерть выглядит как труп, который встаёт и умирает
+## снова, и заметить это в бою некому: смотрят на живых.
+const ONE_SHOT_PREFIXES := [
+	"die", "death", "attack", "emote", "interact", "pick-up", "jump_toidle",
+]
 
 
 static func make_looping(player: AnimationPlayer) -> void:

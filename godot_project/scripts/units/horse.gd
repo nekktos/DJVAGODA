@@ -21,6 +21,11 @@ extends CharacterBody3D
 
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+const MODEL_ANIM := preload("res://scripts/model_anim.gd")
+const MODEL := preload("res://assets/animals/Horse.gltf")
+## Модель сделана «в единицах Blender»: высота 4.8, длина 5.3. Приводим к
+## росту около двух метров в холке.
+const MODEL_SCALE := 0.45
 
 const MAX_HEALTH := 90.0
 
@@ -40,6 +45,9 @@ signal died(point: Vector3)
 
 var _zone: Area3D
 var _alive := true
+var _model: Node3D
+var _anim: AnimationPlayer
+var _current_anim := ""
 
 
 func setup(data: Dictionary) -> void:
@@ -54,43 +62,17 @@ func _ready() -> void:
 
 
 func _build_visual() -> void:
-	# Туловище, шея и голова — три коробки. Стиль тот же, что у всего остального:
-	# серый ящик, узнаваемый по силуэту, а не по текстуре.
-	var body := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(1.1, 1.2, 2.6)
-	body.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.36, 0.26, 0.18)
-	body.mesh.material = mat
-	body.position = Vector3(0.0, 1.3, 0.0)
-	add_child(body)
-
-	var neck := MeshInstance3D.new()
-	var nbox := BoxMesh.new()
-	nbox.size = Vector3(0.5, 1.0, 0.5)
-	neck.mesh = nbox
-	neck.mesh.material = mat
-	neck.position = Vector3(0.0, 2.0, -1.2)
-	add_child(neck)
-
-	var head := MeshInstance3D.new()
-	var hbox := BoxMesh.new()
-	hbox.size = Vector3(0.45, 0.45, 0.9)
-	head.mesh = hbox
-	head.mesh.material = mat
-	head.position = Vector3(0.0, 2.4, -1.5)
-	add_child(head)
-
-	for leg in 4:
-		var post := MeshInstance3D.new()
-		var pbox := BoxMesh.new()
-		pbox.size = Vector3(0.25, 1.4, 0.25)
-		post.mesh = pbox
-		post.mesh.material = mat
-		post.position = Vector3(
-			0.35 if leg % 2 == 0 else -0.35, 0.7, 0.9 if leg < 2 else -0.9)
-		add_child(post)
+	# Настоящая модель со скелетом и анимациями (Quaternius, CC0). До неё лошадь
+	# была четырьмя коробками: силуэт читался, но стоящая столбом коробка в
+	# упряжке выглядела ящиком на колёсах, а не тягловым животным.
+	_model = MODEL.instantiate()
+	_model.scale = Vector3.ONE * MODEL_SCALE
+	# Модель смотрит в +Z, игра считает передом -Z — как и у людей.
+	_model.rotation.y = PI
+	add_child(_model)
+	_anim = _find_anim(_model)
+	MODEL_ANIM.make_looping(_anim)
+	_play("Idle")
 
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -128,6 +110,25 @@ func _physics_process(delta: float) -> void:
 	velocity.z = 0.0
 	move_and_slide()
 	sync_position = position
+
+
+func _find_anim(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_anim(child)
+		if found != null:
+			return found
+	return null
+
+
+func _play(anim_name: String) -> void:
+	if _anim == null or anim_name == _current_anim:
+		return
+	if not _anim.has_animation(anim_name):
+		return
+	_current_anim = anim_name
+	_anim.play(anim_name)
 
 
 ## Свободна ли: жива и без всадника.

@@ -93,7 +93,8 @@ var _alive := true
 ## Кладь поверх телеги: по ней снаружи видно, полон обоз или пуст.
 var _load_mesh: MeshInstance3D = null
 ## Нарисованные лошади упряжки: их число меняется, когда лошадей убивают.
-var _harness: Array[MeshInstance3D] = []
+## Лошади в упряжке. Не мешы, а модели со скелетом, поэтому Node3D.
+var _harness: Array[Node3D] = []
 
 
 ## Вызывается спавнером на всех пирах с одинаковыми данными.
@@ -115,10 +116,16 @@ func _ready() -> void:
 
 ## Модель телеги: Kenney Fantasy Town Kit, лицензия CC0 (LICENSE.txt рядом).
 const CART_MODEL := preload("res://assets/props/cart.glb")
+const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 
 ## Модель длиной около полутора метров — приводим к нашей телеге в четыре с
 ## лишним.
 const CART_SCALE := 2.6
+## Лошади в упряжке — та же модель, что и верховая (Quaternius, CC0). Одна
+## лошадь на всю игру: разные модели у тягловой и верховой означали бы, что
+## уведённая из обоза лошадь превращается в другое животное.
+const HORSE_MODEL := preload("res://assets/animals/Horse.gltf")
+const HORSE_MODEL_SCALE := 0.45
 
 
 func _build_visual() -> void:
@@ -508,19 +515,32 @@ func _rebuild_harness() -> void:
 			node.queue_free()
 	_harness.clear()
 	for i in horses:
-		var horse := MeshInstance3D.new()
-		var hbox := BoxMesh.new()
-		hbox.size = Vector3(1.0, 1.2, 2.4)
-		horse.mesh = hbox
-		var hmat := StandardMaterial3D.new()
-		hmat.albedo_color = Color(0.36, 0.26, 0.18)
-		horse.mesh.material = hmat
+		var horse: Node3D = HORSE_MODEL.instantiate()
+		horse.scale = Vector3.ONE * HORSE_MODEL_SCALE
+		# Модель смотрит в +Z, обоз едет в -Z — разворачиваем, как и людей.
+		horse.rotation.y = PI
 		# Пары в ряд, ряды вперёд: шестёрка встаёт тремя парами, как в жизни.
 		var pair: int = i / 2
 		var side: float = 1.0 if i % 2 == 0 else -1.0
-		horse.position = Vector3(side * 1.0, 1.3, -3.6 - float(pair) * 2.6)
+		horse.position = Vector3(side * 1.0, 0.0, -3.6 - float(pair) * 2.6)
 		add_child(horse)
+		# Идут они шагом, а не стоят столбом: обоз, у которого лошади замерли,
+		# читается как декорация, а не как движущаяся цель.
+		var player := _find_anim(horse)
+		MODEL_ANIM.make_looping(player)
+		if player != null and player.has_animation("Walk"):
+			player.play("Walk")
 		_harness.append(horse)
+
+
+func _find_anim(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_anim(child)
+		if found != null:
+			return found
+	return null
 
 
 func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3, dir: Vector3, _aoe := false) -> void:

@@ -27,6 +27,24 @@ enum Role { LUMBERJACK, MINER, MILITIA, BUILDER }
 const ROLE_COUNT := 4
 const ROLE_NAMES := ["лесоруб", "шахтёр", "ополченец", "строитель"]
 
+## Своя модель и свой инструмент на каждое дело. Батраков на карте бывает
+## десяток, и все они делают разное: не различив их глазом, хозяин отдаёт
+## приказы вслепую — а «поставь двоих на стройку» это ровно про глаз.
+const ROLE_MODELS := [
+	"res://assets/characters/character-a.glb",
+	"res://assets/characters/character-b.glb",
+	"res://assets/characters/character-c.glb",
+	"res://assets/characters/character-f.glb",
+]
+## Топор лесорубу, молот шахтёру и строителю, меч ополченцу. Инструмент в руке
+## говорит о роли столько же, сколько цвет рубахи, и виден с большего расстояния.
+const ROLE_WEAPONS := [
+	WEAPONS.Kind.AXE,
+	WEAPONS.Kind.HAMMER,
+	WEAPONS.Kind.SWORD,
+	WEAPONS.Kind.HAMMER,
+]
+
 ## Что ищет каждая роль. Шахтёр берёт и шахту, и камень на поверхности: это одно
 ## занятие с двумя видами месторождения, а не две роли.
 const ROLE_RESOURCES := {
@@ -87,6 +105,14 @@ func setup(data: Dictionary) -> void:
 ## мечника, — это не храбрость, а потерянные руки.
 func _wants_fight() -> bool:
 	return sync_role == Role.MILITIA
+
+
+func _look_model() -> String:
+	return ROLE_MODELS[clampi(sync_role, 0, ROLE_COUNT - 1)]
+
+
+func _hand_weapon() -> int:
+	return ROLE_WEAPONS[clampi(sync_role, 0, ROLE_COUNT - 1)]
 
 
 func role_name() -> String:
@@ -167,7 +193,11 @@ func _deliver(delta: float) -> Vector3:
 	# дерева (начало координат на середине ствола), до стройки строитель, и
 	# бойцы не могли разрушить здание. Расстояние до середины большого объекта
 	# не значит ничего.
-	if _flat_to(_drop) > _work_reach(_drop_site):
+	# Склад могли снести, пока батрак к нему шёл. Проверяем ЗДЕСЬ, а не внутри
+	# `_work_reach`: движок сверяет тип аргумента ДО входа в функцию, и
+	# освобождённый объект не проходит проверку на `Node3D` — тело функции при
+	# этом не выполняется вовсе, и никакая защита внутри не спасает.
+	if _flat_to(_drop) > _work_reach(_drop_site if is_instance_valid(_drop_site) else null):
 		return _drop
 
 	var world := get_parent().get_parent()
@@ -198,8 +228,10 @@ func _deliver(delta: float) -> Vector3:
 ## меряется до середины, а склад имеет 12 на 10 метров, и строитель упирается в
 ## стену за шесть метров от неё. Дойти до середины он не может физически, и без
 ## этой поправки стройка не ускорялась бы никогда — ни одним строителем.
+## Досягаемость до места работы. Освобождённый объект сюда доходить не должен:
+## отсекается у вызывающего, см. `_deliver`.
 func _work_reach(site: Node3D) -> float:
-	if site != null and site.is_in_group("building") and "kind" in site:
+	if is_instance_valid(site) and site.is_in_group("building") and "kind" in site:
 		var size: Vector3 = RES2.BUILDING_SIZE.get(int(site.kind), Vector3.ZERO)
 		return WORK_RANGE + maxf(size.x, size.z) * 0.5
 	return WORK_RANGE

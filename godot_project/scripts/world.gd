@@ -819,10 +819,15 @@ func labourers_of(faction: int) -> Array:
 
 
 ## Караваны игрока, живые в этот момент.
+##
+## Ищем по `path_ahead` — он есть только у каравана. По `state_text` искать
+## нельзя: подпись для интерфейса есть и у лошади, и стоило появиться на карте
+## свободной лошади, как перебор падал на чтении несуществующего `owner_id`, а
+## вместе с ним переставала работать отправка обозов у ИИ.
 func caravans_of(owner_id: int) -> Array:
 	var found := []
 	for child in _spawned.get_children():
-		if child.has_method("state_text") and int(child.owner_id) == owner_id:
+		if child.has_method("path_ahead") and int(child.owner_id) == owner_id:
 			found.append(child)
 	return found
 
@@ -855,6 +860,21 @@ func award_trophy(attacker_id: int, kind: int) -> void:
 	var node := _players.get_node_or_null(str(attacker_id))
 	if node != null and node.has_method("note_trophy"):
 		node.note_trophy(kind)
+
+
+## Высыпать кучу ресурсов в точку. Нужно проверкам и съёмке: в самой игре
+## кучи родятся от разбитого каравана и с убитого игрока, и подстроить их состав
+## оттуда нельзя.
+func spawn_loot_pile(point: Vector3, contents: PackedInt32Array) -> Node:
+	if not Net.hosting():
+		return null
+	_spawn_counter += 1
+	return _world_spawner.spawn({
+		"type": "loot",
+		"id": _spawn_counter,
+		"point": point,
+		"contents": contents,
+	})
 
 
 ## Готовая конюшня стороны. Без неё лошадей брать негде.

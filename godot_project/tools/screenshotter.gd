@@ -151,6 +151,24 @@ func _shots() -> Array:
 			"squad": 3,
 		},
 		{
+			"name": "19_роли_батраков",
+			"pos": Vector3(-14.0, 3.0, 34.0),
+			"look": Vector3(-14.0, 1.4, 26.0),
+			"roles": true,
+		},
+		{
+			"name": "20_кучи_ресурсов",
+			"pos": Vector3(-34.0, 3.0, 38.0),
+			"look": Vector3(-34.0, 0.7, 31.0),
+			"loot": true,
+		},
+		{
+			"name": "21_свободная_лошадь",
+			"pos": Vector3(-44.0, 2.6, 38.0),
+			"look": Vector3(-44.0, 1.2, 31.0),
+			"horse": true,
+		},
+		{
 			"name": "13_ползание_без_ноги",
 			"pos": Vector3(-11.0, 1.9, 17.2),
 			"look": Vector3(-14, 0.5, 14),
@@ -198,6 +216,15 @@ func _run() -> void:
 			# Гарнизон выставляется хостом сам, надо лишь дождаться его проверки
 			# состава сторон.
 			await get_tree().create_timer(5.0).timeout
+		if shot.get("horse", false):
+			_stage_horse()
+			await get_tree().create_timer(1.0).timeout
+		if shot.get("roles", false):
+			await _stage_roles()
+			await get_tree().create_timer(0.8).timeout
+		if shot.get("loot", false):
+			_stage_loot()
+			await get_tree().create_timer(0.6).timeout
 		if shot.get("gear_row", false):
 			_stage_gear_row()
 			await get_tree().create_timer(0.6).timeout
@@ -398,6 +425,57 @@ func _stage_orders() -> void:
 ##
 ## Ставим ботов вместо игроков: трёх живых для съёмки не собрать, а нужен именно
 ## ряд одинаковых фигур с разным оружием.
+## Ряд из всех ролей разом: четыре батрака, мечник и лучник.
+##
+## Роли различаются моделью и инструментом в руке, и проверить это можно только
+## глазами: headless-прогон скажет, что модель загрузилась, и ни слова о том,
+## отличит ли их человек в толпе.
+func _stage_roles() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.teleport.rpc(Vector3(-14.0, 2.0, 33.0))
+	await get_tree().physics_frame
+	var base := Vector3(-18.0, 2.0, 26.0)
+	for role in 4:
+		var worker: Node3D = _world.spawn_labourer(
+			int(me.faction), base + Vector3(float(role) * 2.2, 0.0, 0.0), base, role
+		)
+		if worker != null:
+			worker.leash = 0.0
+	for i in 2:
+		_world.spawn_unit(int(me.peer_id), i, base + Vector3(9.0 + float(i) * 2.2, 0.0, 0.0),
+			false, i == 1)
+	await get_tree().physics_frame
+
+
+## Кучи всех четырёх сортов в ряд: дерево, камень, золото, железо.
+## Свободная лошадь рядом с игроком: проверяем модель, размер и разворот.
+func _stage_horse() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.teleport.rpc(Vector3(-44.0, 2.0, 37.0))
+	for i in 2:
+		_world.spawn_horse(Vector3(-46.0 + float(i) * 4.0, 1.5, 31.0))
+
+
+func _stage_loot() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.teleport.rpc(Vector3(-34.0, 2.0, 37.0))
+	var piles := [
+		PackedInt32Array([40, 0, 0, 0]),
+		PackedInt32Array([0, 40, 0, 0]),
+		PackedInt32Array([0, 0, 40, 0]),
+		PackedInt32Array([0, 0, 0, 40]),
+		PackedInt32Array([20, 20, 0, 0]),
+	]
+	for i in piles.size():
+		_world.spawn_loot_pile(Vector3(-38.0 + float(i) * 2.2, 1.4, 31.0), piles[i])
+
+
 func _stage_gear_row() -> void:
 	var me: Node3D = _world.local_player()
 	if me == null:

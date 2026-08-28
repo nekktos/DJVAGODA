@@ -18,7 +18,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "эльфы"
-	expected_host = 18
+	expected_host = 21
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -130,6 +130,9 @@ func _test_summon(me: Node3D) -> void:
 	if beasts.is_empty():
 		check(false, "у волка параметры зверя", "волка нет")
 		check(false, "волк живёт не вечно", "волка нет")
+		check(false, "у волка есть тело", "волка нет")
+		check(false, "по волку можно попасть", "волка нет")
+		check(false, "волк принимает урон", "волка нет")
 		check(false, "предел призыва соблюдён", "волка нет")
 		return
 
@@ -138,6 +141,19 @@ func _test_summon(me: Node3D) -> void:
 		"у волка параметры зверя", "HP %d" % int(wolf.health))
 	check(wolf.life_left > 0.0 and wolf.life_left <= ABILITIES.SUMMON_LIFETIME,
 		"волк живёт не вечно", "осталось %.0f с" % wolf.life_left)
+
+	# Волк ДОЛЖЕН быть плотным и убиваемым. Пока он собирался из коробок, он шёл
+	# в обход общей сборки модели, а с ней в обход коллизии и зон попадания:
+	# призванный зверь был неуязвим и проходил сквозь стены. Ни одна проверка
+	# этого не поймала — все они спрашивали про призыв и срок жизни, а не про то,
+	# можно ли по нему попасть.
+	check(_has_node_of_type(wolf, "CollisionShape3D"), "у волка есть тело",
+		"коллизия на месте — сквозь стены не пройдёт")
+	check(_has_hit_zone(wolf), "по волку можно попасть", "зона попадания на месте")
+	var before: float = wolf.health
+	wolf.take_damage(20.0, int(me.peer_id), "torso", wolf.global_position, Vector3.FORWARD)
+	check(wolf.health < before, "волк принимает урон",
+		"здоровье %.0f -> %.0f" % [before, wolf.health])
 
 	# Добиваем до предела и просим ещё одного сверх него.
 	while _beasts_of(int(me.peer_id)).size() < ABILITIES.SUMMON_LIMIT:
@@ -149,6 +165,21 @@ func _test_summon(me: Node3D) -> void:
 	await get_tree().physics_frame
 	check(_beasts_of(int(me.peer_id)).size() == ABILITIES.SUMMON_LIMIT,
 		"предел призыва соблюдён", "зверей: %d" % _beasts_of(int(me.peer_id)).size())
+
+
+func _has_node_of_type(node: Node, type_name: String) -> bool:
+	for child in node.get_children():
+		if child.is_class(type_name):
+			return true
+	return false
+
+
+## Зона попадания — Area3D со скриптом hit_zone: по ней оружие и находит цель.
+func _has_hit_zone(node: Node) -> bool:
+	for child in node.get_children():
+		if child is Area3D and "zone" in child:
+			return true
+	return false
 
 
 ## Способность нельзя применить чужим персонажем и без руки.

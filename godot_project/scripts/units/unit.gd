@@ -27,11 +27,22 @@ const RES := preload("res://scripts/economy/resources.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 
-const MODELS := [
-	"res://assets/characters/character-d.glb",
-	"res://assets/characters/character-e.glb",
-	"res://assets/characters/character-f.glb",
-]
+## Модель выбирается по РОЛИ, а не по номеру в отряде.
+##
+## Раньше она бралась по слоту: в толпе своих нельзя было отличить лесоруба от
+## ополченца, а лучника от мечника — отдать приказ «поставь двоих на стройку»
+## значило гадать. Роль читается с первого взгляда, номер в отряде — нет, и
+## смотреть надо именно на неё.
+const MODEL_SWORD := "res://assets/characters/character-d.glb"
+const MODEL_ARCHER := "res://assets/characters/character-e.glb"
+const MODEL_CHAMPION := "res://assets/characters/character-f.glb"
+## Волк — настоящая модель со скелетом и анимациями (Quaternius, CC0). До этого
+## он собирался из коробок: узнаваемо, но неподвижно, и в бою это было видно.
+const MODEL_BEAST := "res://assets/animals/Wolf.gltf"
+## Модель волка сделана в натуральную величину «в единицах Blender»: длина 5.5,
+## высота 2.7. Приводим к полутора метрам в холке — крупнее настоящего волка,
+## но призванный зверь и должен читаться как угроза, а не как собака.
+const BEAST_MODEL_SCALE := 0.35
 const MODEL_SCALE := 0.68
 
 const PART_ZONES := {
@@ -72,8 +83,6 @@ const BEAST_HEALTH := 55.0
 const BEAST_SPEED := 7.4
 const BEAST_DAMAGE := 14.0
 const BEAST_COOLDOWN := 0.8
-const BEAST_SCALE := 0.55
-const BEAST_COLOR := Color(0.32, 0.30, 0.36)
 
 ## Распорядитель стражи (Этап 10). Тот же боец, но чемпион: убить его можно, и
 ## это осмысленная цель — пока он лежит, стража не получает приказов и не может
@@ -211,6 +220,9 @@ var _shown_eyes := 0
 ## Что уже спрятано на этом пире. Нужно клиенту: маска приходит числом, а меши
 ## прячутся руками.
 var _shown_severed := 0
+## Какой моделью пешка показана сейчас. Сравниваем с нужной, чтобы не
+## пересобирать её каждый кадр.
+var _shown_look := ""
 
 ## Распорядитель стражи: боец с многократным запасом, см. CHAMPION_*.
 var is_champion := false
@@ -290,94 +302,56 @@ func _ready() -> void:
 	_build_model()
 
 
-## Волк из примитивов.
-##
-## Не модель из набора, и вот почему: хороших бесплатных волков хватает, но все
-## они лежат либо за кликом руками (itch, poly.pizza с проверкой «я не робот»),
-## либо в формате Blender, которого на машине сборки нет. Тащить в проект
-## случайный файл сомнительного происхождения ради силуэта — плохой размен.
-##
-## Из коробок собирается узнаваемо: низкое вытянутое тело, вытянутая морда,
-## четыре ноги, хвост. Читается как зверь с первого взгляда — а именно это от
-## него и требуется, пока не появится художник.
-func _build_beast() -> void:
-	_model = Node3D.new()
-	_model.name = "Model"
-
-	var hide := StandardMaterial3D.new()
-	hide.albedo_color = BEAST_COLOR
-
-	# Туловище низкое и длинное: главный признак четвероногого.
-	_beast_box(hide, Vector3(0.0, 0.62, 0.0), Vector3(0.52, 0.44, 1.20))
-	# Грудь чуть выше и шире крупа — силуэт перестаёт быть коробкой.
-	_beast_box(hide, Vector3(0.0, 0.70, -0.42), Vector3(0.58, 0.46, 0.44))
-	# Шея и голова вынесены ВПЕРЁД и ВНИЗ: волк держит голову на уровне спины,
-	# и именно это отличает его от собаки, задранной вверх.
-	_beast_box(hide, Vector3(0.0, 0.72, -0.78), Vector3(0.30, 0.30, 0.34))
-	_beast_box(hide, Vector3(0.0, 0.66, -1.02), Vector3(0.22, 0.20, 0.30))
-	# Уши.
-	_beast_box(hide, Vector3(-0.11, 0.92, -0.74), Vector3(0.09, 0.16, 0.06))
-	_beast_box(hide, Vector3(0.11, 0.92, -0.74), Vector3(0.09, 0.16, 0.06))
-	# Хвост поленом назад и вниз.
-	_beast_box(hide, Vector3(0.0, 0.60, 0.72), Vector3(0.16, 0.16, 0.46))
-	# Четыре ноги.
-	for leg in 4:
-		var side: float = -0.20 if leg % 2 == 0 else 0.20
-		var fore: float = -0.42 if leg < 2 else 0.42
-		_beast_box(hide, Vector3(side, 0.20, fore), Vector3(0.15, 0.40, 0.15))
-
-	add_child(_model)
-
-
-func _beast_box(mat: Material, at: Vector3, size: Vector3) -> void:
-	var part := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
-	part.mesh = box
-	part.material_override = mat
-	part.position = at
-	_model.add_child(part)
+## Зона попадания зверя. Модель волка — один скиннутый меш на скелете: отдельных
+## «рук» и «ног» в ней нет и делить её на зоны нечем, поэтому одна зона на всё
+## тело. Пока волк собирался коробками, у него не было ни зоны, ни коллизии
+## вовсе: призванный зверь был неуязвим и проходил сквозь стены.
+func _build_beast_zone() -> void:
+	var zone := Area3D.new()
+	zone.set_script(HIT_ZONE)
+	zone.zone = "torso"
+	zone.damage_multiplier = 1.0
+	zone.collision_layer = HITBOX_LAYER
+	zone.collision_mask = 0
+	zone.monitoring = false
+	zone.position = Vector3(0.0, 0.5, 0.0)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.8, 0.9, 1.9)
+	shape.shape = box
+	zone.add_child(shape)
+	add_child(zone)
 
 
 func _build_model() -> void:
-	# Зверь собирается отдельно: он не человек, и человеческой моделью его не
-	# изобразить никак. Раньше это была та же модель, сплющенная и затемнённая, —
-	# в инструкции тестерам так и написано: «призванный волк выглядит как
-	# приземистый тёмный человек». Теперь это четвероногое.
-	if is_beast:
-		_build_beast()
-		return
-	var packed: PackedScene = load(MODELS[slot % MODELS.size()])
+	_shown_look = _look_model()
+	var packed: PackedScene = load(_shown_look)
 	_model = packed.instantiate()
 	_model.name = "Model"
-	# Волка среди бесплатных ассетов нет, поэтому зверь — приземистая и тёмная
-	# версия той же модели. Заглушка ровно того же сорта, что и grey-box карты:
-	# силуэт читается как «не человек», остальное подождёт художника.
 	var model_scale := MODEL_SCALE
 	if is_beast:
-		model_scale *= BEAST_SCALE
+		model_scale = BEAST_MODEL_SCALE
 	elif is_champion:
 		model_scale *= CHAMPION_SCALE
-	_model.scale = Vector3(model_scale, model_scale * 0.7, model_scale * 1.5) if is_beast else Vector3.ONE * model_scale
+	_model.scale = Vector3.ONE * model_scale
 	# Модель смотрит в +Z, игра считает передом -Z — см. player.gd::_build_model.
 	_model.rotation.y = PI
 	add_child(_model)
-	if is_beast:
-		_tint(_model, BEAST_COLOR)
-	elif is_champion:
+	if is_champion:
 		# Крупнее и в красном: в толпе стражи он должен читаться с первого
 		# взгляда, иначе нападать на него будут по незнанию.
 		_tint(_model, CHAMPION_COLOR)
 
+	# Тело зверя ниже и длиннее человеческого. Пока волк собирался коробками,
+	# этого куска у него не было вовсе: он проходил сквозь всё и по нему нельзя
+	# было попасть — призванный зверь был неуязвим и бесплотен.
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	var body_scale := 1.0
-	if is_beast:
-		body_scale = BEAST_SCALE
-	elif is_champion:
+	if is_champion:
 		body_scale = CHAMPION_SCALE
-	capsule.radius = 0.35 * body_scale
-	capsule.height = 1.8 * body_scale
+	capsule.radius = (0.45 if is_beast else 0.35) * body_scale
+	capsule.height = (1.0 if is_beast else 1.8) * body_scale
 	shape.shape = capsule
 	shape.position = Vector3(0.0, capsule.height * 0.5, 0.0)
 	add_child(shape)
@@ -385,6 +359,12 @@ func _build_model() -> void:
 	_anim = _find_anim(_model)
 	# Ходьба должна зацикливаться — см. model_anim.gd.
 	MODEL_ANIM.make_looping(_anim)
+	if is_beast:
+		# Модель волка — один скиннутый меш на скелете: отдельных «рук» и «ног»
+		# в ней нет и делить её на зоны нечем. Одна зона на всё тело.
+		_build_beast_zone()
+		_play("idle")
+		return
 	for part_name in PART_ZONES.keys():
 		var mesh := _find_by_name(_model, part_name) as MeshInstance3D
 		if mesh == null:
@@ -395,8 +375,40 @@ func _build_model() -> void:
 	# Мечник — с мечом в руке, точка хвата считается по габаритам руки.
 	# Зверь дерётся зубами: меч в лапе выглядел бы нелепо.
 	if not is_beast:
-		WEAPON_VISUAL.attach(_parts.get("arm_r"), WEAPONS.Kind.SWORD, null, 0)
+		WEAPON_VISUAL.attach(_parts.get("arm_r"), _hand_weapon(), null, 0)
 	_play("idle")
+
+
+## Какой моделью выглядит эта пешка. Батрак переопределяет — у него роль.
+func _look_model() -> String:
+	if is_beast:
+		return MODEL_BEAST
+	if is_champion:
+		return MODEL_CHAMPION
+	return MODEL_ARCHER if is_archer else MODEL_SWORD
+
+
+## Что у неё в руке. Тоже про роль: лесоруб с мечом выглядит как ополченец,
+## а разницу между ними видеть нужно.
+func _hand_weapon() -> int:
+	return WEAPONS.Kind.BOW if is_archer else WEAPONS.Kind.SWORD
+
+
+## Пересобрать облик, если роль сменилась. Роль меняется на ходу — батрак не
+## специалист, а пара рук, — и модель обязана меняться вместе с ней, иначе
+## переведённый на стройку так и останется на вид лесорубом.
+##
+## Зовём и у клиента: роль реплицируется, а модель у каждого своя.
+func _refresh_look() -> void:
+	if is_beast or _model == null or _look_model() == _shown_look:
+		return
+	_model.queue_free()
+	_parts.clear()
+	_shown_eyes = 0
+	_build_model()
+	# Увечья пережили смену роли: новая модель обязана быть такой же калекой.
+	_apply_severed()
+	_apply_eyes()
 
 
 func _find_anim(node: Node) -> AnimationPlayer:
@@ -422,13 +434,21 @@ func _find_by_name(node: Node, wanted: String) -> Node:
 func _play(anim_name: String) -> void:
 	if _anim == null or anim_name == _current_anim:
 		return
-	if not _anim.has_animation(anim_name):
-		return
+	# Наборы называют анимации по-разному: у Kenney «walk», у Quaternius
+	# «Walk». Разводить два словаря ради регистра не стоит — пробуем оба.
+	var wanted := anim_name
+	if not _anim.has_animation(wanted):
+		wanted = anim_name.substr(0, 1).to_upper() + anim_name.substr(1)
+		if not _anim.has_animation(wanted):
+			return
 	_current_anim = anim_name
-	_anim.play(anim_name)
+	_anim.play(wanted)
 
 
 func _physics_process(delta: float) -> void:
+	# Роль меняется на ходу и реплицируется — значит и облик надо сверять у всех
+	# и каждый кадр. Проверка дешёвая: сравнение двух строк.
+	_refresh_look()
 	if not Net.hosting():
 		var t := clampf(delta * 14.0, 0.0, 1.0)
 		global_position = global_position.lerp(sync_position, t)

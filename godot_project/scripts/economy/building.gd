@@ -13,6 +13,7 @@ extends Node3D
 const RES := preload("res://scripts/economy/resources.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
+const LOOK := preload("res://scripts/economy/building_look.gd")
 
 ## Запас прочности постройки. Разрушить её должно быть заметным делом, а не
 ## случайным попаданием: казарма стражи — условие её поражения (GDD раздел 7).
@@ -33,6 +34,8 @@ var owner_id := 1
 var faction := 0
 
 var _mesh: MeshInstance3D
+## Дом из модулей. Пока стройка идёт, его нет вовсе: растёт котлован-коробка.
+var _look: Node3D
 var _done := false
 
 
@@ -62,12 +65,19 @@ func _ready() -> void:
 	add_child(body)
 	add_to_group("building")
 
+	# Пока строится — коробка-каркас, растущая из земли. Дом появляется
+	# готовым: стены, которые вылезают из-под земли по пояс, читаются как
+	# ошибка, а не как стройка.
 	_mesh = MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = size
 	_mesh.mesh = box
 	_mesh.material_override = _material()
 	add_child(_mesh)
+
+	_look = LOOK.build(kind, size)
+	_look.visible = false
+	add_child(_look)
 	_build_hit_zone(size)
 	_apply_progress()
 
@@ -155,6 +165,15 @@ func _build_rate() -> float:
 ## Пока строится — коробка растёт из земли и просвечивает.
 func _apply_progress() -> void:
 	if _mesh == null:
+		return
+	# Достроенное показываем домом, недостроенное — коробкой. Переключаем
+	# каждый кадр, а не по сигналу: прогресс приезжает репликацией, и сигнала
+	# о нём у клиента нет.
+	var done := progress >= 1.0
+	if _look != null:
+		_look.visible = done
+	_mesh.visible = not done
+	if done:
 		return
 	var size: Vector3 = RES.BUILDING_SIZE[kind]
 	var grown: float = maxf(0.05, progress)
