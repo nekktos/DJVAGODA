@@ -1370,7 +1370,10 @@ func request_build(building_kind: int, point: Vector3) -> void:
 
 	var cost: Array = RES.BUILDING_COST[building_kind]
 	if not stock.can_afford(cost):
-		_refuse("не хватает ресурсов на %s — нужно %s" % [RES.BUILDING_NAMES[building_kind], RES.format_cost(RES.BUILDING_COST[building_kind])])
+		_refuse("не хватает ресурсов на %s — нужно %s%s"
+			% [RES.BUILDING_NAMES[building_kind],
+				RES.format_cost(RES.BUILDING_COST[building_kind]),
+				RES.shortfall_hint(RES.BUILDING_COST[building_kind], stock)])
 		return
 	if not BUILD_CONTROLLER.is_spot_buildable(self, point, building_kind):
 		_refuse("здесь строить нельзя: %s не встанет на этом месте" % RES.BUILDING_NAMES[building_kind])
@@ -1592,7 +1595,9 @@ func request_hire_labourer() -> void:
 		_refuse("больше батраков не прокормить: потолок %d" % RES.LABOURER_LIMIT)
 		return
 	if not stock.spend(RES.LABOURER_COST):
-		_refuse("не хватает на батрака — нужно %s" % RES.format_cost(RES.LABOURER_COST))
+		_refuse("не хватает на батрака — нужно %s%s"
+			% [RES.format_cost(RES.LABOURER_COST),
+				RES.shortfall_hint(RES.LABOURER_COST, stock)])
 		return
 	var base: Vector3 = FACTIONS.SPAWN[clampi(int(faction), 0, FACTIONS.COUNT - 1)]
 	var angle := float(have) * 0.9
@@ -1663,8 +1668,9 @@ func request_train_unit(archer: bool = false) -> void:
 		return
 	var cost: Array = RES.ARCHER_COST if archer else RES.UNIT_COST
 	if not stock.spend(cost):
-		_refuse("не хватает ресурсов на %s — нужно %s"
-			% ["лучника" if archer else "мечника", RES.format_cost(cost)])
+		_refuse("не хватает ресурсов на %s — нужно %s%s"
+			% ["лучника" if archer else "мечника", RES.format_cost(cost),
+				RES.shortfall_hint(cost, stock)])
 		return
 	# Разводим по спирали: если спавнить всех в одну точку, капсулы влезают друг
 	# в друга и CharacterBody3D потом не может их расцепить.

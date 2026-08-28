@@ -13,7 +13,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "эконом"
-	expected_host = 16
+	expected_host = 19
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -38,6 +38,7 @@ func _run() -> void:
 	await _test_capacity(me)
 	await _test_build(me)
 	await _test_prosthetic_cost(me)
+	_test_shortfall_hint(me)
 
 	finish()
 
@@ -264,3 +265,30 @@ func _test_treasury(me: Node3D) -> void:
 	check(mine.get_amount(RES.Kind.WOOD) == before - 5, "трата уходит из казны стороны",
 		"%d -> %d" % [before, mine.get_amount(RES.Kind.WOOD)])
 	mine.add(RES.Kind.WOOD, 5)
+
+
+## Отказ говорит не только СКОЛЬКО не хватает, но и ГДЕ это взять.
+##
+## Тестер первого playtest прекратил игру на пятнадцатой минуте, и одной из
+## трёх причин было «не понял, где источник железа, никаких подсказок в игре не
+## увидел». Отказ честно называл цену и молчал о том, что железо не рубится и
+## не бьётся.
+##
+## Проверяем ровно границу: подсказка появляется на железе и золоте и НЕ
+## появляется на дереве и камне. Подсказка на каждый отказ перестаёт читаться
+## через пять минут игры, и «подсказка есть всегда» было бы не лучше, чем
+## «подсказки нет никогда».
+func _test_shortfall_hint(me: Node3D) -> void:
+	var empty: Object = me.stock
+	var iron_only: Array = [0, 0, 0, 999]
+	var wood_only: Array = [999, 999, 0, 0]
+	var both: Array = [0, 0, 999, 999]
+
+	var hint: String = RES.shortfall_hint(iron_only, empty)
+	check(hint.contains("железо") and hint.contains("шахте"),
+		"на нехватку железа подсказывают шахту", hint.strip_edges())
+	check(RES.shortfall_hint(wood_only, empty).is_empty(),
+		"на дерево и камень подсказки нет", "пусто, как и задумано")
+	var pair: String = RES.shortfall_hint(both, empty)
+	check(pair.contains("золото") and pair.contains("железо"),
+		"когда не хватает обоих — названы оба", pair.strip_edges())
