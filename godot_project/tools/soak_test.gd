@@ -118,6 +118,18 @@ func _run() -> void:
 				head.append(str(Vector2(route[k].x, route[k].z).round()))
 			note("%ds маршрут ИИ (%s): %d точек, начало %s"
 				% [int(elapsed), FACTIONS.name_of(_watched), route.size(), " ".join(head)])
+			# Печатаем ВСЕ стороны под ИИ, а не только наблюдаемую: война сторон
+			# между собой видна только когда видно обе, и один раз это стоило
+			# трёх прогонов вслепую.
+			for side in FACTIONS.COUNT:
+				if not _world.players_of(side).is_empty():
+					continue
+				var goal: Vector3 = wb._goal.get(side, Vector3.INF)
+				note("%ds   %s: %s, цель %s, бойцов %d"
+					% [int(elapsed), FACTIONS.name_of(side),
+						WARBAND.STATE_NAMES[wb.state_of(side)],
+						str(goal.round()) if goal.is_finite() else "нет",
+						wb._band(side).size()])
 			var hero: Node3D = _world.ai_hero_of(_watched)
 			if hero == null:
 				note("%ds вожак ИИ: нет" % int(elapsed))

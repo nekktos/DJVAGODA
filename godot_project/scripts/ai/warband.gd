@@ -26,6 +26,7 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
+const UNIT := preload("res://scripts/units/unit.gd")
 
 enum State { HOLD, MARCH, FIGHT, RETURN }
 
@@ -108,11 +109,12 @@ const FRIENDLY_ABOVE := 20.0
 ## иначе злодея под ИИ прессуют с двух сторон разом, а решение прямо запрещает
 ## выбивать сторону подчистую без человека.
 ##
-## Оговорка к решению. GDD 10.1 просит достать до маршрута и шахты, «а не
+## Оговорка к решению. GDD 10.1 просила достать до маршрута и шахты, «а не
 ## обязательно до самой вражеской базы». Геометрически это невыполнимо: шахта
 ## ДАЛЬШЕ от эльфов, чем форт (789 против 596), и любой радиус, достающий до
-## шахты, накрывает и форт. Поэтому ограничитель сделан поведением, а не
-## расстоянием — см. `_worth_raiding()`.
+## шахты, накрывает и форт. Ограничитель на постройки сторон под ИИ стоял здесь
+## некоторое время и снят по решению: разрушать можно ВСЕ здания, и стороне под
+## ИИ полагается защищать своё самой, а не правилом.
 ##
 ## Прежнее значение было 420 и выбиралось из обратного соображения: чтобы базы
 ## были вне досягаемости и ИИ не ходил к чужому спавну с первой секунды. Само
@@ -135,6 +137,9 @@ const STUCK_STEP := 2.0
 var _route := {}
 var _stuck_t := {}
 var _last_centre := {}
+## Едущая цель, за которой сейчас идёт отряд, по сторонам. Неподвижную цель
+## запоминать незачем: она никуда не денется.
+var _cart := {}
 
 var _think_t := 0.0
 ## Сторона -> состояние отряда.
@@ -418,6 +423,8 @@ func _think(faction: int) -> void:
 			elif _arrived(faction, here):
 				# Пришли, а бить некого: цель уже разрушена или ушла.
 				_plan_next(faction, band, base)
+			else:
+				_chase(faction)
 		State.RETURN:
 			if here.distance_to(base) <= ARRIVE_RADIUS or _is_stuck(faction, band):
 				_set_state(faction, State.HOLD)
@@ -450,6 +457,37 @@ func _plan_next(faction: int, band: Array, base: Vector3) -> void:
 		_announce_raid(faction, target)
 
 
+## Подправить маршрут на ходу: цель может ЕХАТЬ.
+##
+## Караван не стоит на месте, а маршрут прокладывается один раз. Отряд приходил
+## туда, где караван БЫЛ: варка показала это прямо — три набега эльфов на зону
+## злодея за три минуты и ни одного перехвата.
+##
+## Заново набег не объявляем: он тот же самый, изменилось только куда идти.
+##
+## Сторож «застрял» при этом обязан сохраниться. `_set_route()` его сбрасывает,
+## а караван уезжает быстрее, чем отряд идёт: пересчёт случался бы почти каждый
+## такт, сторож не накопил бы ни секунды, и по-настоящему упёршийся отряд не
+## сдался бы никогда. Поэтому вокруг пересчёта его сохраняем.
+func _chase(faction: int) -> void:
+	# Гонимся ТОЛЬКО за едущей целью. Пересчитывать маршрут к неподвижной
+	# постройке незачем, а вредно: целей теперь две — склад и караван, — и
+	# «ближайшая» прыгает между ними каждый такт. Отряд качается между двумя
+	# точками и не доходит ни до одной. Варка показала это прямо: три набега в
+	# зону злодея за пять минут и ни одной разрушенной постройки.
+	var cart: Node = _cart.get(faction, null)
+	if cart == null or not is_instance_valid(cart):
+		_cart.erase(faction)
+		return
+	var target := _intercept_point(faction, cart)
+	var goal: Vector3 = _goal.get(faction, Vector3.INF)
+	if goal.is_finite() and goal.distance_to(target) <= ARRIVE_RADIUS:
+		return
+	var stuck: float = _stuck_t.get(faction, 0.0)
+	_set_route(faction, target)
+	_stuck_t[faction] = stuck
+
+
 ## Куда идти: вражеская постройка, а если такой рядом нет — караван. Постройка
 ## первой не случайно: она не убегает, и её потеря стоит противнику дороже всего.
 ## И то и другое ищется только в пределах RAID_RANGE от своей базы.
@@ -468,8 +506,6 @@ func _pick_target(faction: int) -> Vector3:
 			continue
 		if not _hostile(faction, int(building.faction)):
 			continue
-		if not _worth_raiding(world, int(building.faction)):
-			continue
 		if base.distance_to(building.global_position) > RAID_RANGE:
 			continue
 		var d: float = here.distance_to(building.global_position)
@@ -480,6 +516,7 @@ func _pick_target(faction: int) -> Vector3:
 		return best
 
 	var spawned := world.get_node_or_null("Spawned")
+	var cart: Node = null
 	if spawned != null:
 		for node in spawned.get_children():
 			if not node.has_method("state_text") or not ("owner_id" in node):
@@ -492,6 +529,12 @@ func _pick_target(faction: int) -> Vector3:
 			if d < best_distance:
 				best_distance = d
 				best = node.global_position
+				cart = node
+	if cart != null:
+		# Не «куда он приехал», а «где мы его встретим».
+		_cart[faction] = cart
+		return _intercept_point(faction, cart)
+	_cart.erase(faction)
 	if best != Vector3.INF:
 		return best
 
@@ -499,28 +542,6 @@ func _pick_target(faction: int) -> Vector3:
 	# без экономики и подкреплений отряд из четверых там только раздаст
 	# убийства, а игрок получит осаду, которую нечем прекратить.
 	return Vector3.INF
-
-
-## Можно ли сносить ПОСТРОЙКИ этой стороны.
-##
-## Ограничитель из GDD 10.1: автономная война сторон под ИИ не должна решать
-## партию за человека. Потеря части каравана — да, разгром экономики целиком —
-## нет. А разорить сторону подчистую можно только постройками: караван уходит и
-## приходит, склад стоит на месте.
-##
-## Поэтому у стороны, за которую НИКТО НЕ СЕЛ, постройки целями не бывают —
-## только караваны. Ровно то занятие, которым GDD 10.1 и описывает живой мир:
-## «эльфы грабят караваны злодея не потому, что играет человек, а потому что
-## это их занятие». За стороной сидит живой игрок — всё как прежде, никаких
-## поблажек: он умеет и отстроиться, и ответить.
-##
-## Рассматривался и мягкий вариант — сносить постройки, кроме последней. Он
-## сложнее и хуже: «последняя» это почти всегда склад, без которого сторона
-## всё равно мертва, так что ограничитель получился бы на словах.
-func _worth_raiding(world: Node, victim: int) -> bool:
-	if victim < 0:
-		return false
-	return not world.players_of(victim).is_empty()
 
 
 ## Чья это повозка.
@@ -534,6 +555,40 @@ func _side_of(world: Node, node: Node) -> int:
 	if "faction" in node:
 		return int(node.faction)
 	return int(world.faction_of(int(node.owner_id)))
+
+
+## Где ВСТРЕТИТЬ едущую цель.
+##
+## Караван быстрее пешего отряда, и гнаться за его текущим положением
+## бессмысленно: пять минут варки, три набега эльфов в зону злодея и ни одного
+## перехвата — отряд всё время шёл туда, где караван уже не был.
+##
+## Берём его будущий путь и идём по нему вперёд, складывая время каравана до
+## каждой точки. Первая точка, к которой отряд успевает раньше него, и есть
+## место встречи. Не успеваем нигде — идём к последней: там он разгружается и
+## какое-то время стоит, а стоящий караван догнать можно.
+##
+## Скорость отряда берём базовую, без учёта ранений и строя: это ОЦЕНКА, и
+## завышенная точность здесь только создаёт видимость расчёта.
+func _intercept_point(faction: int, cart: Node) -> Vector3:
+	if not cart.has_method("path_ahead"):
+		return cart.global_position
+	var ahead: PackedVector3Array = cart.path_ahead()
+	if ahead.is_empty():
+		return cart.global_position
+	var centre: Vector3 = _band_point(faction)
+	if not centre.is_finite():
+		centre = _anchor.get(faction, cart.global_position)
+	var walked: Vector3 = cart.global_position
+	var cart_time := 0.0
+	var cart_speed: float = maxf(1.0, float(cart.SPEED))
+	for point in ahead:
+		cart_time += _flat_distance(walked, point) / cart_speed
+		walked = point
+		var band_time: float = _flat_distance(centre, point) / UNIT.BASE_SPEED
+		if band_time <= cart_time:
+			return point
+	return ahead[ahead.size() - 1]
 
 
 ## Враждебна ли сторона. Своих не трогаем, дружелюбных тоже: перемирие поднимает

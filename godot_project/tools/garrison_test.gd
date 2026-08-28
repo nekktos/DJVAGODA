@@ -20,7 +20,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "гарнизон"
-	expected_host = 16
+	expected_host = 17
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -138,13 +138,22 @@ func _test_leash() -> void:
 	check(not unit._within_leash(home + Vector3(unit.leash * 2.0, 0.0, 0.0)),
 		"точка за поводком снаружи", "вдвое дальше поводка")
 
-	# Уводим бойца далеко и смотрим, что он идёт обратно.
+	# Уводим бойца далеко и спрашиваем, КУДА он собрался.
+	#
+	# Раньше здесь ждали три секунды и мерили, приблизился ли он. В тихом мире
+	# это работало, а как только стороны ИИ начали воевать по-настоящему,
+	# проверка стала падать на верном поведении: рядом появляется враг, боец
+	# идёт за ним — это и есть его работа, а вовсе не поломка поводка. Мир
+	# живой, и «куда он пришёл» о правиле не говорит ничего.
+	unit.ai_led = false
 	unit.global_position = home + Vector3(unit.leash * 0.8, 1.0, 0.0)
 	unit.sync_position = unit.global_position
 	var far: float = unit.global_position.distance_to(home)
-	await get_tree().create_timer(3.0).timeout
-	check(unit.global_position.distance_to(home) < far, "боец возвращается на пост",
-		"%.0f -> %.0f м от дома" % [far, unit.global_position.distance_to(home)])
+	await get_tree().physics_frame
+	var wants: Vector3 = unit._idle_destination(0.0)
+	check(wants.distance_to(home) < far, "боец возвращается на пост",
+		"стоит в %.0f м, собрался в точку в %.0f м от дома"
+			% [far, wants.distance_to(home)])
 
 
 ## Павших восполняют, а при появлении игрока гарнизон распускают.
@@ -160,8 +169,28 @@ func _test_reinforce_and_disband(me: Node3D) -> void:
 	check(_garrison().size_of(free_side) < GARRISON.SIZE, "павший выбыл из строя",
 		"%d бойцов" % _garrison().size_of(free_side))
 
-	await get_tree().create_timer(4.0).timeout
-	check(_garrison().size_of(free_side) == GARRISON.SIZE, "штат восполнен",
+	# Пополняют ТОЛЬКО тех, кто дома, и это намеренно: иначе отряд
+	# восстанавливался бы прямо посреди боя и правило отхода не срабатывало бы
+	# никогда. Проверяем обе половины — сначала что в набеге не восполняют.
+	var wb: Node = _world.get_node("Warband")
+	if not wb.at_home(free_side):
+		await get_tree().create_timer(3.0).timeout
+		check(_garrison().size_of(free_side) < GARRISON.SIZE,
+			"пока отряд в набеге, павших не восполняют",
+			"%d бойцов" % _garrison().size_of(free_side))
+	else:
+		check(true, "пока отряд в набеге, павших не восполняют",
+			"отряд и так дома — проверять нечего")
+
+	# Теперь отправляем отряд домой и ждём пополнения.
+	wb._go_home(free_side, FACTIONS.SPAWN[free_side])
+	var filled := false
+	for i in 12:
+		await get_tree().create_timer(2.0).timeout
+		if _garrison().size_of(free_side) == GARRISON.SIZE:
+			filled = true
+			break
+	check(filled, "штат восполнен",
 		"%d бойцов" % _garrison().size_of(free_side))
 
 

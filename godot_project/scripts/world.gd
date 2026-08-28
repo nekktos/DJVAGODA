@@ -114,16 +114,23 @@ func _ready() -> void:
 
 	var builder := WORLD_BUILDER.new()
 	builder.build(_terrain)
-	# Сетку печём сразу после стройки: ИИ ходит с первой секунды партии.
-	navigation.bake(_terrain)
 	# Лес зоны эльфов строит отдельная система: у него impostor-LOD и своя
 	# адресация деревьев по индексу (GDD раздел 5, forest.gd).
+	#
+	# Строим его ДО выпечки сетки. Раньше было наоборот, и сетка о деревьях не
+	# знала вовсе: путь шёл сквозь лес, бойцы упирались в стволы, а отряд эльфов
+	# не мог выйти из собственного леса ни разу за прогон.
 	forest.build(
 		WORLD_BUILDER.ZONE_CENTERS[WORLD_BUILDER.Zone.ELVES],
 		WORLD_BUILDER.ZONE_HALF - 30.0,
 		70.0,
 		3615,
 	)
+	# Стволы для выпечки ставим временно: живые деревья появляются по мере
+	# надобности, а сетке нужны все и сразу.
+	var trunks: Node3D = forest.bake_obstacles(_terrain)
+	navigation.bake(_terrain)
+	trunks.queue_free()
 	build_controller.place_requested.connect(_on_place_requested)
 	route_controller.route_sent.connect(_on_route_sent)
 	mine.position = WORLD_BUILDER.MINE_POS

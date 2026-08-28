@@ -96,9 +96,9 @@ func _test_side_stays_free(hero: Node3D) -> void:
 	check(_world.garrison.size_of(SIDE) > 0,
 		"гарнизон свободной стороны не распущен",
 		"бойцов %d" % _world.garrison.size_of(SIDE))
-	check(_world.warband._worth_raiding(_world, SIDE) == false,
-		"постройки стороны по-прежнему под защитой ограничителя",
-		"сторона считается без человека")
+	check(_world.get_node("Steward")._runs_for(SIDE),
+		"хозяйство стороны продолжает вестись",
+		"наём и стройка идут, как будто персонажа нет")
 
 
 ## Он ходит — но не просто так, а К ЦЕЛИ, и не дальше поводка.

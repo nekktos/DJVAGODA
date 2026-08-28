@@ -168,6 +168,39 @@ func _advance(delta: float, backwards: bool) -> bool:
 	return false
 
 
+## Куда караван поедет ДАЛЬШЕ: оставшиеся точки в порядке движения, вместе с
+## обратной дорогой домой.
+##
+## Нужно перехватчику. Гнаться за текущим положением каравана бесполезно: он
+## быстрее пешего отряда (8 против 5.2) и просто уезжает — пять минут варки,
+## три набега эльфов в зону злодея и ни одного перехвата. Догнать нельзя, а
+## ВСТРЕТИТЬ можно, и для этого надо знать, где он будет.
+##
+## Обратную дорогу включаем не для полноты: именно она и перехватывается. Пока
+## отряд идёт наперерез, караван успевает добраться до шахты, и единственное
+## место, где его реально встретить, — на пути домой.
+func path_ahead() -> PackedVector3Array:
+	var ahead := PackedVector3Array()
+	if route.size() < 2:
+		return ahead
+	match state:
+		State.TO_MINE:
+			for i in range(clampi(_leg, 0, route.size() - 1), route.size()):
+				ahead.append(route[i])
+			for i in range(route.size() - 2, -1, -1):
+				ahead.append(route[i])
+		State.LOADING:
+			# Стоит на шахте: дальше только домой.
+			for i in range(route.size() - 1, -1, -1):
+				ahead.append(route[i])
+		State.TO_HOME:
+			for i in range(clampi(route.size() - 1 - _leg, 0, route.size() - 1), -1, -1):
+				ahead.append(route[i])
+		_:
+			pass
+	return ahead
+
+
 func _load_at_mine() -> void:
 	var mine := _world().get_node_or_null("Mine")
 	if mine == null:

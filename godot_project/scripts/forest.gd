@@ -335,6 +335,38 @@ func _actor_positions() -> Array[Vector3]:
 	return result
 
 
+## Поставить стволы для ВЫПЕЧКИ навигации и вернуть узел, который потом надо
+## удалить.
+##
+## Зачем. Деревья появляются по мере надобности — вокруг игроков и бойцов, — а
+## сетка печётся один раз, при постройке мира. Из-за этого путь прокладывался
+## сквозь лес, бойцы упирались в стволы, которых сетка не знает, и отряд эльфов
+## НИКОГДА не выходил из собственного леса: варка показала, как он раз за разом
+## объявляет себя застрявшим и отменяет набег.
+##
+## Лес расставлен детерминированно, поэтому на время выпечки ставим настоящие
+## цилиндры по тем же координатам и тем же радиусам, что у живых деревьев.
+func bake_obstacles(into: Node3D) -> Node3D:
+	var holder := Node3D.new()
+	holder.name = "ForestNavSource"
+	into.add_child(holder)
+	for index in _pos.size():
+		if _felled[index] == 1:
+			continue
+		var s: float = _scale[index]
+		var body := StaticBody3D.new()
+		body.position = _pos[index]
+		var col := CollisionShape3D.new()
+		var shape := CylinderShape3D.new()
+		shape.radius = TRUNK_R * s
+		shape.height = TRUNK_H * s
+		col.shape = shape
+		col.position = Vector3(0.0, TRUNK_H * 0.5 * s, 0.0)
+		body.add_child(col)
+		holder.add_child(body)
+	return holder
+
+
 func _spawn_near(index: int, solid: bool) -> void:
 	var s: float = _scale[index]
 
