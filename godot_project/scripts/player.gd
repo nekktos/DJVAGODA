@@ -125,6 +125,17 @@ var profile_id := ""
 @export var squad_rally_yaw: float = 0.0
 
 var peer_id := 1
+
+## Персонажем правит ИИ, а не человек: за сторону никто не сел (GDD 10.1).
+##
+## Это ТОТ ЖЕ персонаж, которым играл бы живой злодей, — не второй, урезанный
+## юнит-заклинатель. Меняется ровно один слой: снимок ввода даёт `ai/hero.gd`
+## вместо клавиатуры. Всё остальное — движение, оружие, магия, ранения, гибель
+## вожака — работает прежним кодом и потому проверено прежними наборами.
+##
+## Ставится в `world._make_player()` до входа в дерево: `_enter_tree()` уже
+## обязан знать, кому отдавать авторитет.
+var ai_led := false
 var spawn_slot := 0
 ## Сторона игрока. Приезжает данными спавна, поэтому одинакова на всех пирах.
 var faction := 0
@@ -193,7 +204,11 @@ var _current_anim := ""
 func _enter_tree() -> void:
 	peer_id = str(name).to_int()
 	# Рекурсивно — чтобы синхронизатор движения получил того же авторитета.
-	set_multiplayer_authority(peer_id)
+	#
+	# У героя под ИИ пира нет вовсе, и `peer_id` у него отрицательный. Авторитет
+	# отдаём хосту: он считает и его движение тоже. Оставить как есть нельзя —
+	# авторитета не оказалось бы ни у кого, и персонаж просто стоял бы.
+	set_multiplayer_authority(1 if ai_led else peer_id)
 	# ...а здоровье и ранения возвращаем хосту: рекурсивный вызов забрал и их.
 	get_node("ServerSync").set_multiplayer_authority(1)
 
@@ -208,7 +223,8 @@ func _ready() -> void:
 	# Внешность выбираем по стороне, чтобы фракции различались в лицо.
 	_build_model(clampi(faction, 0, MODELS.size() - 1))
 	_spring.add_excluded_object(get_rid())
-	_name_tag.text = "%s (%d)" % [FACTIONS.name_of(faction), peer_id]
+	_name_tag.text = ("%s (ИИ)" % FACTIONS.name_of(faction) if ai_led
+		else "%s (%d)" % [FACTIONS.name_of(faction), peer_id])
 
 	var mine := is_multiplayer_authority()
 	_camera.current = mine
@@ -283,6 +299,10 @@ func _find_by_name(node: Node, wanted: String) -> Node:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_multiplayer_authority() or not control_enabled:
+		return
+	# Хост — авторитет и над героем ИИ тоже, а мышь у него одна: без этой строки
+	# он крутил бы камеру сразу двоим.
+	if ai_led:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotation.y -= event.relative.x * MOUSE_SENS
@@ -425,13 +445,16 @@ func _update_attack(delta: float) -> void:
 
 	# Оружие переключаем только среди разрешённого стороне: у эльфов и стражи
 	# нет атакующей магии (DESIGN_ANSWERS.md, пункт 18).
-	for slot in 4:
-		if Input.is_action_just_pressed("weapon_%d" % (slot + 1)):
-			_select_weapon(FACTIONS.weapon_on_slot(faction, slot))
-			break
+	# У героя под ИИ клавиатуры нет: оружие ему выбирает `ai/hero.gd`. Читать
+	# здесь Input значило бы переключать снаряжение ИИ клавишами хоста.
+	if not ai_led:
+		for slot in 4:
+			if Input.is_action_just_pressed("weapon_%d" % (slot + 1)):
+				_select_weapon(FACTIONS.weapon_on_slot(faction, slot))
+				break
 
 	var wants: bool = scripted_input.get("attack", false)
-	if not wants and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if not wants and not ai_led and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		wants = Input.is_action_pressed("attack")
 	if not wants or _cooldown_left > 0.0:
 		return
@@ -573,10 +596,12 @@ func _update_abilities() -> void:
 		return
 
 	var wanted := -1
-	for slot in 3:
-		if Input.is_action_just_pressed("ability_%d" % (slot + 1)):
-			wanted = FACTIONS.ability_on_slot(faction, slot)
-			break
+	# То же, что с оружием: клавиши 4/5/6 хоста не должны колдовать за ИИ.
+	if not ai_led:
+		for slot in 3:
+			if Input.is_action_just_pressed("ability_%d" % (slot + 1)):
+				wanted = FACTIONS.ability_on_slot(faction, slot)
+				break
 	if wanted < 0 and scripted_input.has("ability"):
 		# Автопроверки просят способность через сценарный ввод. Забираем сразу:
 		# иначе она сработала бы каждый кадр, пока ключ лежит в словаре.
@@ -1179,6 +1204,12 @@ func request_wheelchair(on: bool) -> void:
 func _sender_is_owner() -> bool:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
+		# Вызов не по сети. У героя под ИИ владельца-пира нет вовсе, и сравнивать
+		# не с чем: единственный, кто вправе им распоряжаться, — хост, он же его и
+		# считает. Заявка ПО СЕТИ сюда не попадает: там sender не ноль, и
+		# сравнение с отрицательным peer_id её отобьёт.
+		if ai_led:
+			return Net.hosting()
 		sender = multiplayer.get_unique_id()
 	return sender == peer_id
 
@@ -1557,6 +1588,9 @@ signal refused(reason: String)
 ## Отказать по заявке. Вызывает ТОЛЬКО хост, вместо голого push_warning.
 func _refuse(reason: String) -> void:
 	push_warning("Игрок %d: %s" % [peer_id, reason])
+	# Герою под ИИ отказ показывать некому, а `rpc_id(-1)` — ошибка в каждом кадре.
+	if ai_led:
+		return
 	if peer_id == Net.local_id():
 		refused.emit(reason)
 	else:

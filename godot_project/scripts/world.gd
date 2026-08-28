@@ -351,6 +351,8 @@ func _make_player(data: Dictionary) -> Node:
 	player.spawn_slot = int(data["slot"])
 	player.profile_id = String(data.get("profile", ""))
 	player.faction = int(data.get("faction", 0))
+	# До входа в дерево: `_enter_tree()` по этому флагу решает, кому авторитет.
+	player.ai_led = bool(data.get("ai", false))
 	return player
 
 
@@ -881,6 +883,70 @@ func _has_room(faction: int) -> bool:
 
 
 func players_of(faction: int) -> Array:
+	var found := []
+	for child in _players.get_children():
+		if "faction" in child and int(child.faction) == faction and not child.ai_led:
+			found.append(child)
+	return found
+
+
+## Завести героя стороне, за которую никто не сел (GDD 10.1).
+##
+## Персонаж ровно тот же, что у живого игрока: та же сцена, тот же вожак, та же
+## окончательная смерть. Отличий два — нет пира и ввод даёт `ai/hero.gd`.
+##
+## Имя ноды ОТРИЦАТЕЛЬНОЕ и уникальное. Имя у персонажа это его peer id, по нему
+## все пиры находят авторитета; занять чужой номер нельзя, а ноль недопустим.
+## Отрицательные номера пирам не выдаются никогда, поэтому столкнуться не с чем.
+func spawn_ai_hero(faction: int) -> Node:
+	if not Net.hosting():
+		return null
+	if not characters_of(faction).is_empty():
+		return null
+	var slot := _next_free_slot()
+	if slot < 0:
+		return null
+	var id := -1 - faction
+	if _players.has_node(str(id)):
+		return null
+	print("[герой] %s: сторона свободна, за неё играет ИИ" % FACTIONS.name_of(faction))
+	var node := _spawner.spawn({
+		"id": id, "slot": slot, "faction": faction, "profile": "", "ai": true,
+	})
+	if node != null:
+		node.death_reported.connect(_on_player_death)
+		node.projectile_requested.connect(_on_projectile_requested)
+		node.is_leader = FACTIONS.has_strategy(faction)
+	return node
+
+
+## Убрать героя ИИ: за сторону сел человек.
+func despawn_ai_hero(faction: int) -> void:
+	if not Net.hosting():
+		return
+	for child in _players.get_children():
+		if "ai_led" in child and child.ai_led and int(child.faction) == faction:
+			print("[герой] %s: за сторону сел игрок, ИИ уходит"
+				% FACTIONS.name_of(faction))
+			child.queue_free()
+
+
+## Герой стороны под ИИ, если он есть.
+func ai_hero_of(faction: int) -> Node3D:
+	for child in _players.get_children():
+		if "ai_led" in child and child.ai_led and int(child.faction) == faction:
+			return child
+	return null
+
+
+## Все персонажи стороны, ВКЛЮЧАЯ героя под ИИ.
+##
+## Разделение обязательное, а не косметика. `players_of()` спрашивают в шести
+## местах, и все шесть спрашивают одно: «сидит ли за этой стороной человек».
+## От ответа зависит, распускать ли гарнизон, вести ли хозяйство, можно ли
+## сносить постройки этой стороны и свободен ли слот. Считай герой ИИ игроком —
+## сторона немедленно перестала бы быть свободной и сама себя выключила.
+func characters_of(faction: int) -> Array:
 	var found := []
 	for child in _players.get_children():
 		if "faction" in child and int(child.faction) == faction:

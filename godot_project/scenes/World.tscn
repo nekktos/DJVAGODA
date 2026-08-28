@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/strategy_camera.gd" id="2_strategy"]
@@ -17,6 +17,7 @@
 [ext_resource type="Script" path="res://scripts/ai/warband.gd" id="15_warband"]
 [ext_resource type="Script" path="res://scripts/navigation.gd" id="16_navigation"]
 [ext_resource type="Script" path="res://scripts/ai/steward.gd" id="17_steward"]
+[ext_resource type="Script" path="res://scripts/ai/hero.gd" id="18_hero"]
 
 [sub_resource type="SceneReplicationConfig" id="Repl_objective"]
 properties/0/path = NodePath(".:palace_owner")
@@ -164,6 +165,9 @@ script = ExtResource("16_navigation")
 
 [node name="Steward" type="Node" parent="."]
 script = ExtResource("17_steward")
+
+[node name="Hero" type="Node" parent="."]
+script = ExtResource("18_hero")
 
 [node name="Save" type="Node" parent="."]
 script = ExtResource("13_save")
