@@ -33,7 +33,7 @@ var _heard := PackedStringArray()
 
 func start(world: Node3D) -> void:
 	tag = "ИИ-отряд"
-	expected_host = 20
+	expected_host = 23
 	expected_client = 3
 	_world = world
 	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
@@ -71,6 +71,7 @@ func _run() -> void:
 	# Последней: она создаёт повозку в чужой зоне, и живой отряд, увидев её,
 	# бросает всё и идёт туда. Соседние проверки от этого разваливались.
 	await _test_ai_caravan_is_a_target()
+	_test_ai_side_is_not_razed(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -321,3 +322,28 @@ func _run_client() -> void:
 	# Досиживаем до конца половины хоста. Уйдя раньше, клиент освобождает свою
 	# сторону, и хост посреди прогона начинает проверять уже другую.
 	await get_tree().create_timer(45.0).timeout
+
+
+## Сторону, за которую никто не сел, нельзя разорять постройками (GDD 10.1).
+##
+## Радиус набега расширен до восьмисот метров ради того, чтобы стороны под ИИ
+## сталкивались сами. Плата за это — они дотягиваются и до чужих СКЛАДОВ, а
+## разгром экономики целиком решение прямо запрещает: партию должен решать
+## человек, а не две стороны без него.
+##
+## Спрашиваем про ДВЕ стороны сразу: свободную (за неё никто не сидит) и
+## сторону хоста (за ней сидит человек). Первая версия проверки искала вторую
+## свободную сторону и при двух пирах вырождалась в пропуск — три зелёные
+## строки, не проверившие ничего. Так делать нельзя: набор, который зеленеет
+## всегда, хуже отсутствующего.
+func _test_ai_side_is_not_razed(me: Node3D) -> void:
+	var wb := _warband()
+	check(not wb._worth_raiding(_world, _side),
+		"постройки стороны без человека — не цель",
+		"%s: за неё никто не сидит" % FACTIONS.name_of(_side))
+	check(wb._worth_raiding(_world, int(me.faction)),
+		"постройки стороны с человеком — цель",
+		"%s: за ней сидит хост" % FACTIONS.name_of(int(me.faction)))
+	check(WARBAND.RAID_RANGE >= 789.0,
+		"радиуса хватает от базы эльфов до шахты злодея",
+		"%.0f м против 789" % WARBAND.RAID_RANGE)
