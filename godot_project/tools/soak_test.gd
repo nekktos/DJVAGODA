@@ -42,6 +42,13 @@ var _travelled := 0.0
 ## Объявления за прогон. Их число — мера того, не заело ли ИИ: набег должен
 ## кончаться результатом, а не повторяться каждые несколько секунд.
 var _heard := 0
+## Сторона, за которой наблюдаем: та, что осталась под ИИ.
+##
+## Держать её полем, а не звать злодея по имени, обязательно. Заметки печатали
+## хозяйство злодея всегда — и в прогоне ЗА злодея показывали казну, постройки и
+## батраков самого ХОСТА, выдавая их за ИИ. Ошибка того же рода, что и приманка
+## на базе стражи: сторону надо брать ту, о которой идёт речь.
+var _watched := -1
 ## Постройка-приманка: её судьба и есть итог набега.
 var _bait: Node3D = null
 
@@ -82,12 +89,14 @@ func _run() -> void:
 	if free_side < 0:
 		fail("свободных сторон нет — набегать некому")
 		return
+	_watched = free_side
 	note("приманка рассчитана на сторону: %s" % FACTIONS.name_of(free_side))
 	var spot := mine_base.lerp(FACTIONS.SPAWN[free_side], 0.5)
 	spot.y = 0.0
 	_bait = _world.spawn_building(RES.Building.STORAGE, spot,
 		int(me.peer_id), int(me.faction), true)
-	check(_bait != null, "приманка для ИИ поставлена", "склад на полпути к страже")
+	check(_bait != null, "приманка для ИИ поставлена",
+		"склад на полпути к стороне %s" % FACTIONS.name_of(free_side))
 
 	# Игрок при этом уходит к себе: проверяем поведение ИИ, а не драку с ним.
 	me.teleport.rpc(mine_base + Vector3(0.0, 2.0, 6.0))
@@ -101,17 +110,17 @@ func _run() -> void:
 		_counts.append(_units())
 		if int(elapsed) % 30 == 0:
 			var wb: Node = _world.warband
-			var centre: Vector3 = wb._centre_of(FACTIONS.Kind.VILLAIN)
-			var route: Array = wb._route.get(FACTIONS.Kind.VILLAIN, [])
+			var centre: Vector3 = wb._centre_of(_watched)
+			var route: Array = wb._route.get(_watched, [])
 			var head := PackedStringArray()
 			for k in mini(4, route.size()):
 				head.append(str(Vector2(route[k].x, route[k].z).round()))
-			note("%ds маршрут злодея: %d точек, начало %s"
-				% [int(elapsed), route.size(), " ".join(head)])
-			note("%ds злодей: якорь %s, отряд %s, %s"
-				% [int(elapsed), str(wb.anchor_of(FACTIONS.Kind.VILLAIN).round()),
+			note("%ds маршрут ИИ (%s): %d точек, начало %s"
+				% [int(elapsed), FACTIONS.name_of(_watched), route.size(), " ".join(head)])
+			note("%ds ИИ (%s): якорь %s, отряд %s, %s"
+				% [int(elapsed), FACTIONS.name_of(_watched), str(wb.anchor_of(_watched).round()),
 					str(centre.round()) if centre.is_finite() else "нет",
-					WARBAND.STATE_NAMES[wb.state_of(FACTIONS.Kind.VILLAIN)]])
+					WARBAND.STATE_NAMES[wb.state_of(_watched)]])
 		for faction in FACTIONS.COUNT:
 			_states[_world.warband.state_of(faction)] = true
 			var anchor: Vector3 = _world.warband.anchor_of(faction)
@@ -151,26 +160,28 @@ func _report() -> void:
 	# обязаны получиться, никто не знает — они и есть предмет баланса. Но без
 	# них нельзя ответить на простой вопрос «почему ИИ не построил казарму»:
 	# негде, не на что или не успел. Первый же раз это заняло три прогона.
-	var villain: Node = _world.treasury.of(FACTIONS.Kind.VILLAIN)
-	if villain != null:
-		note("казна злодея: %s" % villain.summary())
+	var wallet: Node = _world.treasury.of(_watched)
+	if wallet != null:
+		note("казна ИИ (%s): %s" % [FACTIONS.name_of(_watched), wallet.summary()])
 	var built := PackedStringArray()
 	for node in get_tree().get_nodes_in_group("building"):
-		if "faction" in node and int(node.faction) == FACTIONS.Kind.VILLAIN:
+		if "faction" in node and int(node.faction) == _watched:
 			built.append("%s %s" % [node.label(), str(node.global_position.round())])
-	note("постройки злодея: %s" % ("нет" if built.is_empty() else "   ".join(built)))
+	note("постройки ИИ (%s): %s" % [FACTIONS.name_of(_watched),
+		"нет" if built.is_empty() else "   ".join(built)])
 	var LAB := preload("res://scripts/units/labourer.gd")
 	var by_role := PackedInt32Array()
 	by_role.resize(LAB.ROLE_COUNT)
 	var fleeing := 0
-	for worker in _world.labourers_of(FACTIONS.Kind.VILLAIN):
+	for worker in _world.labourers_of(_watched):
 		by_role[int(worker.sync_role)] += 1
 		if worker._threat_nearby() != null:
 			fleeing += 1
 	var parts := PackedStringArray()
 	for role in LAB.ROLE_COUNT:
 		parts.append("%s %d" % [LAB.ROLE_NAMES[role], by_role[role]])
-	note("батраки злодея: %s   убегают: %d" % ["   ".join(parts), fleeing])
+	note("батраки ИИ (%s): %s   убегают: %d"
+		% [FACTIONS.name_of(_watched), "   ".join(parts), fleeing])
 
 	# Потолок населения. Каждая свободная сторона держит GARRISON.SIZE бойцов,
 	# плюс распорядитель стражи. Запас вдвое — на бойцов, которые уже мертвы, но
