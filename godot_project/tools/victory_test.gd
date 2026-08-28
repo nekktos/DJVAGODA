@@ -19,7 +19,7 @@ var _heard: Array[String] = []
 
 func start(world: Node3D) -> void:
 	tag = "победа"
-	expected_host = 24
+	expected_host = 28
 	expected_client = 3
 	_world = world
 	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
@@ -44,6 +44,8 @@ func _run() -> void:
 	await _test_guard_barracks()
 	await _test_villain_death_is_final(me)
 	await _test_guard_broken_needs_both(me)
+	# Последней: она убивает самого хоста, и дальше он наблюдатель.
+	await _test_guard_leader_death_is_final(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -190,3 +192,23 @@ func _guard_barracks() -> Node3D:
 		if int(node.faction) == FACTIONS.Kind.GUARD and int(node.kind) == 1:
 			return node
 	return null
+
+
+## У КОМАНДИРА СТРАЖИ смерть тоже окончательна — вторая половина того же правила.
+##
+## Окончательно гибнут вожаки, а вожаков двое: злодей по рождению и страж,
+## принявший командование. Проверялась только половина — смерть злодея. Половина
+## закона без проверки это половина закона: правило можно было сломать для
+## командира, и ни один набор не заметил бы.
+##
+## Стоит ПОСЛЕДНЕЙ, и не случайно: убиваем самого хоста, после чего он
+## наблюдатель и ничего больше сделать не может.
+func _test_guard_leader_death_is_final(me: Node3D) -> void:
+	check(me.is_leader, "хост принял командование и стал вожаком", "is_leader=true")
+	me.take_damage(999.0, int(me.peer_id), "torso", me.global_position, Vector3.FORWARD)
+	await get_tree().create_timer(1.0).timeout
+	check(not me.health.alive, "командир стражи убит", "мёртв")
+	# Дольше обычного респавна: рядовой страж к этому времени уже вернулся бы.
+	await get_tree().create_timer(8.0).timeout
+	check(not me.health.alive, "и в мир не вернулся", "мёртв дольше срока респавна")
+	check(_world.is_spectating(), "игрок стал наблюдателем", "да")
