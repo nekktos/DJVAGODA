@@ -398,6 +398,12 @@ func _make_spawned(data: Dictionary) -> Node:
 			node = UNIT_SCENE.instantiate()
 		"labourer":
 			node = LABOURER_SCENE.instantiate()
+		"horse":
+			# У лошади нет сцены: она собирается кодом, как и караван. Заводить
+			# .tscn ради четырёх коробок значит завести файл, который никто
+			# никогда не откроет.
+			node = CharacterBody3D.new()
+			node.set_script(load("res://scripts/units/horse.gd"))
 		_:
 			node = CORPSE_SCENE.instantiate()
 	node.name = "%s_%d" % [data["type"], int(data["id"])]
@@ -679,7 +685,8 @@ func storage_of(faction: int) -> Node3D:
 
 ## Отправить караван. Только на хосте: маршрут сюда попадает уже проверенным
 ## (см. player.gd::request_send_caravan).
-func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1) -> Node:
+func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1,
+		horses := 2) -> Node:
 	if not Net.hosting():
 		return null
 	_spawn_counter += 1
@@ -690,12 +697,25 @@ func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1) -> N
 		"route": walked,
 		"owner": owner_id,
 		"faction": faction if faction >= 0 else faction_of(owner_id),
+		"horses": horses,
 	})
 	if node != null:
-		print("[караван] игрок %d отправил караван, точек в маршруте: %d (по карте %d)"
-			% [owner_id, route.size(), walked.size()])
+		print("[караван] игрок %d отправил караван: точек %d (по карте %d), лошадей %d"
+			% [owner_id, route.size(), walked.size(), horses])
 		node.destroyed.connect(_on_caravan_destroyed.bind(node.faction))
+		# Лошади уходят с обозом и возвращаются в конюшню, когда он доехал. На
+		# обратном пути их могут увести или убить — тогда возвращать нечего, и
+		# считать это должен сам обоз, а не отправитель.
+		node.came_home.connect(_on_caravan_home.bind(node.faction))
 	return node
+
+
+## Обоз доехал: лошади снова свободны и годятся хоть в упряжку, хоть под седло.
+func _on_caravan_home(horses: int, faction: int) -> void:
+	var wallet: Node = treasury.of(faction)
+	if wallet == null:
+		return
+	wallet.horses_out = maxi(0, wallet.horses_out - horses)
 
 
 ## Проложить нарисованный маршрут ПО КАРТЕ.
@@ -823,6 +843,26 @@ func barracks_of(faction: int, kind: int = RES.Building.SWORD_BARRACKS) -> Node3
 			continue
 		return building
 	return null
+
+
+## Готовая конюшня стороны. Без неё лошадей брать негде.
+func stable_of(faction: int) -> Node3D:
+	return barracks_of(faction, RES.Building.STABLE)
+
+
+## Выпустить лошадь в мир: увели у обоза, и теперь она стоит там, где её взяли.
+##
+## Живой лошадью, а не числом в казне: увести её — это добыча, которую надо
+## довести до дома, а не строка в отчёте. По дороге её могут отбить.
+func spawn_horse(point: Vector3) -> Node:
+	if not Net.hosting():
+		return null
+	_spawn_counter += 1
+	return _world_spawner.spawn({
+		"type": "horse",
+		"id": _spawn_counter,
+		"point": point,
+	})
 
 
 ## Живые бойцы игрока.

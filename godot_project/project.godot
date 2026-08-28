@@ -120,9 +120,13 @@ bandage={
 "events": [Object(InputEventKey,"device":-1,"physical_keycode":66,"script":null)
 ]
 }
+; Взаимодействие — E (69), а не F. Одна клавиша на всё, с чем можно что-то
+; сделать: подобрать груз, открыть лавку, взять приказ, сесть на лошадь. F
+; оставлен вторым событием, чтобы не ломать привычку тех, кто уже играл.
 interact={
 "deadzone": 0.2,
-"events": [Object(InputEventKey,"device":-1,"physical_keycode":70,"script":null)
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":69,"script":null)
+, Object(InputEventKey,"device":-1,"physical_keycode":70,"script":null)
 ]
 }
 

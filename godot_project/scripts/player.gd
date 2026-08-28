@@ -370,7 +370,7 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 		move = Vector2.ZERO
 		jump = false
 
-	var speed: float = body.move_speed(SPEED) * buff_speed_scale()
+	var speed: float = body.move_speed(SPEED) * buff_speed_scale() * mount_speed_scale()
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
 
 	if is_on_floor():
@@ -1420,6 +1420,12 @@ func request_build(building_kind: int, point: Vector3) -> void:
 
 ## Сколько караванов игрок может держать в пути одновременно.
 const MAX_CARAVANS := 2
+
+const CARAVAN := preload("res://scripts/economy/caravan.gd")
+
+## Сколько лошадей запрягать в следующий обоз. Две по умолчанию: одна тащит
+## слишком медленно, а шестёрка — это половина конюшни в одном рейсе.
+var harness_size := 2
 ## Дальше этого точку маршрута не принимаем — защита от мусора в заявке.
 const ROUTE_BOUND := 640.0
 
@@ -1459,7 +1465,20 @@ func request_send_caravan(points: PackedVector3Array) -> void:
 		route.append(point)
 	route.append(world.mine.global_position)
 
-	world.spawn_caravan(route, peer_id)
+	# Запрягаем столько, сколько ЕСТЬ и сколько просили. Свободных меньше —
+	# едем меньшей упряжкой и говорим об этом, а не отказываем: обоз с одной
+	# лошадью всё равно доедет, просто медленно.
+	var wallet: Node = world.treasury.of(int(faction))
+	var free: int = wallet.horses_free() if wallet != null else 0
+	if free <= 0:
+		_refuse("некого запрягать: свободных лошадей нет, купи в конюшне")
+		return
+	var team: int = mini(harness_size, free)
+	if wallet != null:
+		wallet.horses_out += team
+	if team < harness_size:
+		_show_note("свободных лошадей %d — запрягли столько" % team)
+	world.spawn_caravan(route, peer_id, -1, team)
 
 
 func ask_collect_loot() -> void:
@@ -1491,6 +1510,124 @@ func loot_nearby() -> Node3D:
 		if pile != null and pile.global_position.distance_to(global_position) <= pile.PICKUP_RANGE:
 			return pile
 	return null
+
+
+# --- верхом ----------------------------------------------------------------
+
+const HORSE := preload("res://scripts/units/horse.gd")
+
+## На какой лошади едем. Пусто — идём пешком.
+@export var mount_path := NodePath()
+
+
+## Чужой обоз рядом, который СТОИТ и у которого есть кого выпрягать.
+##
+## Захват возможен только у стоящего: на ходу лошадей не выпрягают. Остановить
+## обоз можно двумя способами — подойти к нему (возница встаёт, когда рядом
+## враг) или выбить лошадей до нуля, но тогда выпрягать уже некого.
+func caravan_to_rob() -> Node3D:
+	var world := get_parent().get_parent()
+	var spawned: Node = world.get_node_or_null("Spawned")
+	if spawned == null:
+		return null
+	for child in spawned.get_children():
+		if not child.has_method("capture_horses") or not ("faction" in child):
+			continue
+		if int(child.faction) == int(faction):
+			continue
+		if not child.halted or int(child.horses) <= 0:
+			continue
+		if child.global_position.distance_to(global_position) <= ROB_RANGE:
+			return child
+	return null
+
+
+## Дальше этого лошадей не выпрягают.
+const ROB_RANGE := 6.0
+
+
+## Увести лошадей у стоящего чужого обоза.
+func ask_rob_caravan() -> void:
+	if Net.hosting():
+		request_rob_caravan()
+	else:
+		request_rob_caravan.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_rob_caravan() -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	var cart := caravan_to_rob()
+	if cart == null:
+		_refuse("выпрягать нечего: обоз должен стоять и быть чужим")
+		return
+	var taken: int = cart.capture_horses()
+	if taken <= 0:
+		return
+	var world := get_parent().get_parent()
+	# Лошади встают рядом с обозом ЖИВЫМИ телами, а не числом в казне: увести
+	# их до дома — отдельная работа, и по дороге их могут отбить.
+	for i in taken:
+		world.spawn_horse(cart.global_position + Vector3(2.0 + float(i) * 2.0, 0.0, 2.0))
+	print("[караван] игрок %d увёл лошадей: %d" % [peer_id, taken])
+
+
+## Свободная лошадь рядом, на которую можно сесть.
+func horse_nearby() -> Node3D:
+	for node in get_tree().get_nodes_in_group("horse"):
+		var horse := node as Node3D
+		if horse == null or not horse.can_mount():
+			continue
+		if horse.global_position.distance_to(global_position) <= HORSE.MOUNT_RANGE:
+			return horse
+	return null
+
+
+func riding() -> Node3D:
+	if mount_path.is_empty():
+		return null
+	return get_node_or_null(mount_path) as Node3D
+
+
+## Сесть или спешиться — одной и той же клавишей.
+##
+## Отдельной кнопки «слезть» не заводим: игрок и так помнит, что он верхом, а
+## лишняя клавиша в списке из тридцати — это ещё одна строка, которую не
+## прочитают.
+func ask_mount() -> void:
+	if Net.hosting():
+		request_mount()
+	else:
+		request_mount.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_mount() -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	var riding_now := riding()
+	if riding_now != null:
+		# Спешиваемся рядом с собой, а не там, где сели: иначе лошадь остаётся
+		# на другом конце карты и до неё надо возвращаться пешком.
+		riding_now.dismount(global_position + Vector3(1.5, 0.0, 0.0))
+		mount_path = NodePath()
+		print("[лошадь] игрок %d спешился" % peer_id)
+		return
+	var horse := horse_nearby()
+	if horse == null:
+		_refuse("рядом нет свободной лошади")
+		return
+	if not horse.mount(peer_id):
+		_refuse("эта лошадь уже под седлом")
+		return
+	mount_path = horse.get_path()
+	print("[лошадь] игрок %d сел верхом" % peer_id)
+
+
+## Во сколько раз быстрее верхом. Пешком — единица.
+func mount_speed_scale() -> float:
+	return HORSE.RIDE_SPEED_SCALE if riding() != null else 1.0
 
 
 # --- отряд и построения ---------------------------------------------------
@@ -1602,6 +1739,21 @@ func _show_refusal(reason: String) -> void:
 	refused.emit(reason)
 
 
+## Сказать игроку то, что не является отказом.
+##
+## «Запрягли меньше, чем просили» — не отказ: обоз уехал, просто медленнее. Но
+## сказать об этом надо, иначе человек считает, что его выбор упряжки не
+## работает, и повторяет его в пустоту. Идёт тем же каналом, что и отказы: в
+## интерфейсе для этого уже есть строка.
+func _show_note(text: String) -> void:
+	if ai_led:
+		return
+	if peer_id == Net.local_id():
+		refused.emit(text)
+	else:
+		_show_refusal.rpc_id(peer_id, text)
+
+
 # --- батраки ---------------------------------------------------------------
 #
 # Батраки принадлежат СТОРОНЕ, а не персонажу, поэтому заявка идёт от игрока, а
@@ -1689,6 +1841,45 @@ func request_hire_labourer() -> void:
 	var angle := float(have) * 0.9
 	var spot := base + Vector3(cos(angle) * (5.0 + float(have)), 0.5, sin(angle) * (5.0 + float(have)))
 	world.spawn_labourer(int(faction), spot, base, LABOURER.Role.LUMBERJACK)
+
+
+## Купить лошадь. Нужна конюшня — как мечнику нужна казарма.
+func ask_hire_horse() -> void:
+	if Net.hosting():
+		request_hire_horse()
+	else:
+		request_hire_horse.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_hire_horse() -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	var world := get_parent().get_parent()
+	if world.stable_of(int(faction)) == null:
+		_refuse("лошадей брать негде: сначала построй конюшню (клавиша %d)"
+			% (RES.Building.STABLE + 1))
+		return
+	var wallet: Node = world.treasury.of(int(faction))
+	if wallet == null:
+		return
+	if wallet.horses >= RES.HORSE_LIMIT:
+		_refuse("конюшня полна: больше %d лошадей не держат" % RES.HORSE_LIMIT)
+		return
+	if not stock.spend(RES.HORSE_COST):
+		_refuse("не хватает на лошадь — нужно %s%s"
+			% [RES.format_cost(RES.HORSE_COST),
+				RES.shortfall_hint(RES.HORSE_COST, stock)])
+		return
+	wallet.horses += 1
+	print("[конюшня] %s: куплена лошадь, всего %d"
+		% [FACTIONS.name_of(int(faction)), wallet.horses])
+
+
+## Сколько лошадей запрягать в следующий обоз. Меняется на ходу, от одной до
+## шести: это и есть выбор между «быстро» и «дёшево, зато много обозов».
+func ask_set_harness(size: int) -> void:
+	harness_size = clampi(size, CARAVAN.HORSES_MIN, CARAVAN.HORSES_MAX)
 
 
 func ask_set_labourer_role(role: int) -> void:

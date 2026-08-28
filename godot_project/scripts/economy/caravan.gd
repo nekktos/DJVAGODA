@@ -53,6 +53,11 @@ const DOCK_RANGE := 14.0
 const GUARD_LEASH := 16.0
 
 signal destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int)
+## Обоз доехал целым: столько лошадей вернулось в конюшню.
+##
+## Отдельно от `destroyed`: разбитый обоз лошадей не возвращает — их либо убили,
+## либо увели, и это решается на месте, а не при разгрузке.
+signal came_home(horses: int)
 
 ## Реплицируемое состояние.
 @export var sync_position: Vector3 = Vector3.ZERO
@@ -219,6 +224,10 @@ func _physics_process(delta: float) -> void:
 				state = State.FINISHED
 		State.FINISHED:
 			_release_escort()
+			# Лошади возвращаются в конюшню и снова считаются свободными: их можно
+			# запрячь в следующий обоз или оседлать.
+			if horses > 0:
+				came_home.emit(horses)
 			queue_free()
 
 	_lead_escort()

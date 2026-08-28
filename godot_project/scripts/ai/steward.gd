@@ -40,7 +40,18 @@ const BUILD_ORDER := [
 	RES.Building.STORAGE,
 	RES.Building.SWORD_BARRACKS,
 	RES.Building.ARCHER_BARRACKS,
+	# Конюшня последней: без неё обоз всё равно ходит парой лошадей, а вот без
+	# казарм сторона не воюет вовсе. Порядок здесь — это порядок нужды, а не
+	# порядок появления в коде.
+	RES.Building.STABLE,
 ]
+
+## Сколько лошадей ИИ держит в конюшне и сколько запрягает.
+##
+## Четыре и три: одна упряжка в пути, одна лошадь в запасе на замену убитой.
+## Больше держать незачем — золото нужнее на войско.
+const HORSES_WANTED := 4
+const AI_HARNESS := 3
 
 ## Сколько батраков ставить на стройку, пока она идёт. Двое дают тройную
 ## скорость и не оголяют добычу совсем.
@@ -85,8 +96,12 @@ func _process(delta: float) -> void:
 		_hire(faction)
 		_build(faction)
 		_assign_roles(faction)
-		_send_caravan(faction)
 		_train(faction)
+		# Лошадей покупаем ПОСЛЕ войска и ДО отправки обоза: сперва оборона,
+		# потом упряжка, и только потом сам рейс — иначе обоз уедет, а лошадь,
+		# на которую хватило золота, купится ему вслед и простоит без дела.
+		_buy_horses(faction)
+		_send_caravan(faction)
 
 
 ## Ведём хозяйство только за незанятую сторону, которая умеет строить. Сел
@@ -298,9 +313,41 @@ func _send_caravan(faction: int) -> void:
 		return
 	if world.mine == null:
 		return
+	# Запрягаем СВОИХ лошадей, а не берём их из воздуха. Иначе конюшня у ИИ
+	# декоративна: он строил бы её и не пользовался, а обозы ходили бы парой
+	# лошадей всегда, сколько ни покупай.
+	var wallet := _wallet(faction)
+	var free: int = wallet.horses_free() if wallet != null else 0
+	if free <= 0:
+		# Без лошадей обоз не поедет вовсе, и отправлять его значит поставить
+		# посреди карты неподвижную мишень с грузом.
+		return
+	var team: int = mini(AI_HARNESS, free)
+	if wallet != null:
+		wallet.horses_out += team
+
 	var route := PackedVector3Array([storage.global_position, world.mine.global_position])
-	var cart: Node = world.spawn_caravan(route, 0, faction)
+	var cart: Node = world.spawn_caravan(route, 0, faction, team)
 	_guard_caravan(faction, cart)
+
+
+## Купить лошадь, если есть конюшня и есть на что.
+##
+## Ставим ПОСЛЕ стройки и войска: лошадь ускоряет обоз, но не защищает базу, и
+## сторона, потратившая золото на конюшню вместо казармы, проигрывает первому
+## же набегу.
+func _buy_horses(faction: int) -> void:
+	var world := get_parent()
+	if world.stable_of(faction) == null:
+		return
+	var wallet := _wallet(faction)
+	if wallet == null or wallet.horses >= HORSES_WANTED:
+		return
+	if not wallet.spend(RES.HORSE_COST):
+		return
+	wallet.horses += 1
+	print("[конюшня] %s: куплена лошадь, всего %d"
+		% [FACTIONS.name_of(faction), wallet.horses])
 
 
 ## Приставить к повозке охрану.

@@ -33,6 +33,7 @@ extends Node
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
 ##   --netsoaktest   полторы минуты на двух пирах: сходятся ли их картины мира
 ##   --herotest      герой свободной стороны: есть, воюет, колдует, гибнет насовсем
+##   --horsetest     лошади, упряжка, остановка обоза и три способа его отъёма
 ##   --navtest       автопроверка путей по карте (headless)
 ##   --labtest       автопроверка батраков: наём, роли, добыча (headless)
 ##   --stewardtest   автопроверка хозяйства ИИ: наём, стройка, войско (headless)
@@ -59,6 +60,7 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const ORDERS := preload("res://scripts/orders.gd")
+const CARAVAN := preload("res://scripts/economy/caravan.gd")
 
 ## Сколько секунд держится объявление о результате.
 const ANNOUNCE_SECONDS := 7.0
@@ -216,15 +218,22 @@ func _action_prompt(me: Node3D) -> String:
 	var refusal: String = _refusal_line().strip_edges()
 	if refusal != "":
 		return refusal
+	var cart: Node3D = me.caravan_to_rob()
+	if cart != null and me.riding() == null:
+		return "E — выпрячь лошадей: %d" % int(cart.horses)
+	if me.riding() != null:
+		return "E — спешиться"
+	if me.horse_nearby() != null:
+		return "E — сесть на лошадь"
 	var pile: Node3D = me.loot_nearby()
 	if pile != null:
-		return "F — подобрать груз: %s" % pile.summary()
+		return "E — подобрать груз: %s" % pile.summary()
 	if me.at_trader():
-		return "F — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
+		return "E — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
 	if me.at_commander():
-		return "F — командир: %s" % _order_hint(me)
+		return "E — командир: %s" % _order_hint(me)
 	if me.at_workbench():
-		return "F — верстак: протезы и коляска"
+		return "E — верстак: протезы и коляска"
 	var truce: Node3D = me.truce_target()
 	if truce != null:
 		return "Y — перемирие с «%s» (сейчас %s)" % [
@@ -274,18 +283,18 @@ func _help_text() -> String:
 			"WASD — движение, Space — прыжок, ЛКМ — удар   |   ", "оружие: "))
 		if FACTIONS.has_abilities(me.faction):
 			lines.append("заклинания: 4 / 5 / 6")
-	lines.append("F — взаимодействие (груз, лавка, командир, верстак) · Y — перемирие")
+	lines.append("E — взаимодействие: груз, лавка, командир, верстак, лошадь · Y — перемирие")
 	lines.append("Tab — вид сверху · F10 — в меню · тильда — консоль")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
-	lines.append("1 / 2 / 3 — строить склад / казарму мечников / казарму лучников")
-	lines.append("B — нанять батрака · 4 / 5 / 6 / 7 — лесоруб / шахтёр / ополченец / строитель")
-	lines.append("T / Y — нанять мечника / лучника · F1-F4 — строй")
+	lines.append("1 / 2 / 3 / 4 — строить склад / казарму мечников / казарму лучников / конюшню")
+	lines.append("B — нанять батрака · 5 / 6 / 7 / 8 — лесоруб / шахтёр / ополченец / строитель")
+	lines.append("T / Y — нанять мечника / лучника · N — купить лошадь · F1-F4 — строй")
 	lines.append("G — отряд ко мне · H — отряд с обозом · ПКМ — отряду идти в точку")
-	lines.append("C — рисовать маршрут каравана, Enter — отправить")
+	lines.append("C — рисовать маршрут каравана, Enter — отправить · K — лошадей в упряжку")
 	lines.append("")
-	lines.append("[b]Клавиши B и 4-7 значат разное[/b] в бою и сверху. Режим — Tab.")
+	lines.append("[b]Клавиши B и цифры значат разное[/b] в бою и сверху. Режим — Tab.")
 	return "\n".join(lines)
 
 
@@ -314,6 +323,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if key == KEY_3:
 			_world.set_build_mode(true, RES.Building.ARCHER_BARRACKS)
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_4:
+			_world.set_build_mode(true, RES.Building.STABLE)
+			get_viewport().set_input_as_handled()
+			return
+		# N — купить лошадь, K — сколько запрягать в следующий обоз.
+		#
+		# Роли батраков переехали с 4-7 на 5-8: четвёрка теперь строит конюшню.
+		# Держать номер постройки и номер роли на одной клавише нельзя — человек
+		# и так путается, что значат цифры в двух режимах.
+		if key == KEY_N:
+			var chief_n: Node3D = _world.local_player()
+			if chief_n != null:
+				chief_n.ask_hire_horse()
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_K:
+			var chief_k: Node3D = _world.local_player()
+			if chief_k != null:
+				var next: int = chief_k.harness_size + 1
+				if next > CARAVAN.HORSES_MAX:
+					next = CARAVAN.HORSES_MIN
+				chief_k.ask_set_harness(next)
 			get_viewport().set_input_as_handled()
 			return
 		if key == KEY_C:
@@ -351,12 +384,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				boss.ask_hire_labourer()
 			get_viewport().set_input_as_handled()
 			return
-		# 4-7 переводят одного батрака на соответствующее дело. Выбора мышью в
+		# 5-8 переводят одного батрака на соответствующее дело. Выбора мышью в
 		# стратегическом режиме нет, и роль — это и есть «куда его отправить».
-		if key >= KEY_4 and key <= KEY_7:
+		#
+		# Раньше роли жили на 4-7. Сдвинулись, когда появилась конюшня: цифры
+		# 1-4 теперь целиком отданы постройкам, и держать на четвёрке сразу и
+		# постройку, и роль было бы жестоко — человек и так путается, что значат
+		# цифры в двух режимах.
+		if key >= KEY_5 and key <= KEY_8:
 			var chief: Node3D = _world.local_player()
 			if chief != null:
-				chief.ask_set_labourer_role(key - KEY_4)
+				chief.ask_set_labourer_role(key - KEY_5)
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -371,9 +409,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed(&"interact") and Net.active:
-		# У кучи груза F подбирает её, у верстака и лавки открывает панель.
+		# Одна клавиша на всё, с чем можно что-то сделать. Порядок разбора — по
+		# близости к руке: груз под ногами важнее лавки за спиной, а лошадь —
+		# важнее верстака, до которого ещё идти.
 		var me: Node3D = _world.local_player()
-		if me != null and me.loot_nearby() != null:
+		if me != null and me.riding() == null and me.caravan_to_rob() != null:
+			me.ask_rob_caravan()
+		elif me != null and (me.riding() != null or me.horse_nearby() != null):
+			me.ask_mount()
+		elif me != null and me.loot_nearby() != null:
 			me.ask_collect_loot()
 		elif me != null and (me.at_trader() or _trader.visible):
 			_toggle_trader()
@@ -568,6 +612,12 @@ func _apply_cmdline() -> void:
 		var hero_test: Node = preload("res://tools/hero_test.gd").new()
 		add_child(hero_test)
 		hero_test.start(_world)
+		needs_session = true
+
+	if args.has("--horsetest"):
+		var horse_test: Node = preload("res://tools/horse_test.gd").new()
+		add_child(horse_test)
+		horse_test.start(_world)
 		needs_session = true
 
 	if args.has("--warbandtest"):
@@ -839,6 +889,15 @@ func _crew_hint() -> String:
 	line += "   |   B — нанять (%s)" % RES.format_cost(RES.LABOURER_COST)
 	if carrying > 0:
 		line += "   несут: %d" % carrying
+
+	# Лошади — часть того же хозяйства, и держать их в другом углу экрана значит
+	# заставить человека искать. Показываем, только если конюшня уже есть:
+	# строка про ноль лошадей у того, кто про них не знает, — это шум.
+	var wallet: Node = _world.treasury.of(int(me.faction))
+	if wallet != null and (wallet.horses > 0 or _world.stable_of(int(me.faction)) != null):
+		line += "\nлошади: %d свободно из %d   в упряжку: %d (K)" % [
+			wallet.horses_free(), wallet.horses, int(me.harness_size)
+		]
 	return line
 
 

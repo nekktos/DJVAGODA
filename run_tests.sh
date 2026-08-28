@@ -59,6 +59,7 @@ SUITES=(
 	"soak:--soaktest::"
 	"netsoak:--netsoaktest:0,1:"
 	"hero:--herotest:2,1:"
+	"horse:--horsetest:0:"
 	"slice:--slicetest:0,1,2:"
 	"save:--savetest:2,1:--world=autotest-save"
 )

@@ -30,6 +30,7 @@ func _ready() -> void:
 		# у кого, его ещё надо построить. Значит и стартовые ресурсы злодея под
 		# риском, пока он не отстроится — это давление в нужную сторону.
 		wallet.carried.amounts = PackedInt32Array(FACTIONS.STARTING_RESOURCES[faction])
+		wallet.horses = int(FACTIONS.STARTING_HORSES.get(faction, 0))
 		wallet.carried.capacity = FACTIONS.starting_capacity(faction)
 		# Склад начинается с нуля вместимости: без постройки безопасного запаса
 		# не бывает вовсе (GDD раздел 4.1).
