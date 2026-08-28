@@ -845,6 +845,18 @@ func barracks_of(faction: int, kind: int = RES.Building.SWORD_BARRACKS) -> Node3
 	return null
 
 
+## Записать игроку трофей: он кому-то что-то отрубил.
+##
+## Ищем по peer id, потому что рубит КОНКРЕТНЫЙ человек, а не сторона: некротический
+## протез — личная добыча, и делить её на всю сторону было бы странно.
+func award_trophy(attacker_id: int, kind: int) -> void:
+	if not Net.hosting():
+		return
+	var node := _players.get_node_or_null(str(attacker_id))
+	if node != null and node.has_method("note_trophy"):
+		node.note_trophy(kind)
+
+
 ## Готовая конюшня стороны. Без неё лошадей брать негде.
 func stable_of(faction: int) -> Node3D:
 	return barracks_of(faction, RES.Building.STABLE)

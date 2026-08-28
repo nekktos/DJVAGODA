@@ -54,6 +54,7 @@ const STEAM_HINT := "Steam: хост сообщает свой Steam ID, вто�
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const BODY := preload("res://scripts/combat/body.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
@@ -104,6 +105,8 @@ func _ready() -> void:
 	bench.get_node("Wooden").pressed.connect(_on_bench_prosthetic.bind(1))
 	bench.get_node("Iron").pressed.connect(_on_bench_prosthetic.bind(2))
 	bench.get_node("Master").pressed.connect(_on_bench_prosthetic.bind(3))
+	bench.get_node("Necrotic").pressed.connect(_on_bench_prosthetic.bind(BODY.NECROTIC_TIER))
+	bench.get_node("Eye").pressed.connect(_on_bench_eye)
 	bench.get_node("Chair").pressed.connect(_on_bench_chair)
 	bench.get_node("Close").pressed.connect(_close_bench)
 
@@ -199,6 +202,11 @@ func _refresh_hud() -> void:
 		return
 
 	var note := "%s · бинтов %d" % [WEAPONS.NAMES[me.sync_weapon], me.body.bandages]
+	# Трофеи показываем только когда они есть: пустая строчка «рук 0, ног 0»
+	# висела бы у всех и всегда, а нужна она одному злодею с топором.
+	var haul: int = me.trophies[0] + me.trophies[1] + me.trophies[2]
+	if haul > 0:
+		note += " · трофеи %d/%d/%d" % [me.trophies[0], me.trophies[1], me.trophies[2]]
 	var wounds: String = me.body.summary()
 	var curses: String = _curse_hint(me).strip_edges()
 	if curses != "":
@@ -294,11 +302,14 @@ func _help_text() -> String:
 	lines.append("G — отряд ко мне · H — отряд с обозом · ПКМ — отряду идти в точку")
 	lines.append("C — рисовать маршрут каравана, Enter — отправить · K — лошадей в упряжку")
 	lines.append("")
+	lines.append("[b]Увечья и протезы[/b]")
+	lines.append("Оторванную конечность заменяет протез: E у верстака.")
+	lines.append("Некротический протез не покупается — он крафтится из чужих конечностей:")
+	lines.append("10 отрубленных рук на руку, 10 ног на ногу, 10 глаз на глаз.")
+	lines.append("Счёт трофеев (руки/ноги/глаза) виден слева внизу, когда он не пуст.")
+	lines.append("")
 	lines.append("[b]Клавиши B и цифры значат разное[/b] в бою и сверху. Режим — Tab.")
 	return "\n".join(lines)
-
-
-	_update_blindness()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -813,6 +824,21 @@ func _toggle_bench() -> void:
 		var cost: Array = RES.PROSTHETIC_COST[tier]
 		btn.text = "%s — %s" % [titles[tier], RES.format_cost(cost)]
 		btn.disabled = not me.stock.can_afford(cost) or (tier > 1 and not at_bench)
+
+	# Некротический не покупается: цена ему — чужие конечности, и на кнопке
+	# должно быть видно, сколько своих трофеев уже набрано.
+	var arms: int = me.trophies[me.Trophy.ARMS]
+	var legs: int = me.trophies[me.Trophy.LEGS]
+	var eyes: int = me.trophies[me.Trophy.EYES]
+	var necro: Button = box.get_node("Necrotic")
+	necro.text = "Некротический — %d чужих рук или ног (есть %d/%d)" % [
+		BODY.NECROTIC_PRICE, arms, legs
+	]
+	necro.disabled = not at_bench or (arms < BODY.NECROTIC_PRICE and legs < BODY.NECROTIC_PRICE)
+	var eye_btn: Button = box.get_node("Eye")
+	eye_btn.text = "Некротический глаз — %d чужих глаз (есть %d)" % [BODY.NECROTIC_PRICE, eyes]
+	eye_btn.disabled = (not at_bench or eyes < BODY.NECROTIC_PRICE
+		or me.body.eyes_missing() <= 0)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
@@ -826,6 +852,13 @@ func _on_bench_prosthetic(tier: int) -> void:
 	var me: Node3D = _world.local_player()
 	if me != null:
 		me.ask_prosthetic(tier)
+	_close_bench()
+
+
+func _on_bench_eye() -> void:
+	var me: Node3D = _world.local_player()
+	if me != null:
+		me.ask_eye()
 	_close_bench()
 
 

@@ -13,6 +13,13 @@ extends CharacterBody3D
 
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+const BODY := preload("res://scripts/combat/body.gd")
+## Виды трофеев — те же цифры, что в `player.gd::Trophy`. Держим их числами, а
+## не ссылкой на скрипт игрока: боец о игроке знать не должен.
+const TROPHY_ARMS := 0
+const TROPHY_LEGS := 1
+const TROPHY_EYES := 2
+const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
@@ -180,6 +187,30 @@ var leash := 0.0
 ## Зверь ли это. Приезжает в пакете спавна и потому одинаков на всех пирах —
 ## реплицировать отдельно не нужно, как owner_id и slot.
 var is_beast := false
+
+## Оторванные конечности бойца. Биты те же, что у персонажа (`body.gd::Limb`):
+## одна система увечий на всех, и цифры в ней значат одно и то же.
+##
+## Раньше увечья были только у персонажей: бойцу можно было отрубить руку, и
+## ничего не происходило — он дрался дальше целым. Разница между «людьми» и
+## «пешками» тут не задумана: рубят всех одинаково, и выглядеть это должно
+## одинаково.
+@export var severed := 0
+
+## Урон, накопленный по зонам. Не реплицируется: считает его хост, а видно
+## только результат — оторванную конечность.
+var _zone_damage := {}
+
+## Сколько глаз выбито. Реплицируется: поздний клиент обязан увидеть кривого
+## кривым, как и безрукого безруким.
+@export var eyes_lost := 0
+
+## Урон по голове, накопленный до следующего выбитого глаза. Только у хоста.
+var _head_damage := 0.0
+var _shown_eyes := 0
+## Что уже спрятано на этом пире. Нужно клиенту: маска приходит числом, а меши
+## прячутся руками.
+var _shown_severed := 0
 
 ## Распорядитель стражи: боец с многократным запасом, см. CHAMPION_*.
 var is_champion := false
@@ -403,6 +434,14 @@ func _physics_process(delta: float) -> void:
 		global_position = global_position.lerp(sync_position, t)
 		rotation.y = lerp_angle(rotation.y, sync_yaw, t)
 		_play("walk" if sync_moving else "idle")
+		# Маска увечий приходит репликацией, а прячет конечности локальный код.
+		# Поздний клиент обязан увидеть безрукого безруким, и одного вызова при
+		# отрыве для этого мало: его в тот момент могло не быть в сессии.
+		if severed != _shown_severed:
+			_shown_severed = severed
+			_apply_severed()
+		if eyes_lost != _shown_eyes:
+			_apply_eyes()
 		return
 
 	if not _alive:
@@ -660,11 +699,14 @@ func _engage_range() -> float:
 
 
 func _move_speed() -> float:
+	# Раны замедляют и бойца. Без этого отрубленная нога — украшение: боец без
+	# ноги бежал наравне с целым, и рубить конечности не имело смысла ни для
+	# кого, кроме зрелища.
 	if is_beast:
-		return BEAST_SPEED
+		return BEAST_SPEED * wound_speed_scale()
 	if is_champion:
-		return CHAMPION_SPEED
-	return BASE_SPEED * FORMATIONS.speed_scale(_formation())
+		return CHAMPION_SPEED * wound_speed_scale()
+	return BASE_SPEED * FORMATIONS.speed_scale(_formation()) * wound_speed_scale()
 
 
 func _strike_damage() -> float:
@@ -837,6 +879,7 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 	var scaled: float = amount * FORMATIONS.damage_scale(_formation(), aoe)
 	health = maxf(0.0, health - scaled)
 	show_hit.rpc(point, dir, scaled)
+	_note_zone_damage(_zone, scaled, point, dir, attacker_id)
 	if health > 0.0:
 		return
 	_alive = false
@@ -852,7 +895,131 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 		# приказ «убить бойцов злодея» не засчитывал убитых из его гарнизона.
 		world.report_unit_kill(attacker_id, faction)
 	died_on_server.emit(self)
+	# Труп остаётся лежать — тот же, что у персонажа, и тем же кодом. Боец,
+	# который просто исчезает, стирает след боя: по полю после схватки не видно
+	# ничего, и понять, что здесь было, нельзя.
+	if world != null and world.has_method("place_corpse"):
+		world.place_corpse(global_position, rotation.y, slot, severed)
 	queue_free()
+
+
+## Копим урон по зонам и отрываем конечность, когда её запас исчерпан.
+##
+## Числа берём у персонажа (`body.gd`): один и тот же удар должен отрывать руку
+## одинаково и человеку, и бойцу. Своя таблица здесь означала бы, что игрок
+## расчленяет пешек легче или тяжелее, чем игроков, и никто не смог бы сказать,
+## почему.
+func _note_zone_damage(zone: String, amount: float, point: Vector3, dir: Vector3, attacker_id := 0) -> void:
+	if not Net.hosting() or zone == "" or zone == "torso":
+		return
+	if zone == "head":
+		# Глаз выбивают тем же порогом, что и человеку. Пешка, которой можно
+		# отрубить руку, но нельзя выбить глаз, была бы наполовину живой.
+		_head_damage += amount
+		while _head_damage >= BODY.EYE_THRESHOLD and eyes_lost < 2:
+			_head_damage -= BODY.EYE_THRESHOLD
+			eyes_lost += 1
+			lose_eye.rpc(point, dir)
+			_award_trophy(attacker_id, TROPHY_EYES)
+		return
+	var limb := BODY.LIMB_KEYS.find(zone)
+	if limb < 0:
+		return
+	if severed & (1 << limb) != 0:
+		return
+	_zone_damage[zone] = float(_zone_damage.get(zone, 0.0)) + amount
+	if float(_zone_damage[zone]) < BODY.LIMB_DURABILITY:
+		return
+	severed |= (1 << limb)
+	tear_off.rpc(limb, point, dir)
+	var arm := limb == BODY.Limb.ARM_L or limb == BODY.Limb.ARM_R
+	_award_trophy(attacker_id, TROPHY_ARMS if arm else TROPHY_LEGS)
+
+
+## Записать отрубленное на счёт нападавшего: из этого крафтится некротический
+## протез. Рубить пешек должно засчитываться наравне с людьми — иначе выгодно
+## охотиться только на игроков, а войско обходить стороной.
+func _award_trophy(attacker_id: int, kind: int) -> void:
+	if attacker_id <= 0:
+		return
+	var world := get_parent().get_parent()
+	if world != null and world.has_method("award_trophy"):
+		world.award_trophy(attacker_id, kind)
+
+
+## Выбить глаз у ВСЕХ пиров: тёмная повязка на лице и брызги.
+@rpc("authority", "call_local", "reliable")
+func lose_eye(point: Vector3, dir: Vector3) -> void:
+	EFFECTS.blood(get_parent().get_parent(), point, dir, 30.0)
+	_apply_eyes()
+
+
+## Показать выбитые глаза. Модель Kenney рисует глаза текстурой, менять её на
+## лету дорого, поэтому кладём поверх лица тёмные накладки — по одной на глаз.
+func _apply_eyes() -> void:
+	var head: MeshInstance3D = _parts.get("head", null)
+	if head == null:
+		return
+	while _shown_eyes < eyes_lost and _shown_eyes < 2:
+		var size: Vector3 = head.get_aabb().size
+		var patch := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(size.x * 0.26, size.y * 0.16, 0.02)
+		patch.mesh = box
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.12, 0.03, 0.03)
+		patch.material_override = mat
+		# Лицо смотрит в -Z: модели развёрнуты так же, как и весь боец.
+		var side := -1.0 if _shown_eyes == 0 else 1.0
+		patch.position = Vector3(size.x * 0.22 * side, size.y * 0.62, -size.z * 0.5 - 0.01)
+		head.add_child(patch)
+		_shown_eyes += 1
+
+
+## Оторвать конечность у ВСЕХ пиров: прячем меш и роняем его на землю.
+##
+## Своей репликации у этого нет и быть не может: меш прячется локально, а
+## `severed` реплицируется отдельно — но клиент, подключившийся позже, увидит
+## только маску, и по ней спрячет то же самое (см. `_apply_severed`).
+@rpc("authority", "call_local", "reliable")
+func tear_off(limb: int, point: Vector3, dir: Vector3) -> void:
+	_apply_severed()
+	var key: String = BODY.LIMB_KEYS[limb] if limb < BODY.LIMB_KEYS.size() else ""
+	var mesh: MeshInstance3D = _parts.get(key, null)
+	if mesh == null:
+		return
+	var root: Node = get_parent().get_parent()
+	EFFECTS.blood(root, point, dir, 60.0)
+	var piece: Node3D = SEVERED_LIMB.instantiate()
+	root.add_child(piece)
+	piece.setup(mesh.mesh, mesh.global_transform, MODEL_SCALE)
+	mesh.visible = false
+
+
+## Спрятать то, что оторвано. Зовём и при получении маски по сети: поздний
+## клиент обязан увидеть безрукого безруким.
+func _apply_severed() -> void:
+	_apply_eyes()
+	for limb in BODY.LIMB_KEYS.size():
+		if severed & (1 << limb) == 0:
+			continue
+		var mesh: MeshInstance3D = _parts.get(BODY.LIMB_KEYS[limb], null)
+		if mesh != null:
+			mesh.visible = false
+
+
+## Насколько боец медленнее из-за ран. Без ноги — ползёт, как и персонаж.
+func wound_speed_scale() -> float:
+	var legs := 0
+	if severed & (1 << BODY.Limb.LEG_L) != 0:
+		legs += 1
+	if severed & (1 << BODY.Limb.LEG_R) != 0:
+		legs += 1
+	if legs >= 2:
+		return BODY.CRAWL_SPEED_BOTH / BASE_SPEED
+	if legs == 1:
+		return BODY.CRAWL_SPEED_ONE / BASE_SPEED
+	return 1.0
 
 
 ## Гибель бойца слышна у всех. Отдельное оповещение нужно потому, что своей

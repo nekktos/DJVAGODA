@@ -65,6 +65,7 @@ const REMOTE_LERP := 15.0
 ## иначе луч стрелы утыкается в капсулу, у которой нет зоны попадания, и урон
 ## теряется. Снаряды ищут слой мира и слой зон, а капсулы не видят вовсе.
 const WORLD_LAYER := 1
+const BODY := preload("res://scripts/combat/body.gd")
 const BODY_LAYER := 2
 const HITBOX_LAYER := 4
 
@@ -1022,8 +1023,30 @@ func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, 
 		# парализованного, пусть и грубо.
 		sync_paralysis = 0.0
 	# Судьбу конечности считает тело — отдельно от общего здоровья.
+	#
+	# Трофей записываем ЗДЕСЬ, а не в теле: тело не знает, кто ударил, и знать не
+	# должно — оно про состояние своего хозяина. Сравниваем состояние до и после
+	# удара: выросла маска — значит этим ударом что-то и оторвало.
+	var mask_before: int = body.severed_mask
+	var eyes_before: int = body.eyes_lost
 	body.register_hit(zone, dealt)
+	_award_trophies(attacker_id, mask_before, eyes_before)
 	show_hit.rpc(point, dir, dealt, zone)
+
+
+## Записать нападавшему то, что он отрубил этим ударом.
+func _award_trophies(attacker_id: int, mask_before: int, eyes_before: int) -> void:
+	var world := get_parent().get_parent()
+	if world == null or not world.has_method("award_trophy"):
+		return
+	var newly: int = body.severed_mask & ~mask_before
+	for limb in BODY.LIMB_KEYS.size():
+		if newly & (1 << limb) == 0:
+			continue
+		var kind := Trophy.ARMS if limb == BODY.Limb.ARM_L or limb == BODY.Limb.ARM_R else Trophy.LEGS
+		world.award_trophy(attacker_id, kind)
+	for i in (body.eyes_lost - eyes_before):
+		world.award_trophy(attacker_id, Trophy.EYES)
 
 
 ## Прислать может только хост — проверяем отправителя, а не полагаемся на
@@ -1195,7 +1218,8 @@ func request_prosthetic(new_tier: int) -> void:
 		return
 	if not health.alive:
 		return
-	if not RES.PROSTHETIC_COST.has(new_tier):
+	# Некротического в прайсе нет и быть не может: его не покупают.
+	if new_tier != BODY.NECROTIC_TIER and not RES.PROSTHETIC_COST.has(new_tier):
 		return
 	# Деревянный протез крафтится ГДЕ УГОДНО: он и по GDD «крафтится сам» из
 	# древесины. Верстак нужен только для кованого и мастерского.
@@ -1214,12 +1238,89 @@ func request_prosthetic(new_tier: int) -> void:
 	if targets.is_empty():
 		return
 
+	# Некротический покупается НЕ ресурсами, а чужими конечностями. Это и есть
+	# его смысл: за золото такого не купить ни у кого, только нарубить самому.
+	if new_tier == BODY.NECROTIC_TIER:
+		for limb in targets:
+			var kind := _trophy_kind(limb)
+			if trophies[kind] < BODY.NECROTIC_PRICE:
+				_refuse("на некротический протез нужно %d чужих %s, есть %d"
+					% [BODY.NECROTIC_PRICE, _trophy_name(kind), trophies[kind]])
+				return
+		for limb in targets:
+			var kind := _trophy_kind(limb)
+			trophies[kind] -= BODY.NECROTIC_PRICE
+			body.grant_prosthetic(limb, new_tier)
+		return
+
 	var cost: Array = RES.PROSTHETIC_COST[new_tier]
 	if not stock.spend(cost):
 		_refuse("не хватает ресурсов на протез")
 		return
 	for limb in targets:
 		body.grant_prosthetic(limb, new_tier)
+
+
+func ask_eye() -> void:
+	if Net.hosting():
+		request_eye()
+	else:
+		request_eye.rpc_id(1)
+
+
+## Вставить себе чужой глаз. Цена та же, что у конечности, и платится трофеями.
+##
+## Отдельно от `request_prosthetic` потому, что глаз — не конечность: у него нет
+## уровней, ставится он по одному, и «поставить на всё сразу» для него не значит
+## ничего.
+@rpc("any_peer", "reliable")
+func request_eye() -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	if not at_workbench():
+		_refuse("глаз вставляют только у верстака")
+		return
+	if body.eyes_missing() <= 0:
+		return
+	if trophies[Trophy.EYES] < BODY.NECROTIC_PRICE:
+		_refuse("на некротический глаз нужно %d чужих глаз, есть %d"
+			% [BODY.NECROTIC_PRICE, trophies[Trophy.EYES]])
+		return
+	if body.grant_eye():
+		trophies[Trophy.EYES] -= BODY.NECROTIC_PRICE
+
+
+## Трофеи: чужие конечности, отрубленные ЛИЧНО. Руки, ноги, глаза — по счётчику.
+##
+## Считаем не «сколько валяется на земле», а «сколько отрубил ты». Подбирать их
+## по одной с поля боя выглядит красиво ровно до первой схватки на два десятка
+## человек, после которой поле усеяно кусками и игрок полчаса ходит и кликает.
+## А как цена за лучший протез счёт работает точно так же: десять ног — нога.
+@export var trophies: PackedInt32Array = PackedInt32Array([0, 0, 0])
+
+## Виды трофеев: руки, ноги, глаза.
+enum Trophy { ARMS, LEGS, EYES }
+
+
+func _trophy_kind(limb: int) -> int:
+	return Trophy.ARMS if limb == BODY.Limb.ARM_L or limb == BODY.Limb.ARM_R else Trophy.LEGS
+
+
+func _trophy_name(kind: int) -> String:
+	match kind:
+		Trophy.ARMS: return "рук"
+		Trophy.LEGS: return "ног"
+		_: return "глаз"
+
+
+## Записать трофей: этот игрок кому-то что-то отрубил.
+##
+## Зовётся и с персонажа, и с бойца — рубят всех одинаково, и считаться должно
+## одинаково. Иначе выгоднее было бы охотиться на людей, а пешек обходить.
+func note_trophy(kind: int) -> void:
+	if not Net.hosting() or kind < 0 or kind >= trophies.size():
+		return
+	trophies[kind] += 1
 
 
 @rpc("any_peer", "reliable")

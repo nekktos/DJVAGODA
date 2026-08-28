@@ -92,6 +92,12 @@ properties/21/replication_mode = 1
 properties/22/path = NodePath(".:sync_blind")
 properties/22/spawn = true
 properties/22/replication_mode = 1
+properties/23/path = NodePath("Body:eye_implants")
+properties/23/spawn = true
+properties/23/replication_mode = 1
+properties/24/path = NodePath(".:trophies")
+properties/24/spawn = true
+properties/24/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

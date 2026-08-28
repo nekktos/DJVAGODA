@@ -87,9 +87,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -230.0
-offset_top = -150.0
+offset_top = -195.0
 offset_right = 230.0
-offset_bottom = 150.0
+offset_bottom = 195.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -115,6 +115,14 @@ text = "Кованый протез (купить)"
 [node name="Master" type="Button" parent="UI/Bench/Panel/VBox"]
 custom_minimum_size = Vector2(0, 40)
 text = "Мастерский протез (купить дорого)"
+
+[node name="Necrotic" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Некротический протез"
+
+[node name="Eye" type="Button" parent="UI/Bench/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Некротический глаз"
 
 [node name="Chair" type="Button" parent="UI/Bench/Panel/VBox"]
 custom_minimum_size = Vector2(0, 40)

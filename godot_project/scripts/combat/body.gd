@@ -42,14 +42,29 @@ const WHEELCHAIR_SPEED := 4.5
 ##     ползания и периодически травмирует
 ##   2 кованый    — примерно как живая конечность
 ##   3 мастерский — ЛУЧШЕ живой: выше прыжок, быстрее бег
-const TIER_NAMES := ["нет", "деревянный", "кованый", "мастерский"]
-const TIER_SPEED := [0.0, 0.30, 1.0, 1.25]
-const TIER_JUMP := [0.0, 0.55, 1.0, 1.35]
+##   4 некротический — ЛУЧШИЙ, и платят за него не золотом.
+##
+## Некротический протез собирают из чужих конечностей: десять отрубленных ног на
+## одну ногу, столько же рук на руку, глаз на глаз. Купить его нельзя ни за
+## какие деньги — только нарубить, и это ровно та цена, которая отличает злодея
+## от покупателя в лавке. Рейтинг 21+ здесь не для вида (GDD, разделы 3-4).
+##
+## Он быстрее мастерского и бьёт чаще, но мертвечина не приживается: протез
+## медленно травит хозяина. Это не штраф ради равновесия, а то же самое, чем
+## плох деревянный, только с другой стороны — у лучшего протеза своя цена.
+const TIER_NAMES := ["нет", "деревянный", "кованый", "мастерский", "некротический"]
+const TIER_SPEED := [0.0, 0.30, 1.0, 1.25, 1.45]
+const TIER_JUMP := [0.0, 0.55, 1.0, 1.35, 1.50]
 ## Периодический урон от плохо подогнанного протеза: натирает и травмирует.
-const TIER_CHAFE_DAMAGE := [0.0, 1.5, 0.0, 0.0]
+## У некротического — не натирает, а гниёт, и потому он тоже в этом списке.
+const TIER_CHAFE_DAMAGE := [0.0, 1.5, 0.0, 0.0, 1.0]
 const CHAFE_INTERVAL := 4.0
-## Множитель кулдауна атак: мастерская рука бьёт быстрее.
-const TIER_ATTACK_SPEED := [1.0, 1.0, 1.0, 0.75]
+## Множитель кулдауна атак: мастерская рука бьёт быстрее, некротическая ещё чаще.
+const TIER_ATTACK_SPEED := [1.0, 1.0, 1.0, 0.75, 0.62]
+
+## Сколько чужих конечностей идёт на один некротический протез.
+const NECROTIC_TIER := 4
+const NECROTIC_PRICE := 10
 
 ## Конечность оторвана (на любом пире, после репликации).
 signal limb_severed(limb: int)
@@ -62,6 +77,11 @@ signal state_changed
 @export var severed_mask: int = 0
 @export var prosthetics: PackedByteArray = PackedByteArray([0, 0, 0, 0])
 @export var eyes_lost: int = 0
+## Сколько выбитых глаз заменено чужими. Живой глаз не отрастает, а деревянного
+## не бывает: вернуть себе зрение можно только некротическим глазом, и цена ему
+## та же — десять чужих. Считаем отдельно от протезов конечностей: у глаза нет
+## уровней, он либо есть, либо его нет.
+@export var eye_implants: int = 0
 @export var bleeding: bool = false
 @export var bandages: int = START_BANDAGES
 @export var in_wheelchair: bool = false
@@ -184,13 +204,27 @@ func attack_speed_scale() -> float:
 	var best := 1.0
 	for limb in [Limb.ARM_L, Limb.ARM_R]:
 		if is_severed(limb):
-			best = minf(best, TIER_ATTACK_SPEED[clampi(tier(limb), 0, 3)])
+			best = minf(best, TIER_ATTACK_SPEED[clampi(tier(limb), 0, TIER_NAMES.size() - 1)])
 	return best
 
 
 ## Доля экрана, закрытая слепотой: 0, половина или весь.
 func blindness() -> float:
-	return clampf(float(eyes_lost) * 0.5, 0.0, 1.0)
+	return clampf(float(maxi(0, eyes_lost - eye_implants)) * 0.5, 0.0, 1.0)
+
+
+## Сколько глаз ещё можно заменить.
+func eyes_missing() -> int:
+	return maxi(0, eyes_lost - eye_implants)
+
+
+## Вставить чужой глаз. Только на хосте. Платит за него игрок трофеями.
+func grant_eye() -> bool:
+	if not Net.hosting() or eyes_missing() <= 0:
+		return false
+	eye_implants += 1
+	state_changed.emit()
+	return true
 
 
 ## Человекочитаемая сводка для HUD.
@@ -202,8 +236,10 @@ func summary() -> String:
 		if is_severed(i):
 			var t := tier(i)
 			parts.append("%s: %s" % [LIMB_NAMES[i], TIER_NAMES[t] if t > 0 else "оторвана"])
-	if eyes_lost > 0:
-		parts.append("глаз потеряно: %d" % eyes_lost)
+	if eyes_missing() > 0:
+		parts.append("глаз потеряно: %d" % eyes_missing())
+	if eye_implants > 0:
+		parts.append("некротических глаз: %d" % eye_implants)
 	if in_wheelchair:
 		parts.append("в коляске")
 	if bleeding:
@@ -269,7 +305,7 @@ func _server_tick(delta: float) -> void:
 	var chafe := 0.0
 	for limb in LIMB_KEYS.size():
 		if is_severed(limb):
-			chafe += TIER_CHAFE_DAMAGE[clampi(tier(limb), 0, 3)]
+			chafe += TIER_CHAFE_DAMAGE[clampi(tier(limb), 0, TIER_NAMES.size() - 1)]
 	if chafe <= 0.0:
 		_chafe_timer = 0.0
 		return
@@ -335,6 +371,7 @@ func reset() -> void:
 	severed_mask = 0
 	prosthetics = PackedByteArray([0, 0, 0, 0])
 	eyes_lost = 0
+	eye_implants = 0
 	bleeding = false
 	in_wheelchair = false
 	bandages = START_BANDAGES

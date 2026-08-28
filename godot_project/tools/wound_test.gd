@@ -12,13 +12,14 @@ extends "res://tools/test_base.gd"
 ##
 
 const BODY := preload("res://scripts/combat/body.gd")
+const UNIT_MAX_HEALTH := 90.0
 
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "раны"
-	expected_host = 23
+	expected_host = 34
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -49,6 +50,8 @@ func _run() -> void:
 	await _test_eyes(me, body, health)
 	await _test_prosthetics(me, body, health)
 	await _test_wheelchair(me, body, health)
+	await _test_trophies(me, body, health)
+	await _test_necrotic(me, body, health)
 
 	await _showcase(me, body, health)
 	finish()
@@ -222,6 +225,129 @@ func _test_wheelchair(me: Node3D, body: Node, health: Node) -> void:
 
 	await _reset(me, body, health)
 	check(not body.set_wheelchair(true), "со здоровыми ногами коляска не нужна", "отказано")
+
+
+## Трофеи: отрубленное у ЧУЖИХ идёт на счёт того, кто рубил.
+##
+## Проверяем на пешке, а не на втором игроке, потому что именно пешки — основной
+## источник конечностей: чтобы набрать десяток, нужна война, а не дуэль.
+func _test_trophies(me: Node3D, body: Node, health: Node) -> void:
+	await _reset(me, body, health)
+	me.trophies = PackedInt32Array([0, 0, 0])
+
+	var victim: Node3D = _world.spawn_unit(0, 0, me.global_position + Vector3(6.0, 0.0, 0.0))
+	if victim == null:
+		fail("пешку для проверки трофеев не заспавнить")
+		return
+	await get_tree().process_frame
+
+	# Рубим руку: урона отмеряем с запасом, порог тот же, что у человека.
+	var hits := 0
+	while victim.severed == 0 and hits < 30:
+		victim.health = UNIT_MAX_HEALTH
+		victim.take_damage(10.0, int(me.peer_id), "arm_r", victim.global_position, Vector3.FORWARD)
+		hits += 1
+		await get_tree().process_frame
+	check(victim.severed != 0, "пешке отрывает руку тем же порогом, что и человеку",
+		"ударов %d, маска %d" % [hits, victim.severed])
+	check(me.trophies[me.Trophy.ARMS] == 1,
+		"отрубленная рука пешки записана нападавшему в трофеи",
+		"рук в трофеях: %d" % me.trophies[me.Trophy.ARMS])
+
+	# Голова: тот же порог, что у человека, и глаз тоже идёт в трофеи.
+	var eyes := 0
+	while victim.eyes_lost == 0 and eyes < 30:
+		victim.health = UNIT_MAX_HEALTH
+		victim.take_damage(10.0, int(me.peer_id), "head", victim.global_position, Vector3.FORWARD)
+		eyes += 1
+		await get_tree().process_frame
+	check(victim.eyes_lost == 1, "пешке выбивают глаз", "глаз потеряно %d" % victim.eyes_lost)
+	check(me.trophies[me.Trophy.EYES] == 1, "выбитый глаз пешки записан в трофеи",
+		"глаз в трофеях: %d" % me.trophies[me.Trophy.EYES])
+
+	# Труп остаётся лежать: по полю после схватки должно быть видно, что тут было.
+	var corpses_before: int = _corpse_count()
+	victim.health = 1.0
+	victim.take_damage(999.0, int(me.peer_id), "torso", victim.global_position, Vector3.FORWARD)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(_corpse_count() > corpses_before, "труп пешки остаётся на земле",
+		"трупов было %d, стало %d" % [corpses_before, _corpse_count()])
+
+
+func _corpse_count() -> int:
+	var n := 0
+	for child in _world.get_node("Spawned").get_children():
+		if child.get_script() != null and str(child.get_script().resource_path).ends_with("corpse.gd"):
+			n += 1
+	return n
+
+
+## Некротический протез: платят за него чужими конечностями, а не золотом.
+func _test_necrotic(me: Node3D, body: Node, health: Node) -> void:
+	await _reset(me, body, health)
+	# Ставится он у верстака, как кованый и мастерский: крафтить чужую ногу в
+	# поле нечем. Значит и проверять надо стоя у верстака.
+	var home: Vector3 = me.global_position
+	me.global_position = _world.workbench_position() + Vector3(0.0, 1.0, 0.0)
+	await get_tree().process_frame
+	check(me.at_workbench(), "проверка идёт у верстака", "иначе отказ будет по адресу")
+	await _sever(body, health, "leg_l")
+	await _sever(body, health, "leg_r")
+	body.bleeding = false
+	health.revive()
+
+	# Пустой карман: отказ, а не бесплатный протез.
+	me.trophies = PackedInt32Array([0, 0, 0])
+	me.request_prosthetic(BODY.NECROTIC_TIER)
+	check(body.tier(BODY.Limb.LEG_L) == 0,
+		"без трофеев некротический протез не ставится",
+		"уровень протеза %d" % body.tier(BODY.Limb.LEG_L))
+
+	# Десять ног на ногу. Ног оторвано две — значит и платить надо дважды.
+	me.trophies = PackedInt32Array([0, BODY.NECROTIC_PRICE * 2, 0])
+	me.request_prosthetic(BODY.NECROTIC_TIER)
+	check(body.tier(BODY.Limb.LEG_L) == BODY.NECROTIC_TIER
+			and body.tier(BODY.Limb.LEG_R) == BODY.NECROTIC_TIER,
+		"десять чужих ног — некротическая нога",
+		"уровни %d и %d" % [body.tier(BODY.Limb.LEG_L), body.tier(BODY.Limb.LEG_R)])
+	check(me.trophies[me.Trophy.LEGS] == 0, "трофеи списаны по цене за конечность",
+		"осталось ног: %d" % me.trophies[me.Trophy.LEGS])
+
+	var necro: float = body.move_speed(6.0)
+	body.grant_prosthetic(BODY.Limb.LEG_L, 3)
+	body.grant_prosthetic(BODY.Limb.LEG_R, 3)
+	var master: float = body.move_speed(6.0)
+	check(necro > master, "некротическая нога быстрее мастерской",
+		"некроз %.2f, мастерская %.2f" % [necro, master])
+
+	# Мертвечина не приживается: лучший протез травит хозяина.
+	body.grant_prosthetic(BODY.Limb.LEG_L, BODY.NECROTIC_TIER)
+	body.grant_prosthetic(BODY.Limb.LEG_R, BODY.NECROTIC_TIER)
+	body.bleeding = false
+	health.revive()
+	var before: float = health.current
+	await get_tree().create_timer(BODY.CHAFE_INTERVAL + 1.0).timeout
+	check(health.current < before, "некротический протез медленно травит хозяина",
+		"здоровье %.1f -> %.1f" % [before, health.current])
+
+	# Глаз: возвращает зрение и стоит тех же десяти.
+	await _reset(me, body, health)
+	health.revive()
+	body.register_hit("head", BODY.EYE_THRESHOLD)
+	me.trophies = PackedInt32Array([0, 0, BODY.NECROTIC_PRICE])
+	me.request_eye()
+	check(body.eye_implants == 1 and is_equal_approx(body.blindness(), 0.0),
+		"некротический глаз возвращает зрение",
+		"вставлено %d, слепота %.2f" % [body.eye_implants, body.blindness()])
+	check(me.trophies[me.Trophy.EYES] == 0, "за глаз списано десять чужих глаз",
+		"осталось глаз: %d" % me.trophies[me.Trophy.EYES])
+	me.request_eye()
+	check(body.eye_implants == 1, "лишний глаз не вставить: вставлять некуда",
+		"вставлено %d" % body.eye_implants)
+
+	me.global_position = home
+	await _reset(me, body, health)
 
 
 # --- клиент: проверяет, что состояние тела доехало по сети -----------------
