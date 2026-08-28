@@ -461,7 +461,7 @@ func _pick_target(faction: int) -> Vector3:
 		for node in spawned.get_children():
 			if not node.has_method("state_text") or not ("owner_id" in node):
 				continue
-			if not _hostile(faction, int(world.faction_of(int(node.owner_id)))):
+			if not _hostile(faction, _side_of(world, node)):
 				continue
 			if base.distance_to(node.global_position) > RAID_RANGE:
 				continue
@@ -476,6 +476,19 @@ func _pick_target(faction: int) -> Vector3:
 	# без экономики и подкреплений отряд из четверых там только раздаст
 	# убийства, а игрок получит осаду, которую нечем прекратить.
 	return Vector3.INF
+
+
+## Чья это повозка.
+##
+## Спрашиваем САМ КАРАВАН, а не владельца-персонажа. Караван стороны под ИИ
+## создаётся без владельца (`owner_id` 0), поиск по владельцу возвращал для него
+## «стороны нет», а «стороны нет» отряд не трогает никогда — то есть караваны
+## ИИ не могли стать целью набега вовсе. Тот же поиск терял и караван игрока,
+## который вышел из игры, пока его повозка ещё едет.
+func _side_of(world: Node, node: Node) -> int:
+	if "faction" in node:
+		return int(node.faction)
+	return int(world.faction_of(int(node.owner_id)))
 
 
 ## Враждебна ли сторона. Своих не трогаем, дружелюбных тоже: перемирие поднимает

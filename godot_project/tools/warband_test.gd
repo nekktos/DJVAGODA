@@ -33,7 +33,7 @@ var _heard := PackedStringArray()
 
 func start(world: Node3D) -> void:
 	tag = "ИИ-отряд"
-	expected_host = 18
+	expected_host = 20
 	expected_client = 3
 	_world = world
 	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
@@ -68,6 +68,9 @@ func _run() -> void:
 	await _test_formations()
 	await _test_respects_truce(me)
 	await _test_retreats_when_spent()
+	# Последней: она создаёт повозку в чужой зоне, и живой отряд, увидев её,
+	# бросает всё и идёт туда. Соседние проверки от этого разваливались.
+	await _test_ai_caravan_is_a_target()
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -104,6 +107,50 @@ func _test_holds_without_target(me: Node3D) -> void:
 	var anchor: Vector3 = _warband().anchor_of(free_side)
 	check(anchor.distance_to(base) < WARBAND.ARRIVE_RADIUS, "без цели отряд стоит на базе",
 		"%.0f м от базы" % anchor.distance_to(base))
+
+
+## Караван стороны, за которую никто не сел, обязан быть целью набега.
+##
+## Он создаётся БЕЗ владельца-персонажа (`owner_id` 0), а сторона каравана
+## выяснялась по владельцу. Для такого каравана это давало «стороны нет», а
+## «стороны нет» отряд не трогает никогда — то есть караваны ИИ не могли стать
+## целью вовсе, и две стороны под ИИ не имели друг к другу ни одного повода.
+##
+## Спрашиваем прямо `_pick_target`: это то самое место, где сторона выяснялась
+## неверно, и проверять надо его, а не «набег случился» — набег и так случается
+## по постройкам.
+func _test_ai_caravan_is_a_target() -> void:
+	var enemy := -1
+	for faction in FACTIONS.COUNT:
+		if faction != _side:
+			enemy = faction
+			break
+	# Убираем постройки: по замыслу они важнее повозки, и пока стоит хоть одна,
+	# выбор каравана не проверить вовсе.
+	for node in get_tree().get_nodes_in_group("building"):
+		if is_instance_valid(node):
+			node.queue_free()
+	await get_tree().physics_frame
+	var base: Vector3 = FACTIONS.SPAWN[_side]
+	var spot: Vector3 = base + Vector3(60.0, 0.0, 0.0)
+	var caravan: Node3D = _world.spawn_caravan(
+		PackedVector3Array([spot, spot + Vector3(20.0, 0.0, 0.0)]), 0, enemy)
+	await get_tree().physics_frame
+	check(caravan != null and int(caravan.faction) == enemy,
+		"караван без владельца знает свою сторону",
+		FACTIONS.name_of(enemy) if caravan != null else "не создан")
+	if caravan == null:
+		return
+	var target: Vector3 = _warband()._pick_target(_side)
+	var gap := INF
+	if target.is_finite():
+		gap = Vector2(target.x, target.z).distance_to(
+			Vector2(caravan.global_position.x, caravan.global_position.z))
+	check(gap < 40.0, "отряд выбирает его целью набега",
+		"цель в %.0f м от повозки" % gap if target.is_finite() else "цели нет")
+	if is_instance_valid(caravan):
+		caravan.queue_free()
+	await get_tree().physics_frame
 
 
 ## Появилось вражеское имущество — отряд вышел к нему. Это и есть ступень «б».
