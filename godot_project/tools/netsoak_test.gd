@@ -44,6 +44,9 @@ const UNITS_TOLERANCE := 2
 ## Сколько клиент ждёт перепись сверх прогона.
 const CENSUS_WAIT := 60.0
 
+## Сколько хост ждёт клиента, прежде чем что-то решать.
+const PEER_WAIT := 45.0
+
 var _world: Node3D
 var _census := {}
 var _got_census := false
@@ -76,14 +79,25 @@ func _run() -> void:
 # --- хост -------------------------------------------------------------------
 
 func _run_host() -> void:
+	# СНАЧАЛА дожидаемся клиента, и только потом решаем, какая сторона
+	# свободна. Иначе выходит так: хост считает свободным злодея, клиент через
+	# несколько секунд садится за злодея, гарнизон распускается — и набор до
+	# конца прогона проверяет сторону, которая давно занята живым игроком.
+	# Ровно на этом однажды сломался и набор ИИ-отряда.
+	var waited := 0.0
+	while multiplayer.get_peers().is_empty() and waited < PEER_WAIT:
+		await get_tree().create_timer(0.5).timeout
+		waited += 0.5
+	check(multiplayer.get_peers().size() == 1, "клиент подключён",
+		"пиров: %d, ждали %.1f с" % [multiplayer.get_peers().size(), waited])
+	# Стороне надо дать долететь: слот выдаётся не в тот же кадр, что вход.
+	await get_tree().create_timer(2.0).timeout
+
 	var free_side := _free_faction()
 	if free_side < 0:
 		fail("свободных сторон нет — вариться нечему")
 		return
 	note("свободная сторона: %s" % FACTIONS.name_of(free_side))
-
-	check(multiplayer.get_peers().size() == 1, "клиент подключён",
-		"пиров: %d" % multiplayer.get_peers().size())
 
 	# Ставим постройки САМИ. Без этого в мире стоит одна коробка, и сверять
 	# переписи бессмысленно: «у меня одна, у хоста одна» сойдётся и при
