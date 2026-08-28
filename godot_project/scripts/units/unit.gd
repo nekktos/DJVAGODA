@@ -119,6 +119,10 @@ const DIRECT_RANGE := 25.0
 ## Поэтому прямая дорога — это предположение, а не правило. Не сработало за
 ## полсекунды — идём по сетке, даже если место в строю в двух шагах.
 const BLOCKED_SECONDS := 0.5
+
+## Насколько надо приблизиться к цели, чтобы это считалось продвижением. Меньше
+## этого — топтание: боец качается на месте или скользит вдоль препятствия.
+const PROGRESS_STEP := 0.6
 ## Насколько цель должна уехать, чтобы перекладывать путь.
 const REPATH_DISTANCE := 6.0
 ## Ближе этого точка пути считается пройденной.
@@ -209,6 +213,13 @@ var _path_index := 0
 var _path_goal := Vector3.INF
 ## Сколько времени боец упирается, никуда не двигаясь.
 var _blocked_t := 0.0
+## Лучшее расстояние до цели, которого удалось добиться, и когда это было.
+## По ним видно, что боец не продвигается, даже если он бодро скользит вдоль
+## скалы на полной скорости.
+var _best_gap := INF
+var _best_goal := Vector3.INF
+## Куда бойца ведут прямо сейчас. Нужна сторожу продвижения.
+var _last_goal := Vector3.INF
 var _alive := true
 ## Перевербовка: сколько осталось и куда вернуть сторону.
 var _charm_left := 0.0
@@ -383,6 +394,7 @@ func _physics_process(delta: float) -> void:
 		destination = global_position
 	# Приход считаем по НАСТОЯЩЕЙ цели, а шагаем по пути к ней. Если считать
 	# приход по точке пути, боец начнёт бить воздух на первом же повороте.
+	_last_goal = destination
 	var step_to := _next_step(destination)
 	var to_dest := destination - global_position
 	to_dest.y = 0.0
@@ -653,12 +665,36 @@ func _next_step(goal: Vector3) -> Vector3:
 ## Заметить, что боец упёрся: хотел идти, но не сдвинулся. Отпускаем вдвое
 ## быстрее, чем копим, — освободившийся боец должен вернуться в строй сразу, а
 ## не идти по сетке ещё секунду.
+## Заметить, что боец не продвигается к цели.
+##
+## Прежняя версия ловила только удар в стену НА МЕСТЕ: `is_on_wall()` и скорость
+## меньше полуметра. Вдоль скалы боец скользит с полной скоростью, стена под
+## этим условием не считается препятствием, счётчик не копится — и путь по карте
+## не запрашивается никогда. В живой игре это выглядело так: двое батраков
+## вжались в скалу и стоят там, пока смотришь.
+##
+## Мерить надо не касание, а ПРОДВИЖЕНИЕ: сокращается ли расстояние до цели.
+## Скользящий вдоль скалы боец расстояние не сокращает, и это видно сразу.
 func _note_blocked(delta: float) -> void:
-	var speed := Vector2(velocity.x, velocity.z).length()
-	if sync_moving and is_on_wall() and speed < 0.5:
-		_blocked_t += delta
-	else:
+	if not sync_moving:
 		_blocked_t = maxf(0.0, _blocked_t - delta * 2.0)
+		return
+
+	var goal: Vector3 = _last_goal
+	if not goal.is_finite():
+		return
+	# Цель сменилась — начинаем мерить заново.
+	if not _best_goal.is_finite() or _best_goal.distance_to(goal) > REPATH_DISTANCE:
+		_best_goal = goal
+		_best_gap = INF
+
+	var gap: float = Vector2(global_position.x, global_position.z).distance_to(
+		Vector2(goal.x, goal.z))
+	if gap < _best_gap - PROGRESS_STEP:
+		_best_gap = gap
+		_blocked_t = maxf(0.0, _blocked_t - delta * 2.0)
+	else:
+		_blocked_t += delta
 
 
 func _navigation() -> Node:

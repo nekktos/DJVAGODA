@@ -86,11 +86,23 @@ func _test_harvest(me: Node3D, kind: int, label: String) -> void:
 	# проверку того, что рядом стоит дерево.
 	var source: Node3D = null
 	for candidate in candidates:
+		# Подход меряем по ФОРМЕ СТОЛКНОВЕНИЯ, а не по мешам.
+		#
+		# По мешам считалось раньше, и это сломалось в тот день, когда крона
+		# дерева стала ребёнком ствола: ширина кроны — десять метров, проверка
+		# отходила на шесть с половиной и била в воздух, потому что рука столько
+		# не достаёт. Бить можно по тому, во что упираешься, — то есть по
+		# коллизии; крона же украшение и через неё проходят насквозь.
 		var reach := 2.0
 		for child in candidate.get_children():
-			if child is MeshInstance3D:
-				var box: AABB = (child as MeshInstance3D).get_aabb()
-				reach = maxf(reach, maxf(box.size.x, box.size.z) * 0.5 + 1.6)
+			var shape := child as CollisionShape3D
+			if shape == null or shape.shape == null:
+				continue
+			if shape.shape is CylinderShape3D:
+				reach = maxf(reach, (shape.shape as CylinderShape3D).radius + 1.6)
+			elif shape.shape is BoxShape3D:
+				var size: Vector3 = (shape.shape as BoxShape3D).size
+				reach = maxf(reach, maxf(size.x, size.z) * 0.5 + 1.6)
 		var to_source: Vector3 = candidate.global_position - me.global_position
 		to_source.y = 0.0
 		var dir := to_source.normalized()

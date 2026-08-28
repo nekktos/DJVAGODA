@@ -337,8 +337,7 @@ func _build_villain(c: Vector2) -> void:
 		var r := grove.randf_range(96.0, 132.0)
 		var p := f + Vector2(cos(a), sin(a)) * r
 		var h := grove.randf_range(9.0, 15.0)
-		_harvestable(_cylinder(g, Vector3(p.x, h * 0.5, p.y), 1.1, h, "trunk"), RES.Kind.WOOD)
-		_cone(g, Vector3(p.x, h + 4.0, p.y), 5.0, 11.0, "foliage")
+		_harvestable(_tree(g, p, h), RES.Kind.WOOD)
 
 	# Шахта на удалении от форта — задел под маршрут каравана (GDD, этап 5).
 	var m := Vector2(MINE_POS.x, MINE_POS.z)
@@ -375,6 +374,22 @@ func _build_humans(c: Vector2) -> void:
 
 ## Пометить объект как источник ресурсов. Добычу считает хост, объект хранит
 ## только тип ресурса и остаток ударов (см. player.gd::_server_try_harvest).
+## Дерево ЦЕЛИКОМ: ствол и крона одним телом.
+##
+## Раньше крона ставилась отдельным узлом рядом со стволом. Рубка удаляет то,
+## во что попал луч, — то есть ствол, — и крона оставалась висеть в воздухе.
+## На снимке из живой игры это первое, что бросается в глаза: полтора десятка
+## крон парят над пустой землёй.
+##
+## Крона — ребёнок ствола, поэтому исчезает вместе с ним и переносить её при
+## этом не нужно ничем: тело уходит со всеми детьми разом.
+func _tree(parent: Node3D, foot: Vector2, height: float) -> StaticBody3D:
+	var trunk := _cylinder(parent, Vector3(foot.x, height * 0.5, foot.y), 1.1, height, "trunk")
+	# Координата кроны местная: ствол уже стоит на своей середине.
+	_cone(trunk, Vector3(0.0, height * 0.5 + 4.0, 0.0), 5.0, 11.0, "foliage")
+	return trunk
+
+
 func _harvestable(body: StaticBody3D, kind: int, hits: int = -1) -> void:
 	if body == null:
 		return
@@ -394,8 +409,7 @@ func _build_starting_resources(g: Node3D) -> void:
 		var r := rng.randf_range(26.0, 60.0)
 		var p := Vector2(cos(a), sin(a)) * r + Vector2(0.0, 30.0)
 		var h := rng.randf_range(9.0, 15.0)
-		_harvestable(_cylinder(g, Vector3(p.x, h * 0.5, p.y), 1.1, h, "trunk"), RES.Kind.WOOD)
-		_cone(g, Vector3(p.x, h + 4.0, p.y), 5.0, 11.0, "foliage")
+		_harvestable(_tree(g, p, h), RES.Kind.WOOD)
 
 	for i in 9:
 		var a := rng.randf() * TAU

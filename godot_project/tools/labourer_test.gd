@@ -249,6 +249,9 @@ func _test_delivers_to_storage(me: Node3D) -> void:
 
 	var wallet: Node = _world.treasury.of(int(me.faction))
 	var before: int = wallet.get_amount(RES.Kind.WOOD)
+	# Сколько он нёс до сдачи: по этому числу проверим, что груз ПЕРЕЕХАЛ, а не
+	# удвоился.
+	var carried_before: int = int(worker.carrying())
 	var delivered := false
 	for i in 25:
 		await get_tree().create_timer(1.0).timeout
@@ -257,8 +260,14 @@ func _test_delivers_to_storage(me: Node3D) -> void:
 			break
 	check(delivered, "гружёный батрак сдал груз в склад",
 		"дерево %d -> %d" % [before, wallet.get_amount(RES.Kind.WOOD)])
-	check(int(worker.carrying()) == 0, "и руки у него свободны",
-		"несёт %d" % worker.carrying())
+	# Проверяем НЕ «руки пусты сейчас». Батрак сдаёт груз и тут же уходит рубить
+	# дальше: через секунду руки снова полные — работа сделана, а проверка
+	# красная. Первая версия падала именно так, причём на верном поведении.
+	# Смысл в другом: груз обязан переехать из рук в склад, а не появиться в
+	# складе вдобавок к рукам.
+	var moved: int = wallet.get_amount(RES.Kind.WOOD) - before
+	check(moved >= carried_before, "груз переехал в склад целиком, а не удвоился",
+		"нёс %d, в складе прибавилось %d" % [carried_before, moved])
 
 
 ## Небоевой батрак уходит от врага, а не стоит и рубит, пока его убивают.

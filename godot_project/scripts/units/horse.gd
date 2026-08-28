@@ -1,0 +1,176 @@
+extends CharacterBody3D
+##
+## Лошадь (решение по ходу Этапа 10).
+##
+## ЗАЧЕМ. Караван ездил сам по себе — коробка, которая катится по земле без
+## всякой причины. Теперь его тянет пара лошадей, и это не украшение: если обоз
+## разграбили, а лошади уцелели, их можно увести и ездить на них самому. Груз
+## пропал, но добыча осталась — и это ровно тот размен, ради которого на караван
+## и нападают.
+##
+## ЧТО ЭТО ЗА СУЩНОСТЬ. Не боец: лошадь не дерётся, не входит в отряд и не имеет
+## стороны. Её можно убить — тогда никто на ней не поедет. Пока на ней едут, её
+## тело выключено, а всадник получает прибавку к скорости; спешился — лошадь
+## снова стоит там, где её оставили.
+##
+## ПОЧЕМУ НЕ ЧЕРЕЗ unit.gd. Боец — это строй, поводок, приказы, оружие и урон.
+## Лошади не нужно ничего из этого, а нужно ровно три вещи: стоять, умирать и
+## возить. Наследовать ради трёх вещей систему на семьсот строк значит потом
+## объяснять каждому читателю, почему лошадь ходит в набеги.
+##
+
+const EFFECTS := preload("res://scripts/combat/effects.gd")
+const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
+
+const MAX_HEALTH := 90.0
+
+## Во сколько раз быстрее пеший всадник. Полтора — заметно, но не превращает
+## карту в маленькую: пешком до шахты идти две минуты, верхом чуть больше минуты.
+const RIDE_SPEED_SCALE := 1.55
+
+## Дальше этого сесть нельзя.
+const MOUNT_RANGE := 4.0
+
+signal died(point: Vector3)
+
+@export var sync_position := Vector3.ZERO
+@export var health := MAX_HEALTH
+## Кто сейчас едет. Ноль — никто.
+@export var rider_id := 0
+
+var _zone: Area3D
+var _alive := true
+
+
+func setup(data: Dictionary) -> void:
+	position = data.get("point", Vector3.ZERO)
+	sync_position = position
+
+
+func _ready() -> void:
+	add_to_group("horse")
+	_build_visual()
+	_build_hit_zone()
+
+
+func _build_visual() -> void:
+	# Туловище, шея и голова — три коробки. Стиль тот же, что у всего остального:
+	# серый ящик, узнаваемый по силуэту, а не по текстуре.
+	var body := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(1.1, 1.2, 2.6)
+	body.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.36, 0.26, 0.18)
+	body.mesh.material = mat
+	body.position = Vector3(0.0, 1.3, 0.0)
+	add_child(body)
+
+	var neck := MeshInstance3D.new()
+	var nbox := BoxMesh.new()
+	nbox.size = Vector3(0.5, 1.0, 0.5)
+	neck.mesh = nbox
+	neck.mesh.material = mat
+	neck.position = Vector3(0.0, 2.0, -1.2)
+	add_child(neck)
+
+	var head := MeshInstance3D.new()
+	var hbox := BoxMesh.new()
+	hbox.size = Vector3(0.45, 0.45, 0.9)
+	head.mesh = hbox
+	head.mesh.material = mat
+	head.position = Vector3(0.0, 2.4, -1.5)
+	add_child(head)
+
+	for leg in 4:
+		var post := MeshInstance3D.new()
+		var pbox := BoxMesh.new()
+		pbox.size = Vector3(0.25, 1.4, 0.25)
+		post.mesh = pbox
+		post.mesh.material = mat
+		post.position = Vector3(
+			0.35 if leg % 2 == 0 else -0.35, 0.7, 0.9 if leg < 2 else -0.9)
+		add_child(post)
+
+	var shape := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.7
+	capsule.height = 2.2
+	shape.shape = capsule
+	shape.position = Vector3(0.0, 1.3, 0.0)
+	add_child(shape)
+
+
+func _build_hit_zone() -> void:
+	_zone = HIT_ZONE.new()
+	_zone.zone = "horse"
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1.4, 2.0, 3.0)
+	shape.shape = box
+	shape.position = Vector3(0.0, 1.3, 0.0)
+	_zone.add_child(shape)
+	add_child(_zone)
+
+
+func _physics_process(delta: float) -> void:
+	if not Net.hosting():
+		position = position.lerp(sync_position, clampf(delta * 12.0, 0.0, 1.0))
+		return
+	# Пока на ней едут, лошадь не существует отдельно: она под всадником.
+	if rider_id != 0:
+		return
+	if not is_on_floor():
+		velocity.y -= 24.0 * delta
+	else:
+		velocity.y = 0.0
+	velocity.x = 0.0
+	velocity.z = 0.0
+	move_and_slide()
+	sync_position = position
+
+
+## Свободна ли: жива и без всадника.
+func can_mount() -> bool:
+	return _alive and rider_id == 0
+
+
+func mount(peer: int) -> bool:
+	if not Net.hosting() or not can_mount():
+		return false
+	rider_id = peer
+	visible = false
+	return true
+
+
+func dismount(at: Vector3) -> void:
+	if not Net.hosting():
+		return
+	rider_id = 0
+	visible = true
+	position = at
+	sync_position = at
+
+
+func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3,
+		dir: Vector3, _aoe := false) -> void:
+	if not Net.hosting() or not _alive:
+		return
+	health = maxf(0.0, health - amount)
+	show_hit.rpc(point, dir, amount)
+	if health > 0.0:
+		return
+	_alive = false
+	print("[лошадь] убита игроком %d" % attacker_id)
+	died.emit(global_position)
+	queue_free()
+
+
+@rpc("authority", "call_local", "unreliable")
+func show_hit(point: Vector3, dir: Vector3, amount: float) -> void:
+	EFFECTS.blood(self, point, dir, amount)
+
+
+## Для подсказки в интерфейсе.
+func state_text() -> String:
+	return "лошадь" if rider_id == 0 else "под седлом"

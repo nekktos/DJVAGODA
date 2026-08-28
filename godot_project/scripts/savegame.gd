@@ -110,17 +110,26 @@ func save_world() -> String:
 		var profile := String(child.profile_id)
 		if profile.is_empty():
 			continue
-		cfg.set_value("player/" + profile, "faction", int(child.faction))
-		cfg.set_value("player/" + profile, "gear_tier", int(child.gear_tier))
-		cfg.set_value("player/" + profile, "is_leader", bool(child.is_leader))
-		cfg.set_value("player/" + profile, "orders_done", int(child.orders_done))
-		cfg.set_value("player/" + profile, "final_threshold", int(child.final_threshold))
-		cfg.set_value("player/" + profile, "alive", bool(child.health.alive))
-		cfg.set_value("player/" + profile, "severed_mask", int(child.body.severed_mask))
-		cfg.set_value("player/" + profile, "prosthetics", child.body.prosthetics)
-		cfg.set_value("player/" + profile, "eyes_lost", int(child.body.eyes_lost))
-		cfg.set_value("player/" + profile, "bandages", int(child.body.bandages))
-		cfg.set_value("player/" + profile, "in_wheelchair", bool(child.body.in_wheelchair))
+		# Прогресс лежит на паре ПРОФИЛЬ + СТОРОНА, а не на одном профиле.
+		#
+		# Раньше слот был один, и сторона из него навязывалась поверх выбора в
+		# меню: сыграв однажды за злодея, человек больше не мог сесть ни за кого
+		# другого — меню показывало выбор, которого не было. Прогресс при этом
+		# всё равно привязан к стороне (GDD раздел 6), просто теперь у каждой
+		# стороны он свой.
+		var key := _player_key(profile, int(child.faction))
+		cfg.set_value("player/" + profile, "last_faction", int(child.faction))
+		cfg.set_value(key, "faction", int(child.faction))
+		cfg.set_value(key, "gear_tier", int(child.gear_tier))
+		cfg.set_value(key, "is_leader", bool(child.is_leader))
+		cfg.set_value(key, "orders_done", int(child.orders_done))
+		cfg.set_value(key, "final_threshold", int(child.final_threshold))
+		cfg.set_value(key, "alive", bool(child.health.alive))
+		cfg.set_value(key, "severed_mask", int(child.body.severed_mask))
+		cfg.set_value(key, "prosthetics", child.body.prosthetics)
+		cfg.set_value(key, "eyes_lost", int(child.body.eyes_lost))
+		cfg.set_value(key, "bandages", int(child.body.bandages))
+		cfg.set_value(key, "in_wheelchair", bool(child.body.in_wheelchair))
 
 	var path := save_path()
 	if cfg.save(path) != OK:
@@ -181,7 +190,10 @@ func saved_faction(profile: String) -> int:
 	var key := "player/" + profile
 	if not cfg.has_section(key):
 		return -1
-	return int(cfg.get_value(key, "faction", -1))
+	# ПОДСКАЗКА, а не приказ: чем человек играл в прошлый раз. Навязывать эту
+	# сторону поверх выбора в меню нельзя — именно так выбор и перестал
+	# работать: игрок жал «эльфы», а садился за злодея.
+	return int(cfg.get_value(key, "last_faction", cfg.get_value(key, "faction", -1)))
 
 
 ## Накатить сохранённое состояние на только что заспавненного персонажа.
@@ -196,9 +208,17 @@ func restore_player(player: Node3D) -> bool:
 	var cfg := ConfigFile.new()
 	if cfg.load(save_path()) != OK:
 		return false
-	var key := "player/" + profile
+	var key := _player_key(profile, int(player.faction))
 	if not cfg.has_section(key):
-		return false
+		# Запасной путь для старых сохранений: там слот был один на профиль, без
+		# стороны в имени. Берём его, только если сторона совпадает, — иначе
+		# эльфу достанется прогресс злодея.
+		var legacy := "player/" + profile
+		if cfg.has_section(legacy) \
+				and int(cfg.get_value(legacy, "faction", -1)) == int(player.faction):
+			key = legacy
+		else:
+			return false
 
 	player.gear_tier = int(cfg.get_value(key, "gear_tier", 0))
 	player.is_leader = bool(cfg.get_value(key, "is_leader", player.is_leader))
@@ -215,6 +235,13 @@ func restore_player(player: Node3D) -> bool:
 		profile, FACTIONS.name_of(int(player.faction))
 	])
 	return true
+
+
+## Ключ прогресса: профиль и сторона. Разные стороны — разные слоты, и это
+## позволяет одному человеку вести злодея и эльфа в одном мире, не теряя ни
+## того, ни другого.
+func _player_key(profile: String, faction: int) -> String:
+	return "player/%s/%d" % [profile, faction]
 
 
 func has_save() -> bool:
