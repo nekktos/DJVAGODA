@@ -31,6 +31,7 @@ extends Node
 ##   --garrisontest  автопроверка гарнизонов свободных сторон (headless)
 ##   --warbandtest   автопроверка воюющего ИИ свободных сторон (headless)
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
+##   --netsoaktest   полторы минуты на двух пирах: сходятся ли их картины мира
 ##   --navtest       автопроверка путей по карте (headless)
 ##   --labtest       автопроверка батраков: наём, роли, добыча (headless)
 ##   --stewardtest   автопроверка хозяйства ИИ: наём, стройка, войско (headless)
@@ -441,6 +442,12 @@ func _apply_cmdline() -> void:
 		var soak_test: Node = preload("res://tools/soak_test.gd").new()
 		add_child(soak_test)
 		soak_test.start(_world)
+		needs_session = true
+
+	if args.has("--netsoaktest"):
+		var net_soak: Node = preload("res://tools/netsoak_test.gd").new()
+		add_child(net_soak)
+		net_soak.start(_world)
 		needs_session = true
 
 	if args.has("--warbandtest"):
