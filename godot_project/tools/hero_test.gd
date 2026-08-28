@@ -36,7 +36,7 @@ var _world: Node3D
 func start(world: Node3D) -> void:
 	tag = "герой"
 	expected_host = 23
-	expected_client = 1
+	expected_client = 4
 	_world = world
 	_run.call_deferred()
 
@@ -47,6 +47,11 @@ func _run() -> void:
 		return
 	# Герою нужно время появиться: его заводит `hero.gd` на своём такте.
 	await get_tree().create_timer(4.0).timeout
+
+	if not Net.hosting():
+		await _run_client()
+		finish()
+		return
 
 	var hero: Node3D = _world.ai_hero_of(SIDE)
 	if hero == null:
@@ -254,3 +259,33 @@ func _enemy_of(faction: int) -> int:
 		if other != faction:
 			return other
 	return 0
+
+
+## Половина КЛИЕНТА: видит ли он героя вообще.
+##
+## Вопрос не праздный. Герой создаётся спавнером на всех пирах, но имя ноды у
+## него ОТРИЦАТЕЛЬНОЕ, а по имени персонаж на каждом пире определяет своего
+## авторитета. Ошибись мы тут — и злодей под ИИ оказался бы невидим для игроков,
+## причём молча: у хоста-то всё работает, а увидеть это можно только со второго
+## пира.
+func _run_client() -> void:
+	var hero: Node3D = _world.ai_hero_of(SIDE)
+	check(hero != null, "клиент видит героя свободной стороны",
+		"есть" if hero != null else "нет")
+	if hero == null:
+		# Остальные проверки обязаны выполниться, иначе счётчик решит, что
+		# клиент просто не отработал.
+		check(false, "клиент знает, что им правит ИИ", "героя нет")
+		check(false, "у клиента авторитет над героем — хост", "героя нет")
+		check(false, "клиент видит в нём вожака", "героя нет")
+		return
+	check(hero.ai_led, "клиент знает, что им правит ИИ", "ai_led=true")
+	check(hero.get_multiplayer_authority() == 1,
+		"у клиента авторитет над героем — хост",
+		"authority=%d" % hero.get_multiplayer_authority())
+	check(hero.is_leader, "клиент видит в нём вожака", "is_leader=true")
+
+	# Гибель героя тут НЕ проверяем, хотя проверять хочется. Хост доходит до неё
+	# позже, чем клиент закрывается, и проверка молча не выполнялась бы — её
+	# поймал бы только счётчик. Смерть вожака и её доезд до второго пира уже
+	# проверены в наборе победы, на живом злодее.
