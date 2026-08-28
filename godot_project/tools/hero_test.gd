@@ -35,7 +35,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "герой"
-	expected_host = 23
+	expected_host = 25
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -63,6 +63,7 @@ func _run() -> void:
 	_test_side_stays_free(hero)
 	await _test_moves(hero)
 	await _test_fights(hero)
+	_test_walks_by_map(hero)
 	_test_spell_thresholds(hero)
 	await _test_death_is_final(hero)
 	_test_leaves_when_player_sits()
@@ -178,6 +179,30 @@ func _test_fights(hero: Node3D) -> void:
 	check(hero.sync_weapon == WEAPONS.Kind.SPELL,
 		"издали — огненный шар",
 		WEAPONS.NAMES[hero.sync_weapon])
+
+
+## Дальнюю цель герой берёт ПО КАРТЕ, а не по прямой.
+##
+## Живой прогон показал, чего стоит обратное: герой упёрся в восточную стену
+## собственного форта и простоял там полторы минуты, пока его отряд уходил на
+## двести метров. По коду это не видно вовсе — видно только по логу, где его
+## координаты не меняются, а координаты отряда меняются.
+##
+## Проверяем обе половины: вблизи путь не спрашивается (иначе в ближнем бою
+## герой ходил бы кругами вокруг собственного плеча), издали — спрашивается.
+func _test_walks_by_map(hero: Node3D) -> void:
+	var brain: Node = _world.get_node("Hero")
+	var close_goal: Vector3 = hero.global_position + Vector3(5.0, 0.0, 0.0)
+	check(brain._next_step(hero, close_goal) == close_goal,
+		"вблизи герой идёт напрямую, не спрашивая карту",
+		"шаг совпал с целью")
+
+	# Цель за стеной форта и далеко: сюда по прямой не дойти.
+	var far_goal: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
+	var step: Vector3 = brain._next_step(hero, far_goal)
+	check(step != far_goal and _world.navigation.is_ready(),
+		"издали герой идёт по карте, а не сквозь стену",
+		"шаг %s вместо цели %s" % [str(step.round()), str(far_goal.round())])
 
 
 ## Пороговые правила каста. Спрашиваем прямо решающую функцию: она и есть

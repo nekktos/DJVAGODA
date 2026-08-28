@@ -60,7 +60,22 @@ const CLUSTER_SIZE := 3
 ## шара тут ни при чём: важно не «накроет ли», а «стоит ли тратить откат».
 const CLUSTER_RADIUS := 9.0
 
+## Ближе этого герой идёт НАПРЯМУЮ, не спрашивая пути. То же число и по той же
+## причине, что у бойцов: в ближнем бою путь по сетке даёт крюк вокруг
+## собственного плеча, а стену на трёх шагах видно и без навигации.
+const DIRECT_RANGE := 25.0
+
+## Насколько должна уехать цель, чтобы пересчитать путь.
+const REPATH_DISTANCE := 6.0
+
+## Насколько близко надо подойти к точке пути, чтобы считать её пройденной.
+const WAYPOINT_RADIUS := 2.5
+
 var _think_left := 0.0
+## Путь героя по навигационной сетке и место в нём.
+var _path := PackedVector3Array()
+var _path_index := 0
+var _path_goal := Vector3.INF
 
 
 func _process(delta: float) -> void:
@@ -118,13 +133,23 @@ func _drive(faction: int, hero: Node3D) -> void:
 		if _flat(anchor_now, goal) > LEASH:
 			goal = anchor_now
 
-	var to_goal: Vector3 = goal - hero.global_position
+	# Дальнюю цель берём ПО КАРТЕ, а не по прямой.
+	#
+	# Без этого герой упирался в стену собственного форта и стоял там, пока его
+	# отряд уходил на двести метров: живой прогон показал полторы минуты на
+	# одном месте вплотную к восточной стене. Ошибка того же рода, ради которой
+	# навигацию заводили для бойцов, и лечится тем же способом.
+	var step: Vector3 = _next_step(hero, goal)
+	var to_goal: Vector3 = step - hero.global_position
 	to_goal.y = 0.0
 	if to_goal.length() > 0.05:
 		# Разворот: вперёд у персонажа это -Z его базиса.
 		hero.rotation.y = atan2(-to_goal.x, -to_goal.z)
 
-	var walk: bool = to_goal.length() > (MELEE_REACH if target != null else AT_ANCHOR)
+	# Останавливаемся по расстоянию до НАСТОЯЩЕЙ цели, а не до ближайшей точки
+	# пути: точка пути всегда рядом, и по ней герой замирал бы на каждом углу.
+	var left: float = _flat(hero.global_position, goal)
+	var walk: bool = left > (MELEE_REACH if target != null else AT_ANCHOR)
 	var input := {"move": Vector2(0.0, -1.0) if walk else Vector2.ZERO, "jump": false}
 
 	if target != null:
@@ -138,6 +163,37 @@ func _drive(faction: int, hero: Node3D) -> void:
 			input["ability"] = spell
 
 	hero.scripted_input = input
+
+
+## Следующая точка на пути к цели. Тот же приём, что у бойцов: вблизи идём
+## прямо, издали спрашиваем навигацию и идём по ломаной.
+##
+## Цель может стоять внутри постройки — туда пути нет по определению, поэтому
+## спрашиваем ближайшее проходимое место рядом с ней. Пути нет вовсе — идём
+## напрямую: пусть лучше упрётся, чем встанет насовсем.
+func _next_step(hero: Node3D, goal: Vector3) -> Vector3:
+	if hero.global_position.distance_to(goal) <= DIRECT_RANGE:
+		_path.clear()
+		_path_goal = Vector3.INF
+		return goal
+
+	var world := get_parent()
+	if not ("navigation" in world) or not world.navigation.is_ready():
+		return goal
+
+	if _path.is_empty() or _path_index >= _path.size() \
+			or _path_goal.distance_to(goal) > REPATH_DISTANCE:
+		_path = world.navigation.path_between(
+			hero.global_position, world.navigation.closest_point(goal))
+		_path_index = 0
+		_path_goal = goal
+
+	while _path_index < _path.size():
+		var point: Vector3 = _path[_path_index]
+		if _flat(point, hero.global_position) > WAYPOINT_RADIUS:
+			return point
+		_path_index += 1
+	return goal
 
 
 ## Чем держать: вплотную — молотом, издали — огненным шаром.

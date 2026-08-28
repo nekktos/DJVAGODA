@@ -19,6 +19,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const FACTIONS := preload("res://scripts/factions.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
 const RES := preload("res://scripts/economy/resources.gd")
@@ -117,6 +118,14 @@ func _run() -> void:
 				head.append(str(Vector2(route[k].x, route[k].z).round()))
 			note("%ds маршрут ИИ (%s): %d точек, начало %s"
 				% [int(elapsed), FACTIONS.name_of(_watched), route.size(), " ".join(head)])
+			var hero: Node3D = _world.ai_hero_of(_watched)
+			if hero == null:
+				note("%ds вожак ИИ: нет" % int(elapsed))
+			else:
+				note("%ds вожак ИИ: %s, здоровье %.0f, оружие %s, %s"
+					% [int(elapsed), str(hero.global_position.round()),
+						hero.health.current, WEAPONS.NAMES[int(hero.sync_weapon)],
+						"жив" if hero.health.alive else "мёртв"])
 			note("%ds ИИ (%s): якорь %s, отряд %s, %s"
 				% [int(elapsed), FACTIONS.name_of(_watched), str(wb.anchor_of(_watched).round()),
 					str(centre.round()) if centre.is_finite() else "нет",
