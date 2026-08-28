@@ -168,8 +168,13 @@ func _test_marches_on_property(me: Node3D) -> void:
 	if storage == null:
 		return
 
+	# Двадцать секунд, а не восемь. За восемь отряд успевает уйти в обход
+	# препятствия боком, и честный обход читается как «не приблизился» — так
+	# проверка один раз и упала на ровном месте. Двадцати хватает, чтобы обход
+	# кончился, и при этом мало, чтобы дойти до цели в трёхстах метрах: отряд,
+	# который просто кружит, провалится наверняка.
 	var before: Vector3 = _warband().anchor_of(free_side)
-	await get_tree().create_timer(8.0).timeout
+	await get_tree().create_timer(20.0).timeout
 	var now: Vector3 = _warband().anchor_of(free_side)
 
 	check(_warband().state_of(free_side) == WARBAND.State.MARCH, "отряд вышел в набег",
