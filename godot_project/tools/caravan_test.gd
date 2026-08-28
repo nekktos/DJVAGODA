@@ -17,7 +17,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 15
+	expected_host = 20
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -44,6 +44,7 @@ func _run() -> void:
 	await _test_enter_key(me)
 	await _test_delivery(me)
 	await _test_raid(me)
+	await _test_escort(me)
 
 	finish()
 
@@ -221,3 +222,50 @@ func _test_enter_key(me: Node3D) -> void:
 
 	_world.set_strategy_mode(false)
 	await get_tree().process_frame
+
+
+## Охрана каравана: приставленный боец едет с повозкой и её поводок движется
+## вместе с ней (GDD, решение по ходу шага 8).
+##
+## Проверяем не «охрана назначена», а то, ради чего она нужна: что боец
+## СЛЕДУЕТ за грузом. Назначение без следования — украшение.
+func _test_escort(me: Node3D) -> void:
+	var world := _world
+	var start: Vector3 = me.global_position + Vector3(0.0, 0.0, 20.0)
+	var far: Vector3 = start + Vector3(140.0, 0.0, 0.0)
+	var cart: Node3D = world.spawn_caravan(PackedVector3Array([start, far]),
+		int(me.peer_id), int(me.faction))
+	await get_tree().physics_frame
+	if cart == null:
+		fail("повозку для проверки охраны создать не удалось")
+		return
+
+	var guard: Node3D = world.spawn_garrison_unit(int(me.faction), 7,
+		start + Vector3(3.0, 0.5, 0.0), start, 40.0)
+	await get_tree().physics_frame
+	if guard == null:
+		fail("бойца для охраны создать не удалось")
+		if is_instance_valid(cart):
+			cart.queue_free()
+		return
+
+	check(cart.add_guard(guard), "бойца приставили к повозке", "принят")
+	check(not cart.add_guard(guard), "дважды одного не приставить", "отклонён")
+	check(cart.guards() == 1, "охрана считается", "%d" % cart.guards())
+	check(is_equal_approx(guard.leash, cart.GUARD_LEASH),
+		"поводок охраны стал коротким",
+		"%.0f м" % guard.leash)
+
+	# Едем и смотрим, что дом охраны уехал вместе с повозкой: именно он и держит
+	# бойца при грузе.
+	var home_before: Vector3 = guard.home
+	await get_tree().create_timer(3.0).timeout
+	var moved: float = home_before.distance_to(guard.home) if is_instance_valid(guard) else 0.0
+	check(moved > 3.0, "дом охраны едет вместе с повозкой",
+		"сместился на %.0f м" % moved)
+
+	if is_instance_valid(guard):
+		guard.queue_free()
+	if is_instance_valid(cart):
+		cart.queue_free()
+	await get_tree().physics_frame

@@ -223,6 +223,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_squad_order("follow", 0)
 			get_viewport().set_input_as_handled()
 			return
+		# H — отправить отряд с обозом. Рядом с G (00abко мне00bb) намеренно: это две
+		# половины одного решения — держать войско при себе или при грузе.
+		if key == KEY_H:
+			var chief_h: Node3D = _world.local_player()
+			if chief_h != null:
+				chief_h.ask_escort_caravan()
+			get_viewport().set_input_as_handled()
+			return
 		# T — мечник, Y — лучник: каждому свой род войск и своя казарма.
 		if key == KEY_T:
 			_squad_order("train", 0)

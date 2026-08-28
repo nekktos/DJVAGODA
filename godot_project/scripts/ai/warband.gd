@@ -712,6 +712,12 @@ func _band(faction: int) -> Array:
 			continue
 		if "sync_role" in unit and int(unit.sync_role) != LABOURER.Role.MILITIA:
 			continue
+		# Охрана обоза в набеговый отряд НЕ входит: она при деле. Считать её в
+		# отряде значило бы, что сторона перестаёт нанимать войско, набрав
+		# нужное число охранниками. Ровно так и вышло: отряд «полон» на шести,
+		# из них двое едут с повозкой, и казарма простаивает.
+		if unit.has_meta("escorting"):
+			continue
 		result.append(unit)
 	return result
 

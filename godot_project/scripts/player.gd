@@ -1614,6 +1614,58 @@ func ask_hire_labourer() -> void:
 		request_hire_labourer.rpc_id(1)
 
 
+## Отправить свой отряд сопровождать свою же повозку.
+func ask_escort_caravan() -> void:
+	if Net.hosting():
+		request_escort_caravan()
+	else:
+		request_escort_caravan.rpc_id(1)
+
+
+## Приставить отряд к своему каравану (GDD, решение по ходу шага 8).
+##
+## Берём тех бойцов, что уже наняты, а не создаём новых: охрана — это ВЫБОР
+## между «войско бьёт» и «войско бережёт груз», и бесплатной она быть не должна.
+## Кого приставить, игрок выбирает составом отряда: мечники держат удар, лучники
+## бьют издали, ополченцы дёшевы.
+##
+## Повозку берём ближайшую свою: караванов у игрока может быть несколько, и
+## спрашивать «какую именно» посреди боя незачем — он и так смотрит на ту, о
+## которой думает.
+@rpc("any_peer", "reliable")
+func request_escort_caravan() -> void:
+	if not Net.hosting():
+		return
+	if not _sender_is_owner() or not health.alive:
+		return
+	var world := get_parent().get_parent()
+	var carts: Array = world.caravans_of(peer_id)
+	if carts.is_empty():
+		_refuse("сопровождать нечего: своих караванов в пути нет")
+		return
+	var squad: Array = world.units_of(peer_id)
+	if squad.is_empty():
+		_refuse("сопровождать некому: отряд пуст")
+		return
+
+	var cart: Node = carts[0]
+	var closest := INF
+	for other in carts:
+		var d: float = global_position.distance_to(other.global_position)
+		if d < closest:
+			closest = d
+			cart = other
+
+	var taken := 0
+	for unit in squad:
+		if cart.add_guard(unit):
+			taken += 1
+	if taken == 0:
+		_refuse("отряд уже сопровождает эту повозку")
+		return
+	print("[караван] игрок %d приставил охрану: бойцов %d" % [peer_id, taken])
+
+
 @rpc("any_peer", "reliable")
 func request_hire_labourer() -> void:
 	if not Net.hosting() or not _sender_is_owner():

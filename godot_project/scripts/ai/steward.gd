@@ -54,6 +54,10 @@ const SQUAD_WANTED := 6
 ## соперник, возящий вдвое больше, выигрывал бы расписанием, а не решениями.
 const CARAVANS_WANTED := 1
 
+## Сколько батраков уходит в охрану повозки. Двое: один не остановит отряд из
+## четверых, а трое и больше оголяют добычу.
+const GUARDS_PER_CARAVAN := 2
+
 ## Где искать место под постройку: кольцами вокруг базы.
 ## Кольца доходят до ста с лишним метров, и это не запас на будущее. С прежними
 ## четырьмя кольцами до 68 м ИИ за три минуты живого прогона построил склад и
@@ -98,8 +102,18 @@ func _wallet(faction: int) -> Node:
 	return get_parent().treasury.of(faction)
 
 
+## Батраки, которыми хозяйство вправе распоряжаться.
+##
+## Приставленных к обозу тут нет: они уже при деле, и переставить их обратно на
+## добычу значит оставить груз без прикрытия через такт после того, как охрану
+## назначили. Ровно так и вышло в первом прогоне.
 func _crew(faction: int) -> Array:
-	return get_parent().labourers_of(faction)
+	var free := []
+	for worker in get_parent().labourers_of(faction):
+		if worker.has_meta("escorting"):
+			continue
+		free.append(worker)
+	return free
 
 
 ## Нанять ещё рук, если есть на что. Батрак окупается быстро, поэтому копить
@@ -285,7 +299,36 @@ func _send_caravan(faction: int) -> void:
 	if world.mine == null:
 		return
 	var route := PackedVector3Array([storage.global_position, world.mine.global_position])
-	world.spawn_caravan(route, 0, faction)
+	var cart: Node = world.spawn_caravan(route, 0, faction)
+	_guard_caravan(faction, cart)
+
+
+## Приставить к повозке охрану.
+##
+## Берём БАТРАКОВ и переводим их в ополчение, а не спавним новых бойцов. Так у
+## охраны есть настоящая цена: пока двое стоят при повозке, они не рубят и не
+## копают. Бесплатная охрана была бы прибавкой к войску из воздуха.
+##
+## Мечников и лучников из казарм не трогаем намеренно: они — ударная сила
+## набега, и растащив их по обозам, сторона перестанет воевать вовсе. Живой
+## игрок вправе поступить иначе, у него выбор свой.
+func _guard_caravan(faction: int, cart: Node) -> void:
+	if cart == null or not cart.has_method("add_guard"):
+		return
+	var world := get_parent()
+	var crew := _crew(faction)
+	var taken := 0
+	for worker in crew:
+		if taken >= GUARDS_PER_CARAVAN:
+			break
+		if int(worker.sync_role) == LABOURER.Role.BUILDER:
+			continue
+		worker.set_role(LABOURER.Role.MILITIA)
+		if cart.add_guard(worker):
+			taken += 1
+	if taken > 0:
+		print("[караван] %s: с повозкой идёт охрана, ополченцев %d"
+			% [FACTIONS.name_of(faction), taken])
 
 
 ## Набрать войско. Бойцы безвладельческие: их подберёт `warband.gd` и поведёт в

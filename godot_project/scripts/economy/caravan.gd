@@ -28,6 +28,9 @@ const WAYPOINT_REACH := 3.0
 ## Насколько близко надо подъехать к шахте и складу.
 const DOCK_RANGE := 14.0
 
+## Поводок охраны вокруг повозки.
+const GUARD_LEASH := 16.0
+
 signal destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int)
 
 ## Реплицируемое состояние.
@@ -43,6 +46,14 @@ var owner_id := 1
 ## обязан одинаково с игроцким.
 var faction := 0
 var route: PackedVector3Array = PackedVector3Array()
+
+## Охрана: кто едет вместе с повозкой (GDD, решение по ходу шага 8).
+##
+## Второй системы командования не заводим. У бойца уже есть ДОМ и поводок вокруг
+## него: пока он никого не бьёт, он возвращается домой, а врага в пределах
+## поводка принимает. Значит охране достаточно двигать её дом вместе с повозкой —
+## и она сама идёт рядом, сама вступает в бой и сама возвращается в строй.
+var escort: Array[Node3D] = []
 
 var _leg := 0
 var _timer := 0.0
@@ -133,8 +144,10 @@ func _physics_process(delta: float) -> void:
 				_unload_at_home()
 				state = State.FINISHED
 		State.FINISHED:
+			_release_escort()
 			queue_free()
 
+	_lead_escort()
 	sync_position = position
 	sync_yaw = rotation.y
 
@@ -166,6 +179,55 @@ func _advance(delta: float, backwards: bool) -> bool:
 	position.y = lerpf(position.y, target.y, clampf(delta * 4.0, 0.0, 1.0))
 	rotation.y = atan2(-dir.x, -dir.z)
 	return false
+
+
+## Приставить бойца к повозке. Возвращает false, если приставлять некого.
+func add_guard(unit: Node3D) -> bool:
+	if unit == null or not is_instance_valid(unit) or not ("home" in unit):
+		return false
+	if escort.has(unit):
+		return false
+	escort.append(unit)
+	unit.home = position
+	# Метка нужна хозяйству: батрака в охране нельзя переставлять обратно на
+	# добычу, иначе он уходит рубить лес прямо из-под обоза. Первый прогон это и
+	# показал: охрана назначалась, а через такт её роль откатывали.
+	unit.set_meta("escorting", true)
+	# Поводок делаем коротким: охрана обязана держаться повозки, а не убегать за
+	# первым встречным. Длинный поводок превращает охрану в отдельный отряд,
+	# который уходит драться и оставляет груз без прикрытия.
+	unit.leash = GUARD_LEASH
+	return true
+
+
+## Сколько живых охранников осталось.
+func guards() -> int:
+	var alive := 0
+	for unit in escort:
+		if is_instance_valid(unit):
+			alive += 1
+	return alive
+
+
+## Вести охрану за собой: двигаем её дом вместе с повозкой.
+## Отпустить охрану: повозка доехала или разбита.
+func _release_escort() -> void:
+	for unit in escort:
+		if is_instance_valid(unit):
+			unit.remove_meta("escorting")
+	escort.clear()
+
+
+func _lead_escort() -> void:
+	if escort.is_empty():
+		return
+	var kept: Array[Node3D] = []
+	for unit in escort:
+		if not is_instance_valid(unit):
+			continue
+		unit.home = position
+		kept.append(unit)
+	escort = kept
 
 
 ## Куда караван поедет ДАЛЬШЕ: оставшиеся точки в порядке движения, вместе с
