@@ -18,7 +18,7 @@ param(
 $ErrorActionPreference = "Stop"
 $project = Join-Path $PSScriptRoot "..\godot_project"
 
-$list = @("--path", $project, "--resolution", "${Width}x${Height}", "--", "--freshworld")
+$list = @("--path", $project, "--resolution", "${Width}x${Height}", "--position", "0,0", "--", "--freshworld")
 foreach ($a in $GameArgs.Split(" ")) { if ($a -ne "") { $list += $a } }
 
 Write-Host "Запускаю игру в окне ${Width}x${Height}…"

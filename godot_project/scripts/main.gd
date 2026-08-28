@@ -69,7 +69,7 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _ip_edit: LineEdit = $UI/Menu/Panel/VBox/JoinRow/IpEdit
 @onready var _host_btn: Button = $UI/Menu/Panel/VBox/HostBtn
 @onready var _join_btn: Button = $UI/Menu/Panel/VBox/JoinRow/JoinBtn
-@onready var _hud: Label = $UI/Hud/Info
+@onready var _hud: Control = $UI/Hud
 @onready var _world: Node3D = $World
 @onready var _blind_left: ColorRect = $UI/Blind/Left
 @onready var _blind_right: ColorRect = $UI/Blind/Right
@@ -127,73 +127,178 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_tick_announce(delta)
 	_tick_refusal(delta)
+	_refresh_hud()
+	_update_blindness()
+
+
+## Разложить состояние по панелям.
+##
+## Раньше здесь собиралась ОДНА строка на семь переносов, и здоровье в ней
+## стояло между «пиров» и «оружием». Теперь каждая величина идёт туда, куда на
+## неё смотрят: жизнь влево вниз, хозяйство вправо вниз, доступное действие —
+## одной строкой по центру. Сборщики строк остались прежними, изменилось только
+## КУДА они попадают.
+func _refresh_hud() -> void:
 	if not Net.active:
-		_hud.text = "Оффлайн   сборка: %s" % ProjectSettings.get_setting("application/config/version", "?")
+		_hud.set_tech("Оффлайн   сборка: %s"
+			% ProjectSettings.get_setting("application/config/version", "?"))
+		_hud.set_vitals(0.0, 1.0, "", "")
+		_hud.set_right(PackedStringArray())
+		_hud.set_prompt("")
+		_hud.set_spells("")
 		return
+
 	var role := "ХОСТ" if Net.is_host else "КЛИЕНТ"
 	var kind := "Steam" if Net.transport == Net.Transport.STEAM else "IP"
-	var mode := "СТРАТЕГИЯ" if _world.strategy_mode else "ЭКШЕН"
-	if _world.is_spectating():
-		mode = "НАБЛЮДАТЕЛЬ (вожак пал, возврата нет)"
-	var line := "%s (%s)   id: %d   пиров: %d   fps: %d   камера: %s   сборка: %s" % [
-		role, kind, Net.local_id(), Net.peer_count(), Engine.get_frames_per_second(), mode,
-		ProjectSettings.get_setting("application/config/version", "?")
+	var tech := "%s (%s) · id %d · пиров %d · %d fps · %s" % [
+		role, kind, Net.local_id(), Net.peer_count(),
+		Engine.get_frames_per_second(),
+		ProjectSettings.get_setting("application/config/version", "?"),
 	]
 	if Net.is_host and Net.transport == Net.Transport.STEAM:
-		line += "\nSteam ID для друга: %d   (F9 — скопировать)" % Net.local_steam_id()
-	line += "\n" + _objective_hint(_world.local_player())
-	line += _ai_hint()
+		tech += "\nSteam ID для друга: %d  (F9 — скопировать)" % Net.local_steam_id()
+	_hud.set_tech(tech)
+	_hud.set_help(_help_text())
+
+	var me: Node3D = _world.local_player()
+	var right := PackedStringArray()
+	# `_objective_hint` уже говорит и сторону, и цель, и владельца дворца. Свои
+	# строки рядом с ним давали ровно те же слова дважды — на снимке это первое,
+	# что бросается в глаза.
+	for line in _objective_hint(me).split("\n"):
+		right.append(line)
+	if me != null:
+		right.append("склад: %s" % me.stock.summary())
+	var ai: String = _ai_hint().strip_edges()
+	if ai != "":
+		right.append(ai)
+
 	if _world.strategy_mode:
-		line += "   высота: %d м" % int(_world.strategy_height())
-		var boss: Node3D = _world.local_player()
-		if boss != null:
-			line += "\nсклад: %s" % boss.stock.summary()
-		line += "\n" + _build_hint()
-		line += "\n" + _crew_hint()
-		line += "\n" + _squad_hint()
-		_hud.text = line + "\nWASD — двигать камеру, Q/E — поворот, колесо — зум, Tab — назад в экшен, F10 — в меню" + _refusal_line()
-	else:
-		var me: Node3D = _world.local_player()
-		if me != null:
-			line += "   HP: %d   оружие: %s   бинтов: %d" % [
-				int(me.health.current), WEAPONS.NAMES[me.sync_weapon], me.body.bandages
-			]
-			line += "\nсклад: %s" % me.stock.summary()
-			line += "\nтело: %s" % me.body.summary()
-			if me.body.bleeding:
-				var progress: float = me.bandage_progress()
-				if progress > 0.0:
-					line += "   перевязка: %d%%" % int(progress * 100.0)
-				else:
-					line += "   B — перевязать (стоя на месте)"
-			if FACTIONS.has_abilities(me.faction):
-				line += "\n" + _abilities_hint(me)
-			line += _curse_hint(me)
-			if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
-				line += "\nприказ: %s — %s" % [
-					ORDERS.name_of(me.order_kind),
-					ORDERS.progress_text(me.order_kind, me.order_progress),
-				]
-			var truce: Node3D = me.truce_target()
-			if truce != null:
-				line += "\nY — предложить перемирие: %s (сейчас %s)" % [
-					FACTIONS.name_of(truce.faction),
-					_world.diplomacy.label_of(me.faction, truce.faction),
-				]
-			var pile: Node3D = me.loot_nearby()
-			if pile != null:
-				line += "\nF — подобрать груз: %s" % pile.summary()
-			elif me.at_trader():
-				line += "\nF — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
-			elif me.at_commander():
-				line += "\nF — командир: %s" % _order_hint(me)
-			elif me.at_workbench():
-				line += "\nF — верстак: протезы и коляска"
-		_hud.text = line + "\n" + _weapon_hint(me) + ", Tab — вид сверху, F10 — в меню" + _refusal_line()
+		_hud.set_vitals(0.0, 1.0, "", "")
+		right.append("высота камеры: %d м" % int(_world.strategy_height()))
+		right.append(_crew_hint().replace("\n", "  "))
+		right.append(_squad_hint().replace("\n", "  "))
+		_hud.set_right(right)
+		_hud.set_spells("")
+		_hud.set_prompt(_strategy_prompt())
+		return
+
+	if me == null:
+		_hud.set_right(right)
+		_hud.set_prompt("")
+		_hud.set_spells("")
+		return
+
+	if _world.is_spectating():
+		_hud.set_vitals(0.0, 1.0, "вожак пал — возврата нет", "")
+		_hud.set_right(right)
+		_hud.set_prompt("НАБЛЮДАТЕЛЬ. Партия продолжается без вас")
+		_hud.set_spells("")
+		return
+
+	var note := "%s · бинтов %d" % [WEAPONS.NAMES[me.sync_weapon], me.body.bandages]
+	var wounds: String = me.body.summary()
+	var curses: String = _curse_hint(me).strip_edges()
+	if curses != "":
+		wounds += "   " + curses
+	_hud.set_vitals(me.health.current, 100.0, note, wounds)
+	_hud.set_right(right)
+	var magic := ""
+	if FACTIONS.has_abilities(me.faction):
+		magic = _abilities_hint(me).replace("магия: ", "")
+	_hud.set_spells(magic)
+	_hud.set_prompt(_action_prompt(me))
+
+
+## Что можно сделать ПРЯМО СЕЙЧАС. Одна строка и только самое близкое: полный
+## список возможностей живёт под F1, а здесь то, до чего игрок дотянулся рукой.
+func _action_prompt(me: Node3D) -> String:
+	var refusal: String = _refusal_line().strip_edges()
+	if refusal != "":
+		return refusal
+	var pile: Node3D = me.loot_nearby()
+	if pile != null:
+		return "F — подобрать груз: %s" % pile.summary()
+	if me.at_trader():
+		return "F — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
+	if me.at_commander():
+		return "F — командир: %s" % _order_hint(me)
+	if me.at_workbench():
+		return "F — верстак: протезы и коляска"
+	var truce: Node3D = me.truce_target()
+	if truce != null:
+		return "Y — перемирие с «%s» (сейчас %s)" % [
+			FACTIONS.name_of(truce.faction),
+			_world.diplomacy.label_of(me.faction, truce.faction),
+		]
+	if me.body.bleeding:
+		var progress: float = me.bandage_progress()
+		if progress > 0.0:
+			return "перевязка: %d%%" % int(progress * 100.0)
+		return "B — перевязать (стоя на месте)"
+	if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
+		return "приказ: %s — %s" % [
+			ORDERS.name_of(me.order_kind),
+			ORDERS.progress_text(me.order_kind, me.order_progress),
+		]
+	return ""
+
+
+## То же для стратегического режима: там «доступное действие» — это включённый
+## режим стройки или прокладки маршрута.
+func _strategy_prompt() -> String:
+	var refusal: String = _refusal_line().strip_edges()
+	if refusal != "":
+		return refusal
+	var route: Node3D = _world.route_controller
+	if route.active:
+		return "МАРШРУТ: ЛКМ — точка (%d), Enter или двойной ЛКМ — отправить, ПКМ — отмена" % route.points().size()
+	var controller: Node3D = _world.build_controller
+	if controller.active:
+		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
+	var boss: Node3D = _world.local_player()
+	if boss != null and boss.stock.get_amount(RES.Kind.IRON) <= 0:
+		return "Железо только в шахте: построй склад (1), нажми C и отправь караван"
+	return "F1 — все клавиши"
+
+
+## Полный список клавиш. Живёт под F1 и не занимает экран постоянно: список,
+## висящий всегда, перестают читать на второй минуте.
+func _help_text() -> String:
+	var me: Node3D = _world.local_player()
+	var lines := PackedStringArray()
+	lines.append("[b]В бою[/b]")
+	lines.append("WASD — движение · Space — прыжок · ЛКМ — удар · B — перевязать")
+	if me != null:
+		lines.append(_weapon_hint(me).replace(
+			"WASD — движение, Space — прыжок, ЛКМ — удар   |   ", "оружие: "))
+		if FACTIONS.has_abilities(me.faction):
+			lines.append("заклинания: 4 / 5 / 6")
+	lines.append("F — взаимодействие (груз, лавка, командир, верстак) · Y — перемирие")
+	lines.append("Tab — вид сверху · F10 — в меню · тильда — консоль")
+	lines.append("")
+	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
+	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
+	lines.append("1 / 2 / 3 — строить склад / казарму мечников / казарму лучников")
+	lines.append("B — нанять батрака · 4 / 5 / 6 / 7 — лесоруб / шахтёр / ополченец / строитель")
+	lines.append("T / Y — нанять мечника / лучника · F1-F4 — строй")
+	lines.append("G — отряд ко мне · H — отряд с обозом · ПКМ — отряду идти в точку")
+	lines.append("C — рисовать маршрут каравана, Enter — отправить")
+	lines.append("")
+	lines.append("[b]Клавиши B и 4-7 значат разное[/b] в бою и сверху. Режим — Tab.")
+	return "\n".join(lines)
+
+
 	_update_blindness()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# F1 — полный список клавиш. Работает в любом режиме: справку ищут именно
+	# тогда, когда не понимают, где находятся.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
+		_hud.toggle_help()
+		get_viewport().set_input_as_handled()
+		return
 	if Net.active and _world.strategy_mode and event is InputEventKey and event.pressed and not event.echo:
 		# Игровые клавиши читаем по ФИЗИЧЕСКОЙ позиции, а не по символу: keycode
 		# зависит от раскладки, и на русской раскладке управление отваливалось бы
