@@ -8,7 +8,7 @@ config_version=5
 
 config/name="DzhvaGoda"
 config/description="3D action/RTS multiplayer prototype — see /GDD.md and /HANDOFF.md at repo root."
-config/version="playtest-4"
+config/version="playtest-5"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 

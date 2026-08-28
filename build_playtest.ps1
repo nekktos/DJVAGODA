@@ -74,5 +74,7 @@ Get-ChildItem $build -Filter "*.zip" | ForEach-Object {
     "{0,-42} {1,7:N1} МБ" -f $_.Name, ($_.Length / 1MB)
 }
 Write-Host "`nПапка: $build"
-Write-Host "Обе сборки НЕ подписаны. Инструкция по обходу Gatekeeper лежит внутри архивов."
+Write-Host "macOS подписана СОБСТВЕННОЙ подписью (codesign/codesign=1 в пресете)."
+Write-Host "Без неё маки на Apple Silicon не запускают программу вовсе — объявляют повреждённой."
+Write-Host "Заверения у Apple нет, поэтому первый запуск тестер подтверждает вручную: см. README."
 Write-Host "В архиве macOS лежат README и вложенный DzhvaGoda.zip — распаковывать дважды."
