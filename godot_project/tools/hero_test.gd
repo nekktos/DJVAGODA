@@ -35,7 +35,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "герой"
-	expected_host = 21
+	expected_host = 23
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -216,6 +216,13 @@ func _test_spell_thresholds(hero: Node3D) -> void:
 ## Смерть вожака окончательна и для героя ИИ: убил — и злодей выбыл до конца
 ## партии. Ровно то, что решено про окончательную смерть.
 func _test_death_is_final(hero: Node3D) -> void:
+	# Пока вожак жив, сторона НЕ сломлена, хотя за неё никто не сидит. До
+	# появления героя пустующая сторона считалась сломленной сразу, и это было
+	# записано как временное правило «пока ИИ фракций нет».
+	check(not _world.objective.faction_is_broken(SIDE),
+		"пока ИИ-вожак жив, сторона не сломлена",
+		"за сторону никто не сидит, но вожак воюет")
+
 	hero.take_damage(999.0, 1, "torso", hero.global_position, Vector3.FORWARD)
 	await get_tree().create_timer(1.0).timeout
 	check(not hero.health.alive, "герой убит", "мёртв")
@@ -225,6 +232,11 @@ func _test_death_is_final(hero: Node3D) -> void:
 	await get_tree().create_timer(8.0).timeout
 	check(not hero.health.alive, "и в мир не вернулся",
 		"мёртв дольше срока респавна")
+	# А вот теперь сломлена: мёртвый вожак стороне не помощник, и возродиться
+	# он не может. Обе половины правила на одном герое — иначе «не сломлена
+	# никогда» зеленело бы точно так же.
+	check(_world.objective.faction_is_broken(SIDE),
+		"с гибелью вожака сторона сломлена", "вожак мёртв и не вернётся")
 
 
 ## За сторону сел человек — герой уходит. Проверяем сам механизм: сажать в
