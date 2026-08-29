@@ -196,6 +196,8 @@ var _zones := {}
 var _weapon_mount: BoneAttachment3D
 ## Какая маска увечий уже показана на модели.
 var _shown_severed := -1
+## Сколько выбитых глаз уже отмечено на лице.
+var _shown_eyes := -1
 var _weapon_visual: Node3D
 ## Какое оружие сейчас показано. Нужно, чтобы перерисовывать при смене — в том
 ## числе у чужих персонажей, у которых sync_weapon приезжает по сети.
@@ -316,6 +318,13 @@ func _physics_process(delta: float) -> void:
 	if body != null and body.severed_mask != _shown_severed:
 		_shown_severed = body.severed_mask
 		_apply_severed()
+	# Выбитый глаз должны видеть ОСТАЛЬНЫЕ. Себе слепота видна закрытой половиной
+	# экрана, а снаружи одноглазый ничем не отличался от целого — при том что у
+	# пешек кровь на лице появилась. Одна система увечий на всех значит и один
+	# вид: разница «люди целые, пешки в крови» была бы просто недоделкой.
+	if body != null and body.eyes_lost != _shown_eyes:
+		_shown_eyes = body.eyes_lost
+		RIG.mark_eye_loss(_model, body.eyes_missing())
 
 	if is_multiplayer_authority():
 		var inp := _gather_input()

@@ -128,6 +128,16 @@ func save_world() -> String:
 		cfg.set_value(key, "severed_mask", int(child.body.severed_mask))
 		cfg.set_value(key, "prosthetics", child.body.prosthetics)
 		cfg.set_value(key, "eyes_lost", int(child.body.eyes_lost))
+		# Вставленные глаза — отдельно от выбитых. Без этого вернувшийся игрок
+		# оказывался слепым на глаз, за который уже заплатил.
+		cfg.set_value(key, "eye_implants", int(child.body.eye_implants))
+		# Трофеи ОБЯЗАНЫ переживать выход.
+		#
+		# Некротический протез стоит десять чужих конечностей одного вида, и
+		# набрать столько за один заход почти нельзя. Не сохраняя счёт, мы делаем
+		# самый дорогой протез в игре недостижимым для всех, кто хоть раз вышел —
+		# то есть для всех.
+		cfg.set_value(key, "trophies", child.trophies)
 		cfg.set_value(key, "bandages", int(child.body.bandages))
 		cfg.set_value(key, "in_wheelchair", bool(child.body.in_wheelchair))
 
@@ -227,6 +237,8 @@ func restore_player(player: Node3D) -> bool:
 	player.body.severed_mask = int(cfg.get_value(key, "severed_mask", 0))
 	player.body.prosthetics = cfg.get_value(key, "prosthetics", player.body.prosthetics)
 	player.body.eyes_lost = int(cfg.get_value(key, "eyes_lost", 0))
+	player.body.eye_implants = int(cfg.get_value(key, "eye_implants", 0))
+	player.trophies = cfg.get_value(key, "trophies", player.trophies)
 	player.body.bandages = int(cfg.get_value(key, "bandages", player.body.bandages))
 	player.body.in_wheelchair = bool(cfg.get_value(key, "in_wheelchair", false))
 

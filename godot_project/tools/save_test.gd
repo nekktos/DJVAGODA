@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "сейв"
-	expected_host = 21
+	expected_host = 23
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -75,6 +75,10 @@ func _test_round_trip(me: Node3D) -> void:
 	me.orders_done = 4
 	me.body.severed_mask = 0b0100
 	me.body.bandages = 7
+	# Трофеи и вставленный глаз — то, что копится ДОЛЬШЕ одного захода.
+	me.trophies = PackedInt32Array([3, 7, 11])
+	me.body.eyes_lost = 2
+	me.body.eye_implants = 1
 	await get_tree().physics_frame
 
 	var path: String = _save().save_world()
@@ -107,12 +111,27 @@ func _test_round_trip(me: Node3D) -> void:
 	me.orders_done = 0
 	me.body.severed_mask = 0
 	me.body.bandages = 0
+	me.trophies = PackedInt32Array([0, 0, 0])
+	me.body.eyes_lost = 0
+	me.body.eye_implants = 0
 	check(_save().restore_player(me), "прогресс персонажа накатан", "успех")
 	check(int(me.gear_tier) == 2, "снаряжение вернулось", "уровень %d" % int(me.gear_tier))
 	check(int(me.orders_done) == 4, "служба вернулась", "%d приказов" % int(me.orders_done))
 	check(int(me.body.severed_mask) == 0b0100, "РАНЕНИЯ вернулись",
 		"маска %d" % int(me.body.severed_mask))
 	check(int(me.body.bandages) == 7, "бинты вернулись", "%d" % int(me.body.bandages))
+	# Некротический протез стоит десять чужих конечностей одного вида, и набрать
+	# столько за один заход почти нельзя. Не переживи счёт выход — самый дорогой
+	# протез в игре стал бы недостижимым для всех, кто хоть раз вышел.
+	check(me.trophies[0] == 3 and me.trophies[1] == 7 and me.trophies[2] == 11,
+		"ТРОФЕИ вернулись", "рук %d, ног %d, глаз %d" % [
+			me.trophies[0], me.trophies[1], me.trophies[2]
+		])
+	# Выбитые глаза сохранялись и раньше, вставленные — нет: вернувшийся
+	# оказывался слепым на глаз, за который уже заплатил.
+	check(int(me.body.eye_implants) == 1 and int(me.body.eyes_lost) == 2,
+		"вставленный глаз вернулся вместе с выбитыми",
+		"выбито %d, вставлено %d" % [int(me.body.eyes_lost), int(me.body.eye_implants)])
 
 
 ## Прогресс привязан к фракции: вернувшийся садится за свою прежнюю сторону.
