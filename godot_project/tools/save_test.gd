@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "сейв"
-	expected_host = 31
+	expected_host = 36
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -35,6 +35,8 @@ func _run() -> void:
 		finish()
 		return
 
+	_clear_leftovers()
+
 	_test_profile(me)
 	await _test_round_trip(me)
 	_test_faction_memory(me)
@@ -43,6 +45,7 @@ func _run() -> void:
 	# не накатывается» читает список уже восстановленных профилей, а любая
 	# загрузка мира его очищает. Стоя раньше, эта проверка роняла ту.
 	await _test_buildings(me)
+	await _test_labourers(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -53,8 +56,67 @@ func _save() -> Node:
 	return _world.savegame
 
 
+## Начать с ЧИСТОГО мира — и файла, и того, что уже стоит на карте.
+##
+## Набор гоняют по многу раз подряд, а стройки и батраки теперь сохраняются.
+## Файл проверки живёт между прогонами намеренно: иначе круговорот «сохранили —
+## испортили — загрузили» нечего было бы проверять. Но сессия успевает
+## ЗАГРУЗИТЬ его раньше, чем начнётся проверка, поэтому стереть один файл мало —
+## прошлые дома и работники уже стоят в мире и уедут в новый файл. Прогон за
+## прогоном мир пух бы без конца, и однажды набор упал бы не на ошибке, а на
+## собственном мусоре, а искали бы её в коде.
+func _clear_leftovers() -> void:
+	DirAccess.remove_absolute(_save().save_path())
+	for node in _buildings():
+		if is_instance_valid(node):
+			node.free()
+	for node in get_tree().get_nodes_in_group("unit"):
+		if is_instance_valid(node) and "sync_role" in node:
+			node.free()
+
+
 func _buildings() -> Array:
 	return get_tree().get_nodes_in_group("building")
+
+
+## Кто есть у стороны, по ремёслам, в порядке возрастания. Сравнивать надо
+## именно состав: вернуть четверых лесорубов вместо двух лесорубов и двух
+## рудокопов значит вернуть не тех батраков, а число сойдётся.
+func _roles(side: int) -> Array:
+	var roles := []
+	for node in _world.labourers_of(side):
+		roles.append(int(node.sync_role))
+	roles.sort()
+	return roles
+
+
+## Батраки переживают перезаход: каждый нанят за золото.
+func _test_labourers(me: Node3D) -> void:
+	var side: int = int(me.faction)
+	var base := Vector3(150.0, 0.0, 30.0)
+	# Двоих и РАЗНЫХ ремёсел: стартовых батраков сторона проверки не имеет
+	# (их получает только злодей), а с одинаковыми проверка состава была бы
+	# неотличима от проверки числа.
+	_world.spawn_labourer(side, base + Vector3(1.0, 0.5, 0.0), base, 0)
+	_world.spawn_labourer(side, base + Vector3(-1.0, 0.5, 0.0), base, 2)
+	await get_tree().physics_frame
+	var before: Array = _roles(side)
+	check(before.size() >= 2, "батраки у стороны есть", "%d штук" % before.size())
+	check(before[0] != before[before.size() - 1], "и они разных ремёсел", str(before))
+
+	_save().save_world()
+	for node in _world.labourers_of(side):
+		node.free()
+	await get_tree().physics_frame
+	check(_roles(side).is_empty(), "перед загрузкой батраков нет",
+		"%d осталось" % _roles(side).size())
+
+	check(_save().load_world(), "мир загружен с батраками", "успех")
+	await get_tree().physics_frame
+	check(_roles(side).size() == before.size(), "БАТРАКИ вернулись",
+		"%d из %d" % [_roles(side).size(), before.size()])
+	check(_roles(side) == before, "и вернулись при своих ремёслах",
+		"%s вместо %s" % [str(_roles(side)), str(before)])
 
 
 ## Постройки переживают перезаход.
@@ -71,7 +133,7 @@ func _test_buildings(me: Node3D) -> void:
 	_world.spawn_building(RES.Building.STORAGE, spot, 1, int(me.faction), true)
 	await get_tree().physics_frame
 	var before: int = _buildings().size()
-	check(before >= 2, "постройки стоят на карте", "%d штук" % before)
+	check(before >= 1, "постройка стоит на карте", "%d штук" % before)
 
 	_save().save_world()
 	for node in _buildings():

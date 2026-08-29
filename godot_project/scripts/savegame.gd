@@ -16,7 +16,8 @@ extends Node
 ##   - казна каждой стороны, отдельно «при себе» и «в складе»;
 ##   - игроки по профилям: сторона, снаряжение, ранения, прогресс службы.
 ##
-##   - постройки: что стоит, где, чьё и достроено ли.
+##   - постройки: что стоит, где, чьё и достроено ли;
+##   - батраки: сколько их у каждой стороны и кто из них кто.
 ##
 ## Что НЕ сохраняется намеренно: позиции персонажей, снаряды, трупы и кучи
 ## груза. Это состояние боя, а не прогресса; восстанавливать его значит
@@ -119,6 +120,20 @@ func save_world() -> String:
 		})
 	cfg.set_value("world", "buildings", built)
 
+	# Батраки — такое же вложение, как постройки: каждый нанят за золото, а
+	# золото добывают они же. Позиции не сохраняем и здесь, только сторону,
+	# ремесло и базу: батрак возвращается к своей базе, как игрок после смерти.
+	var hands: Array = []
+	for node in world.get_tree().get_nodes_in_group("unit"):
+		if not is_instance_valid(node) or not ("sync_role" in node):
+			continue
+		hands.append({
+			"faction": int(node.faction),
+			"role": int(node.sync_role),
+			"home": node.home,
+		})
+	cfg.set_value("world", "labourers", hands)
+
 	for faction in FACTIONS.COUNT:
 		var wallet: Node = world.treasury.of(faction)
 		if wallet == null:
@@ -200,6 +215,7 @@ func load_world() -> bool:
 
 	world.diplomacy.values = cfg.get_value("diplomacy", "values", world.diplomacy.values)
 	_restore_buildings(world, cfg)
+	_restore_labourers(world, cfg)
 
 	for faction in FACTIONS.COUNT:
 		var wallet: Node = world.treasury.of(faction)
@@ -248,11 +264,36 @@ func _restore_buildings(world: Node, cfg: ConfigFile) -> void:
 		var progress := float(entry.get("progress", 1.0))
 		var node: Node = world.spawn_building(
 			int(entry["kind"]), entry["point"], int(entry.get("owner", 0)),
-			int(entry.get("faction", 0)), progress >= 1.0)
+			int(entry.get("faction", 0)), progress >= 1.0,
+			float(entry.get("yaw", 0.0)))
 		if node == null:
 			continue
 		node.progress = progress
 		node.health = float(entry.get("health", node.health))
+
+
+## Вернуть батраков — по стороне, ремеслу и базе.
+##
+## Стартовых двух батраков злодея мир ставит сам, если у стороны нет ни одного.
+## Этот предохранитель мы НЕ отменяем, в отличие от стартовой казармы: сторона
+## без батраков и без золота не может нанять батрака, чтобы добыть золото, и
+## партия встаёт намертво. Пришедших из сейва он и так пропустит — они есть.
+func _restore_labourers(world: Node, cfg: ConfigFile) -> void:
+	if not cfg.has_section_key("world", "labourers"):
+		return
+	for node in world.get_tree().get_nodes_in_group("unit"):
+		if is_instance_valid(node) and "sync_role" in node:
+			node.free()
+	var i := 0
+	for entry in cfg.get_value("world", "labourers", []):
+		var home: Vector3 = entry.get("home", Vector3.ZERO)
+		# Раскладываем по кругу вокруг базы: вставшие в одну точку расталкивают
+		# друг друга физикой и первые секунды после загрузки едут врассыпную.
+		var angle: float = TAU * float(i) / 8.0
+		i += 1
+		var spot: Vector3 = home + Vector3(cos(angle) * 5.0, 0.5, sin(angle) * 5.0)
+		world.spawn_labourer(int(entry.get("faction", 0)), spot, home,
+			int(entry.get("role", 0)))
 
 
 ## Какую сторону этот профиль занимал в прошлый раз. -1 — профиль незнакомый.

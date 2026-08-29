@@ -572,7 +572,8 @@ func is_at_trader(point: Vector3) -> bool:
 
 ## Поставить здание. Только на хосте: сюда попадают уже проверенные заявки
 ## (см. player.gd::request_build — там же списывается стоимость).
-func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1, prebuilt := false) -> Node:
+func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1,
+		prebuilt := false, yaw := 0.0) -> Node:
 	if not Net.hosting():
 		return null
 	_spawn_counter += 1
@@ -585,6 +586,10 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1, pre
 		"owner": owner_id,
 		"faction": side,
 		"prebuilt": prebuilt,
+		# Разворот постройке сейчас никто не задаёт, но в сейв он пишется, и
+		# ехать он обязан ЗДЕСЬ, вместе с остальными данными спавна: выставленный
+		# после спавна на хосте, до клиентов он не доедет вовсе.
+		"yaw": yaw,
 	})
 	if node != null:
 		print("[стройка] %s стороны «%s» в %s" % [RES.BUILDING_NAMES[kind], FACTIONS.name_of(side), point])
