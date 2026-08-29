@@ -257,8 +257,8 @@ theme_override_constants/separation = 10
 
 [node name="Title" type="Label" parent="UI/Menu/Panel/VBox"]
 horizontal_alignment = 1
-text = "ДжваГода — Этап 0
-сетевой фундамент"
+theme_override_font_sizes/font_size = 28
+text = "ДжваГода"
 
 [node name="FactionRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
 theme_override_constants/separation = 8

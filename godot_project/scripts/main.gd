@@ -10,6 +10,7 @@ extends Node
 ##   --join=АДРЕС    сразу подключиться (IP, либо Steam ID при --steam)
 ##   --steam         использовать Steam-транспорт вместо локального IP
 ##   --shots=ПАПКА   снять карту с набора ракурсов в PNG и выйти (нужно окно)
+##   --menushot=ПАПКА снять главное меню в PNG и выйти (нужно окно)
 ##   --walktest      автопроверка проходимости карты и выход (работает headless)
 ##   --perftest      замер fps в обоих режимах камеры и выход (нужно окно)
 ##   --strategytest  через 8 с уйти в стратегический режим и остаться в нём
@@ -152,13 +153,17 @@ func _process(delta: float) -> void:
 ## КУДА они попадают.
 func _refresh_hud() -> void:
 	if not Net.active:
+		# Номер сборки в меню НУЖЕН: тестер сообщает об ошибке, и первый вопрос
+		# к нему — «в какой сборке». Остальной HUD — нет: полоса здоровья
+		# несуществующего персонажа под главным меню выглядит поломкой.
 		_hud.set_tech("Оффлайн   сборка: %s"
 			% ProjectSettings.get_setting("application/config/version", "?"))
-		_hud.set_vitals(0.0, 1.0, "", "")
+		_hud.vitals_panel.visible = false
 		_hud.set_right(PackedStringArray())
 		_hud.set_prompt("")
 		_hud.set_spells("")
 		return
+	_hud.vitals_panel.visible = true
 
 	var role := "ХОСТ" if Net.is_host else "КЛИЕНТ"
 	var kind := "Steam" if Net.transport == Net.Transport.STEAM else "IP"
@@ -549,6 +554,19 @@ func _refresh_save_info() -> void:
 		_save_info.text = "Сохранений нет — начните новую игру"
 		return
 	var side := int(info.get("faction", -1))
+	# Подставляем прошлую сторону в выбор — ПО УМОЛЧАНИЮ, а не насильно.
+	#
+	# Без этого подпись обещала «вы играли за Охрану дворца», а выбор рядом
+	# показывал «Злодей», и нажавший «Продолжить» садился злодеем. Две надписи
+	# об одном, говорящие разное, хуже, чем одна неверная: человек верит той,
+	# которую прочитал, и считает игру сломанной.
+	#
+	# Насильно нельзя: ровно так выбор стороны однажды и перестал работать.
+	# Прогресс лежит отдельно по каждой стороне (см. `_player_key`), поэтому
+	# продолжить за другую — законно, просто это будет её прогресс.
+	if side >= 0:
+		_faction_opt.select(clampi(side, 0, FACTIONS.COUNT - 1))
+		Net.chosen_faction = _faction_opt.selected
 	var who := "" if side < 0 else ", вы играли за «%s»" % FACTIONS.name_of(side)
 	_save_info.text = "Мир %s, сохранён %s%s" % [
 		info.get("world", "?"), _human_time(String(info.get("at", ""))), who
@@ -826,6 +844,15 @@ func _apply_cmdline() -> void:
 			_start_screenshots(arg.substr("--shots=".length()))
 			needs_session = true
 			break
+
+	for arg in args:
+		if arg.begins_with("--menushot="):
+			# Снимок меню делается БЕЗ сессии: меню видно, только пока её нет.
+			# Поэтому и выходим отсюда сразу, не дойдя до --host.
+			var shot: Node = preload("res://tools/menu_shot.gd").new()
+			add_child(shot)
+			shot.start(self, arg.substr("--menushot=".length()))
+			return
 
 	for arg in args:
 		if arg == "--host":

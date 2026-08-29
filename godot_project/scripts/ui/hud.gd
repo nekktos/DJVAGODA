@@ -59,6 +59,9 @@ const DANGER := Color(0.90, 0.28, 0.24)
 
 var tech: Label
 var vitals_box: VBoxContainer
+## Панель вокруг полосы жизни. Нужна снаружи, чтобы прятать её целиком: скрытая
+## полоса внутри видимой панели оставляет под меню пустой чёрный прямоугольник.
+var vitals_panel: PanelContainer
 var health_bar: ProgressBar
 var health_text: Label
 var body_text: Label
@@ -89,6 +92,7 @@ func _build() -> void:
 	# Жизнь: левый низ. Сюда смотрят чаще всего и в самый неподходящий момент,
 	# поэтому здесь полоса, а не число: цифру надо читать, полосу — видно.
 	var vitals := _panel()
+	vitals_panel = vitals
 	vitals.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	vitals.position = Vector2(MARGIN, -MARGIN)
 	vitals.grow_vertical = Control.GROW_DIRECTION_BEGIN

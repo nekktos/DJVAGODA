@@ -23,7 +23,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "новая игра"
-	expected_host = 25
+	expected_host = 28
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -54,6 +54,10 @@ func _run() -> void:
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
+	# Заморозку проверяем ПОСЛЕДНЕЙ и после ожидания клиента: она на полторы
+	# секунды останавливает синхронизаторы, и клиент, ещё делающий свою
+	# проверку, увидел бы застывшую картину мира и решил, что она разъехалась.
+	await _test_frozen_world()
 	finish()
 
 
@@ -121,10 +125,18 @@ func _test_reset(me: Node3D) -> void:
 
 	# 2. Меню умеет рассказать, что именно предлагает продолжить.
 	var main: Node = get_parent()
+	# Сбиваем выбор стороны НАМЕРЕННО на чужую: иначе проверка ниже сойдётся
+	# сама собой — сторона проверки и сторона по умолчанию в меню совпадают, и
+	# «подставилось» было бы неотличимо от «так и стояло».
+	main._faction_opt.select((side + 1) % FACTIONS.COUNT)
 	main._show_menu(true)
 	check(not main._continue_btn.disabled, "с сейвом «Продолжить» ожила", "доступна")
 	check(main._save_info.text.contains(_world.savegame.world_id),
 		"и подпись называет мир", main._save_info.text)
+	# Подпись обещала «вы играли за X» — выбор рядом обязан показывать то же
+	# самое. Две надписи об одном, говорящие разное, хуже одной неверной.
+	check(main._faction_opt.selected == side, "и выбор стороны подставлен из сейва",
+		FACTIONS.name_of(main._faction_opt.selected))
 	main._show_menu(false)
 
 	var info: Dictionary = _world.savegame.save_summary()
@@ -166,6 +178,30 @@ func _test_reset(me: Node3D) -> void:
 
 	# 5. Персонажа из тела при этом не выбросило.
 	check(_world.local_player() != null, "игрок остался в мире", "персонаж на месте")
+
+
+## Пока человек в меню, мир СТОИТ.
+##
+## Мир лежит в главной сцене с самого старта, и «лежит» молча превратилось в
+## «живёт»: шахта копила запас, отношения дрейфовали, ИИ строил дома — всё это
+## до того, как кто-нибудь нажал кнопку. Партия начиналась не с начала, а с того
+## места, до которого мир дошёл сам, пока его никто не видел.
+##
+## Проверяем шахтой: она копит быстрее всех и ровно, три камня в секунду. Если
+## за полторы секунды остановленного мира в ней прибавилось хоть что-то, значит
+## мир идёт — а вместе с ним идёт и всё остальное.
+func _test_frozen_world() -> void:
+	_world.mine.stored = PackedInt32Array([0, 0, 0, 0])
+	_world._set_running(false)
+	await get_tree().create_timer(1.5).timeout
+	var frozen: PackedInt32Array = _world.mine.stored.duplicate()
+	check(frozen == PackedInt32Array([0, 0, 0, 0]), "в меню мир СТОИТ", str(frozen))
+
+	# И обратно: остановленный навсегда мир — это не игра, а картинка.
+	_world._set_running(true)
+	await get_tree().create_timer(1.5).timeout
+	check(_world.mine.stored != frozen, "а с началом партии идёт",
+		str(_world.mine.stored))
 
 
 ## Мир, заданный ключом `--world=ИМЯ`, «новой игрой» не подменяется.
