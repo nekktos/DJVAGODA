@@ -30,6 +30,7 @@ extends Node
 ##   --diptest       автопроверка репутации и дипломатии (headless)
 ##   --savetest      автопроверка сохранений и профиля игрока (headless)
 ##   --newgametest   автопроверка «Новой игры»: что она правда новая (headless)
+##   --reentrytest   автопроверка перезахода: вышел в меню, вернулся (headless)
 ##   --garrisontest  автопроверка гарнизонов свободных сторон (headless)
 ##   --warbandtest   автопроверка воюющего ИИ свободных сторон (headless)
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
@@ -787,6 +788,12 @@ func _apply_cmdline() -> void:
 		var garrison_test: Node = preload("res://tools/garrison_test.gd").new()
 		add_child(garrison_test)
 		garrison_test.start(_world)
+		needs_session = true
+
+	if args.has("--reentrytest"):
+		var reentry_test: Node = preload("res://tools/reentry_test.gd").new()
+		add_child(reentry_test)
+		reentry_test.start(_world)
 		needs_session = true
 
 	if args.has("--newgametest"):

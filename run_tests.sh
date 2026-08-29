@@ -63,6 +63,7 @@ SUITES=(
 	"slice:--slicetest:0,1,2:"
 	"save:--savetest:2,1:--world=autotest-save"
 	"newgame:--newgametest:0,1:--world=autotest-newgame"
+	"reentry:--reentrytest:0:--world=autotest-reentry"
 )
 
 mkdir -p "$LOGS"
