@@ -67,6 +67,8 @@ const CARAVAN := preload("res://scripts/economy/caravan.gd")
 
 ## Кнопка «Новая игра» уже спросила подтверждение и ждёт второго нажатия.
 var _new_confirm := false
+## Сохранённые партии в том порядке, в каком они лежат в списке меню.
+var _saves: Array = []
 
 ## Сколько секунд держится объявление о результате.
 const ANNOUNCE_SECONDS := 7.0
@@ -78,6 +80,7 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _continue_btn: Button = $UI/Menu/Panel/VBox/ContinueBtn
 @onready var _new_btn: Button = $UI/Menu/Panel/VBox/NewBtn
 @onready var _save_info: Label = $UI/Menu/Panel/VBox/SaveInfo
+@onready var _world_opt: OptionButton = $UI/Menu/Panel/VBox/WorldRow/WorldOpt
 @onready var _join_btn: Button = $UI/Menu/Panel/VBox/JoinRow/JoinBtn
 @onready var _hud: Control = $UI/Hud
 @onready var _world: Node3D = $World
@@ -99,6 +102,7 @@ func _ready() -> void:
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
 	_continue_btn.pressed.connect(_on_continue_pressed)
+	_world_opt.item_selected.connect(_on_world_selected)
 	_new_btn.pressed.connect(_on_new_pressed)
 	_join_btn.pressed.connect(_on_join_pressed)
 	_transport_opt.item_selected.connect(_on_transport_selected)
@@ -504,10 +508,35 @@ func _on_transport_selected(index: int) -> void:
 		_status.text = LOCAL_HINT
 
 
-## Продолжить прошлую партию. Ровно то, что игра делала всегда, — теперь у
-## этого есть имя и кнопка, а не молчаливое «хост всегда грузит последний мир».
+## Продолжить ВЫБРАННУЮ партию. Раньше это было молчаливое «хост всегда грузит
+## последний мир», и до других миров добирался только тот, кто знает про ключ
+## `--world=ИМЯ`; для всех остальных вторая партия означала потерю первой.
 func _on_continue_pressed() -> void:
+	_begin_session(_selected_world())
+
+
+## Имя выбранной в списке партии. Пустая строка — выбирать не из чего.
+func _selected_world() -> String:
+	var at := _world_opt.selected
+	if at < 0 or at >= _saves.size():
+		return ""
+	return String(_saves[at].get("world", ""))
+
+
+## Поднять сессию хозяином. `world` пустой — начать новую партию.
+##
+## Мир ВСЕГДА чистится перед стартом, и это не перестраховка. Человек, вышедший
+## в меню и выбравший другую партию, остаётся в том же запущенном процессе: дома
+## и батраки прошлой партии стоят где стояли. Загрузка накатывает поверх них
+## только то, что записано в файле, — остальное осталось бы чужим наследством, и
+## в чужой мир переехали бы и трупы, и обозы, и запас шахты.
+func _begin_session(world: String) -> void:
 	_set_buttons_enabled(false)
+	_world.reset_for_new_game()
+	if world.is_empty():
+		print("[меню] новая партия в мире %s" % _world.savegame.begin_new_world())
+	else:
+		_world.savegame.adopt_world(world)
 	if not Net.host_game():
 		_set_buttons_enabled(true)
 
@@ -525,15 +554,7 @@ func _on_new_pressed() -> void:
 		_status.text = "Прежний мир останется на диске, но из меню к нему не вернуться."
 		return
 	_reset_new_button()
-	_set_buttons_enabled(false)
-	# Порядок важен: сначала стираем прошлую партию из ПАМЯТИ, потом заводим ей
-	# новое имя, и только потом поднимаем сессию. Наоборот — и новый мир при
-	# первом же автосейве запишет в свой файл чужие дома.
-	_world.reset_for_new_game()
-	var fresh: String = _world.savegame.begin_new_world()
-	print("[меню] новая партия в мире %s" % fresh)
-	if not Net.host_game():
-		_set_buttons_enabled(true)
+	_begin_session("")
 
 
 ## Сбросить кнопку «Новая игра» из состояния «переспрашиваю».
@@ -542,17 +563,43 @@ func _reset_new_button() -> void:
 	_new_btn.text = "Новая игра"
 
 
-## Что предлагаем продолжить. Кнопка «Продолжить» без единого слова о том, какая
-## это партия и как давно она была, — это кнопка наугад.
+## Собрать список сохранённых партий и подписать выбранную.
 ##
-## Занимается ТОЛЬКО подписью. Доступностью кнопок ведает `_set_buttons_enabled`
-## и никто больше: две функции, независимо решающие одно и то же, однажды решат
-## по-разному — и «Продолжить» окажется живой посреди подключения.
+## Занимается ТОЛЬКО списком и подписью. Доступностью кнопок ведает
+## `_set_buttons_enabled` и никто больше: две функции, независимо решающие одно
+## и то же, однажды решат по-разному — и «Продолжить» окажется живой посреди
+## подключения.
 func _refresh_save_info() -> void:
-	var info: Dictionary = _world.savegame.save_summary()
-	if info.is_empty():
+	_saves = _world.savegame.list_saves()
+	_world_opt.clear()
+	if _saves.is_empty():
+		_world_opt.add_item("сохранений нет")
+		_world_opt.disabled = true
 		_save_info.text = "Сохранений нет — начните новую игру"
 		return
+	_world_opt.disabled = false
+	for entry in _saves:
+		# В строке списка — КОГДА и ЗА КОГО, а не имя мира: имя случайное
+		# («w865fa1ac»), человеку оно не говорит ничего, а выбирают партию
+		# именно по этим двум признакам. Имя нужно только чтобы вернуться к
+		# партии ключом --world=, и для этого оно есть в подписи ниже.
+		var side := int(entry.get("faction", -1))
+		var mark := FACTIONS.name_of(side) if side >= 0 \
+			else "мир " + String(entry.get("world", "?"))
+		_world_opt.add_item("%s — %s" % [
+			_human_time(String(entry.get("at", ""))), mark
+		])
+	# Свежая партия первой и выбрана по умолчанию: «Продолжить» без единого
+	# действия обязана продолжать ту, где человек только что был.
+	_world_opt.select(0)
+	_on_world_selected(0)
+
+
+## Выбрали партию в списке: подписываем её и подставляем её сторону.
+func _on_world_selected(at: int) -> void:
+	if at < 0 or at >= _saves.size():
+		return
+	var info: Dictionary = _saves[at]
 	var side := int(info.get("faction", -1))
 	# Подставляем прошлую сторону в выбор — ПО УМОЛЧАНИЮ, а не насильно.
 	#
@@ -567,10 +614,8 @@ func _refresh_save_info() -> void:
 	if side >= 0:
 		_faction_opt.select(clampi(side, 0, FACTIONS.COUNT - 1))
 		Net.chosen_faction = _faction_opt.selected
-	var who := "" if side < 0 else ", вы играли за «%s»" % FACTIONS.name_of(side)
-	_save_info.text = "Мир %s, сохранён %s%s" % [
-		info.get("world", "?"), _human_time(String(info.get("at", ""))), who
-	]
+	var here := " — сейчас открыта" if String(info.get("world", "")) == _world.savegame.world_id else ""
+	_save_info.text = "Мир %s%s" % [info.get("world", "?"), here]
 
 
 ## «2026-08-29T11:54:22» человеку читать незачем.
@@ -589,6 +634,9 @@ func _human_time(stamp: String) -> String:
 func _on_join_pressed() -> void:
 	_reset_new_button()
 	_set_buttons_enabled(false)
+	# Клиенту мир приедет от хозяина, но СВОЙ он должен встретить пустым: иначе
+	# в чужую партию подмешаются дома и батраки той, в которую он играл сам.
+	_world.reset_for_new_game()
 	if not Net.join_game(_ip_edit.text):
 		_set_buttons_enabled(true)
 
@@ -614,16 +662,19 @@ func _on_session_ended() -> void:
 
 func _show_menu(visible_now: bool) -> void:
 	_menu.visible = visible_now
-	_set_buttons_enabled(true)
+	# Список СНАЧАЛА, доступность кнопок потом: «Продолжить» жива ровно тогда,
+	# когда в списке что-то есть, и обратный порядок гасил бы её на первом
+	# показе меню — список к тому моменту ещё пуст.
 	if visible_now:
 		_reset_new_button()
 		_refresh_save_info()
+	_set_buttons_enabled(true)
 
 
 func _set_buttons_enabled(enabled: bool) -> void:
 	# «Продолжить» гасим ещё и когда продолжать нечего: кнопка, которая ничего
 	# не делает, хуже отсутствующей — по ней жмут и решают, что игра сломана.
-	_continue_btn.disabled = not enabled or not _world.savegame.has_save()
+	_continue_btn.disabled = not enabled or _saves.is_empty()
 	_new_btn.disabled = not enabled
 	_join_btn.disabled = not enabled
 

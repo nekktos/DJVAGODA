@@ -23,7 +23,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "новая игра"
-	expected_host = 28
+	expected_host = 35
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -51,6 +51,7 @@ func _run() -> void:
 	_test_menu()
 	await _test_reset(me)
 	_test_world_id_guard()
+	_test_load_other_world()
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -59,6 +60,24 @@ func _run() -> void:
 	# проверку, увидел бы застывшую картину мира и решил, что она разъехалась.
 	await _test_frozen_world()
 	finish()
+
+
+## Имена партий, которые меню сейчас предлагает. Спрашиваем ДАННЫЕ, а не
+## надписи: в надписи стоит «когда и за кого», имени мира там нет и быть не
+## должно — оно случайное и человеку ничего не говорит.
+func _listed_ids(main: Node) -> PackedStringArray:
+	var ids := PackedStringArray()
+	for entry in main._saves:
+		ids.append(String(entry.get("world", "")))
+	return ids
+
+
+## Что сейчас НАПИСАНО в списке, одной строкой.
+func _listed(main: Node) -> String:
+	var parts := PackedStringArray()
+	for i in main._world_opt.item_count:
+		parts.append(main._world_opt.get_item_text(i))
+	return " | ".join(parts)
 
 
 ## Само меню: две кнопки, подпись под ними и переспрос.
@@ -75,15 +94,27 @@ func _test_menu() -> void:
 	check(main.has_method("_on_continue_pressed") and main.has_method("_on_new_pressed"),
 		"обе кнопки главного меню подключены", "«Продолжить» и «Новая игра»")
 
-	# Файл мира стираем НАСИЛЬНО: набор гоняют по многу раз подряд, а прошлый
-	# прогон оставляет после себя сейв. Без этого ветка «продолжать нечего»
-	# проверялась бы ровно один раз в жизни — на чистой машине, — а дальше
-	# молча пропускалась, и сломать её было бы некому заметить.
+	# Свой файл мира стираем НАСИЛЬНО: набор гоняют по многу раз подряд, а
+	# прошлый прогон оставляет после себя сейв. Без этого проверка «стёртой
+	# партии в списке нет» сходилась бы сама собой ровно один раз в жизни, на
+	# чистой машине, а дальше пропускала бы что угодно.
 	DirAccess.remove_absolute(_world.savegame.save_path())
 	main._show_menu(true)
-	check(main._save_info.text.contains("Сохранений нет"),
-		"без сейва меню честно говорит, что продолжать нечего", main._save_info.text)
-	check(main._continue_btn.disabled, "и гасит «Продолжить»", "погашена")
+	check(not _listed_ids(main).has(_world.savegame.world_id),
+		"стёртой партии в списке нет", " ".join(_listed_ids(main)))
+
+	# Ветку «продолжать нечего» проверяем НАПРЯМУЮ, а не пустой папкой: в
+	# user://saves лежат файлы всех остальных наборов, и «ни одного сохранения»
+	# на этой машине не бывает никогда. Опустошаем список и спрашиваем меню.
+	var kept: Array = main._saves
+	main._saves = []
+	main._set_buttons_enabled(true)
+	check(main._continue_btn.disabled, "без единой партии «Продолжить» погашена",
+		"погашена" if main._continue_btn.disabled else "жива")
+	check(main._selected_world().is_empty(), "и продолжать нечего",
+		"«%s»" % main._selected_world())
+	main._saves = kept
+	main._set_buttons_enabled(true)
 
 	# Первое нажатие «Новой игры» обязано ПЕРЕСПРОСИТЬ, а не начать.
 	main._on_new_pressed()
@@ -131,8 +162,13 @@ func _test_reset(me: Node3D) -> void:
 	main._faction_opt.select((side + 1) % FACTIONS.COUNT)
 	main._show_menu(true)
 	check(not main._continue_btn.disabled, "с сейвом «Продолжить» ожила", "доступна")
-	check(main._save_info.text.contains(_world.savegame.world_id),
-		"и подпись называет мир", main._save_info.text)
+	check(_listed_ids(main).has(_world.savegame.world_id),
+		"и наша партия появилась в списке", " ".join(_listed_ids(main)))
+	check(main._save_info.text.contains("сейчас открыта"),
+		"и отмечена как открытая сейчас", main._save_info.text)
+	# Надпись в списке — то, по чему человек выбирает: когда и за кого.
+	check(main._world_opt.get_item_text(0).contains("Злодей"),
+		"в списке видно, за кого была партия", main._world_opt.get_item_text(0))
 	# Подпись обещала «вы играли за X» — выбор рядом обязан показывать то же
 	# самое. Две надписи об одном, говорящие разное, хуже одной неверной.
 	check(main._faction_opt.selected == side, "и выбор стороны подставлен из сейва",
@@ -214,3 +250,35 @@ func _test_world_id_guard() -> void:
 	var after: String = _world.savegame.begin_new_world()
 	check(after == before, "мир из ключа --world= не подменяется",
 		"%s остался %s" % [before, after])
+	check(not _world.savegame.adopt_world(before + "-другой"),
+		"и загрузкой из меню тоже не уводится", _world.savegame.world_id)
+
+
+## Загрузка ДРУГОЙ партии — то, ради чего в меню появился список.
+##
+## Замок `--world=` снимаем НАМЕРЕННО и на два вызова. Без этого проверить
+## переход нечем: набор работает в мире, заданном ключом, а ключ на то и стоит,
+## чтобы мир под набором не менялся. Замок — не предмет проверки здесь, его
+## проверяет `_test_world_id_guard`; здесь проверяется то, что он охраняет.
+##
+## Соседнюю партию заводим сами, а не ищем на диске: файлов от других наборов
+## там сколько угодно, но полагаться на них — значит проверять чужой мусор.
+func _test_load_other_world() -> void:
+	var main: Node = get_parent()
+	var mine: String = _world.savegame.world_id
+	var other := mine + "-second"
+	_world.savegame._world_from_cmdline = false
+
+	check(_world.savegame.adopt_world(other) and _world.savegame.world_id == other,
+		"перешли в другую партию", "%s → %s" % [mine, _world.savegame.world_id])
+	_world.savegame.save_world()
+	check(_world.savegame.adopt_world(mine) and _world.savegame.world_id == mine,
+		"и вернулись в свою", _world.savegame.world_id)
+
+	# И соседка обязана быть видна в списке меню: партия, о которой знает файл,
+	# но не знает меню, для человека не существует.
+	main._show_menu(true)
+	check(_listed_ids(main).has(other), "соседняя партия видна в списке",
+		" ".join(_listed_ids(main)))
+	main._show_menu(false)
+	_world.savegame._world_from_cmdline = true

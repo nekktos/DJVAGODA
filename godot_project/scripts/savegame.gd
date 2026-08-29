@@ -311,12 +311,18 @@ func saved_faction(profile: String) -> int:
 	var cfg := ConfigFile.new()
 	if cfg.load(save_path()) != OK:
 		return -1
+	return _faction_in(cfg, profile)
+
+
+## Чем профиль играл в ЭТОМ файле. Отдельно от `saved_faction`, потому что меню
+## перебирает чужие файлы, а не только текущий.
+##
+## ПОДСКАЗКА, а не приказ: навязывать эту сторону поверх выбора в меню нельзя —
+## именно так выбор и перестал работать, игрок жал «эльфы», а садился злодеем.
+static func _faction_in(cfg: ConfigFile, profile: String) -> int:
 	var key := "player/" + profile
 	if not cfg.has_section(key):
 		return -1
-	# ПОДСКАЗКА, а не приказ: чем человек играл в прошлый раз. Навязывать эту
-	# сторону поверх выбора в меню нельзя — именно так выбор и перестал
-	# работать: игрок жал «эльфы», а садился за злодея.
 	return int(cfg.get_value(key, "last_faction", cfg.get_value(key, "faction", -1)))
 
 
@@ -391,6 +397,57 @@ func save_summary() -> Dictionary:
 		"at": String(cfg.get_value("meta", "saved_at", "")),
 		"faction": saved_faction(Net.profile_id),
 	}
+
+
+## Все сохранённые миры, свежие первыми.
+##
+## Меню обязано показывать не только последнюю партию. Один файл на мир — это
+## уже поддержка нескольких кампаний, и до сих пор она была видна только тому,
+## кто знает про ключ `--world=ИМЯ`. Для всех остальных вторая партия означала
+## потерю первой.
+##
+## Читаем каждый файл целиком: дата и сторона лежат внутри, а по имени файла о
+## партии не сказать ничего — оно случайное.
+func list_saves() -> Array:
+	var found: Array = []
+	var dir := DirAccess.open(SAVE_DIR)
+	if dir == null:
+		return found
+	for file_name in dir.get_files():
+		if not file_name.ends_with(".cfg"):
+			continue
+		var cfg := ConfigFile.new()
+		if cfg.load("%s/%s" % [SAVE_DIR, file_name]) != OK:
+			continue
+		found.append({
+			"world": file_name.get_basename(),
+			"at": String(cfg.get_value("meta", "saved_at", "")),
+			"faction": _faction_in(cfg, Net.profile_id),
+		})
+	# Свежие первыми. Дата лежит строкой вида «2026-08-29T14:34:21», и такие
+	# строки сравниваются как даты — на то формат и выбран.
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return String(a["at"]) > String(b["at"]))
+	return found
+
+
+## Перейти в другой сохранённый мир: он становится текущим.
+##
+## Прежнее имя записываем рядом — тем же способом, что при новой игре. Ничего не
+## стирается: миров на диске сколько было, столько и осталось.
+func adopt_world(id: String) -> bool:
+	if _frozen or _world_from_cmdline or id.is_empty() or id == world_id:
+		return false
+	var cfg := ConfigFile.new()
+	cfg.load(WORLD_ID_PATH)
+	cfg.set_value("world", "previous", world_id)
+	cfg.set_value("world", "id", id)
+	cfg.save(WORLD_ID_PATH)
+	world_id = id
+	_restored.clear()
+	_autosave_t = 0.0
+	print("[сейв] переходим в мир %s" % world_id)
+	return true
 
 
 ## Начать НОВУЮ партию.

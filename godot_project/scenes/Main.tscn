@@ -260,6 +260,18 @@ horizontal_alignment = 1
 theme_override_font_sizes/font_size = 28
 text = "ДжваГода"
 
+[node name="WorldRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
+theme_override_constants/separation = 8
+
+[node name="WorldLabel" type="Label" parent="UI/Menu/Panel/VBox/WorldRow"]
+custom_minimum_size = Vector2(100, 0)
+text = "Партия"
+
+[node name="WorldOpt" type="OptionButton" parent="UI/Menu/Panel/VBox/WorldRow"]
+custom_minimum_size = Vector2(0, 40)
+size_flags_horizontal = 3
+clip_text = true
+
 [node name="FactionRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
 theme_override_constants/separation = 8
 
