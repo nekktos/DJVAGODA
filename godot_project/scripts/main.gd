@@ -319,7 +319,7 @@ func _help_text() -> String:
 	var me: Node3D = _world.local_player()
 	var lines := PackedStringArray()
 	lines.append("[b]В бою[/b]")
-	lines.append("WASD — движение · Space — прыжок · ЛКМ — удар · B — перевязать")
+	lines.append("WASD — движение · Shift — бег · Space — прыжок · ЛКМ — удар · B — перевязать")
 	if me != null:
 		lines.append(_weapon_hint(me).replace(
 			"WASD — движение, Space — прыжок, ЛКМ — удар   |   ", "оружие: "))

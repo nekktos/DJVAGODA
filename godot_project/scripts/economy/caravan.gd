@@ -40,6 +40,22 @@ const HORSE_HEALTH := 60.0
 ## быстрее пешего. Раньше так и было — пять минут погони и ни одного перехвата.
 ## Теперь враг рядом означает остановку: дальше решают оружием.
 const HALT_RANGE := 18.0
+
+## На сколько метров обоз держится в стороне от стен постройки.
+##
+## Обоз — единственное в игре, что ездит НЕ телом: это Node3D, который двигают
+## прибавлением к позиции, без `move_and_slide` и без коллизии. Всё остальное —
+## люди, лошади, звери — ходит характер-телами и упирается в стены само. Поэтому
+## обоз и проезжал сквозь дома насквозь, и заметить это можно было только
+## глазами: ни одна проверка не смотрела, где он едет, а только куда доехал.
+##
+## Пересчитывать навигационную сетку под каждую новую постройку нельзя: она
+## печётся один раз на весь мир полтора километра в поперечнике, и делать это
+## посреди партии значит вешать игру на секунды. Обоз объезжает дома САМ.
+const BUILDING_CLEARANCE := 6.0
+## Насколько сильно отталкивание перебивает направление на точку маршрута.
+## Меньше единицы — обоз срезал бы угол и всё равно цеплял стену.
+const AVOID_WEIGHT := 1.8
 const MAX_HEALTH := 220.0
 ## Сколько единиц каждого ресурса увозит за раз.
 const CAPACITY := 120
@@ -255,6 +271,20 @@ func _advance(delta: float, backwards: bool) -> bool:
 	# Расстояние до точки меряем ПО ГОРИЗОНТАЛИ, а идём в трёх измерениях: точки
 	# маршрута теперь лежат на земле (их даёт навигация), и караван обязан за ней
 	# следовать, а не висеть на высоте, с которой выехал.
+	# Точку маршрута, оказавшуюся ВНУТРИ дома, пропускаем. Дойти до неё нельзя —
+	# объезд не пустит, — и без пропуска обоз кружил бы вокруг дома до конца
+	# партии. Маршрут рисуют один раз, а строят потом и где угодно, в том числе
+	# ровно на нарисованной линии.
+	#
+	# Концы маршрута не пропускаем никогда: это склад и шахта, к ним обоз и
+	# едет. Их-то как раз надо достичь вплотную.
+	if index != 0 and index != route.size() - 1 and _blocked_point(target):
+		_leg += 1
+		if _leg >= route.size():
+			_leg = 0
+			return true
+		return false
+
 	var flat_target := Vector3(target.x, position.y, target.z)
 	var to_target := flat_target - position
 	if to_target.length() <= WAYPOINT_REACH:
@@ -264,12 +294,97 @@ func _advance(delta: float, backwards: bool) -> bool:
 			return true
 		return false
 
-	var dir := to_target.normalized()
+	var dir := _avoid_buildings(to_target.normalized(), flat_target)
 	position += dir * speed_now() * delta
 	# Высоту подтягиваем плавно: резкий скачок на спуске выглядит как телепорт.
 	position.y = lerpf(position.y, target.y, clampf(delta * 4.0, 0.0, 1.0))
 	rotation.y = atan2(-dir.x, -dir.z)
 	return false
+
+
+## Отвернуть от построек, если едем слишком близко к стене.
+##
+## Считаем ближайшую точку коробки дома к обозу и отталкиваемся от неё. Такое
+## отталкивание не останавливает обоз, а разворачивает его вдоль стены: он
+## обтекает дом и едет дальше к своей точке, а не упирается в угол и не встаёт.
+##
+## Коробки считаем не повёрнутыми, и это не упрощение: постройки в игре ставятся
+## строго по осям, разворот им никто не задаёт (см. `world.spawn_building`).
+## Появится повёрнутая — сюда придётся добавить поворот, и это здесь написано,
+## чтобы её не искали в другом месте.
+func _avoid_buildings(dir: Vector3, target: Vector3) -> Vector3:
+	var push := Vector3.ZERO
+	for node in get_tree().get_nodes_in_group("building"):
+		if not is_instance_valid(node):
+			continue
+		var size: Vector3 = RES.BUILDING_SIZE[int(node.kind)]
+		var half_x: float = size.x * 0.5
+		var half_z: float = size.z * 0.5
+		# От склада и шахты — КОНЦОВ маршрута — не отталкиваемся вовсе.
+		#
+		# Склад такая же постройка, как любая другая, а разгружаться обоз обязан
+		# вплотную к нему: первая версия объезда отпихивала его от собственного
+		# склада, и гружёный обоз кружил вокруг, не доставив ничего. Вторая
+		# отключала объезд у любой постройки рядом с текущей точкой маршрута — и
+		# обоз преспокойно въезжал в дом, стоящий на этой точке. Правильная
+		# мера — не «рядом с целью», а «на конце маршрута», и она не зависит от
+		# того, где кто построился.
+		if _is_terminal(node, half_x, half_z):
+			continue
+		var local: Vector3 = position - node.position
+		# Ближайшая к обозу точка коробки, по горизонтали.
+		var near := Vector3(
+			clampf(local.x, -half_x, half_x), 0.0, clampf(local.z, -half_z, half_z))
+		var away := Vector3(local.x - near.x, 0.0, local.z - near.z)
+		var dist: float = away.length()
+		if dist > BUILDING_CLEARANCE:
+			continue
+		if dist < 0.05:
+			# Обоз внутри коробки: такое бывает, если дом ПОСТРОИЛИ вокруг него.
+			# Выталкиваем в ближайшую стену, а не наружу по прямой от центра:
+			# по прямой он поехал бы через весь дом.
+			away = Vector3(local.x, 0.0, local.z)
+			if away.length() < 0.05:
+				away = Vector3.RIGHT
+			dist = 0.05
+		push += away.normalized() * ((BUILDING_CLEARANCE - dist) / BUILDING_CLEARANCE)
+
+	if push.length() < 0.001:
+		return dir
+	var steered: Vector3 = dir + push.normalized() * AVOID_WEIGHT
+	steered.y = 0.0
+	return steered.normalized() if steered.length() > 0.01 else dir
+
+
+## Стоит ли на этой точке дом, мимо которого объезд не пустит.
+##
+## Порог — половина зазора объезда: точку в трёх метрах от стены обоз ещё
+## достаёт с шести (WAYPOINT_REACH), а ближе — уже нет.
+func _blocked_point(point: Vector3) -> bool:
+	for node in get_tree().get_nodes_in_group("building"):
+		if not is_instance_valid(node):
+			continue
+		var size: Vector3 = RES.BUILDING_SIZE[int(node.kind)]
+		if _is_terminal(node, size.x * 0.5, size.z * 0.5):
+			continue
+		if _box_gap(point, node.position, size.x * 0.5, size.z * 0.5) < BUILDING_CLEARANCE * 0.5:
+			return true
+	return false
+
+
+## Постройка на конце маршрута — склад или шахта.
+func _is_terminal(node: Node3D, half_x: float, half_z: float) -> bool:
+	if route.size() < 2:
+		return false
+	return _box_gap(route[0], node.position, half_x, half_z) < 1.0 \
+		or _box_gap(route[route.size() - 1], node.position, half_x, half_z) < 1.0
+
+
+## На сколько метров точка снаружи коробки, по горизонтали. Внутри — ноль.
+static func _box_gap(at: Vector3, box_at: Vector3, half_x: float, half_z: float) -> float:
+	var dx: float = maxf(absf(at.x - box_at.x) - half_x, 0.0)
+	var dz: float = maxf(absf(at.z - box_at.z) - half_z, 0.0)
+	return Vector2(dx, dz).length()
 
 
 ## Скорость обоза сейчас: от числа живых лошадей.

@@ -49,6 +49,10 @@ const ZONE_MULTIPLIERS := {
 }
 
 const SPEED := 6.0
+## Во сколько раз быстрее бег. Шаг пешком — шесть метров в секунду, бегом —
+## десять с половиной: карта полтора километра в поперечнике, и дорога от форта
+## злодея до дворца пешком занимает две минуты в одну сторону.
+const RUN_SCALE := 1.75
 const JUMP_VELOCITY := 5.5
 const MOUSE_SENS := 0.0025
 const PITCH_MIN := -1.2
@@ -112,6 +116,9 @@ var profile_id := ""
 @export var sync_ability_cd: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 ## Нужен, чтобы чужие персонажи анимировались: движение у них не считается.
 @export var sync_moving: bool = false
+## Бежит ли. Едет по сети отдельно от `sync_moving`: чужой персонаж иначе
+## переставлял бы ноги шагом, покрывая землю бегом.
+@export var sync_running: bool = false
 
 ## Состояние отряда. Считает и меняет только хост, клиенты читают.
 @export var squad_formation: int = 0
@@ -392,6 +399,7 @@ func _gather_input() -> Dictionary:
 	return {
 		"move": Input.get_vector("move_left", "move_right", "move_forward", "move_back"),
 		"jump": Input.is_action_just_pressed("jump"),
+		"run": Input.is_action_pressed("sprint"),
 		"bandage": Input.is_action_pressed("bandage"),
 	}
 
@@ -409,7 +417,20 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 		move = Vector2.ZERO
 		jump = false
 
+	# Бег. НЕ верхом и НЕ на карачках: у лошади своя скорость, и умножать её
+	# ещё и бегом значит менять цену конюшни, а безногий и так ползёт — «бежать
+	# ползком» было бы издевательством, а не механикой.
+	var running: bool = bool(inp.get("run", false)) \
+		and move.length() > 0.1 \
+		and riding() == null \
+		and not body.is_crawling() \
+		and not body.in_wheelchair \
+		and sync_paralysis <= 0.0
+	sync_running = running
+
 	var speed: float = body.move_speed(SPEED) * buff_speed_scale() * mount_speed_scale()
+	if running:
+		speed *= RUN_SCALE
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
 
 	if is_on_floor():
@@ -458,8 +479,13 @@ func _update_animation() -> void:
 		_play("wheelchair-move-forward" if moving else "wheelchair-sit")
 	elif body.is_crawling():
 		_play("sit")
+	elif moving:
+		# Своему персонажу верим напрямую, чужому — по сети: у чужого
+		# `sync_running` и есть весь ответ.
+		var running: bool = sync_running
+		_play("run" if running else "walk")
 	else:
-		_play("walk" if moving else "idle")
+		_play("idle")
 
 
 ## Поза меняется вместе с состоянием тела.

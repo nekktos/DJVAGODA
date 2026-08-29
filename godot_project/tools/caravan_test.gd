@@ -17,7 +17,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 20
+	expected_host = 22
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -43,6 +43,7 @@ func _run() -> void:
 	_test_route_goes_around(me)
 	await _test_enter_key(me)
 	await _test_delivery(me)
+	await _test_avoids_buildings(me)
 	await _test_raid(me)
 	await _test_escort(me)
 
@@ -102,6 +103,107 @@ func _test_delivery(me: Node3D) -> void:
 		"груз доставлен на склад", "железо %d -> %d" % [iron_before, me.stock.get_amount(RES.Kind.IRON)])
 	check(_world.mine.stored[RES.Kind.IRON] < 200,
 		"шахта отдала накопленное", "осталось железа %d" % _world.mine.stored[RES.Kind.IRON])
+
+
+## Обоз объезжает постройки, а не проходит сквозь них.
+##
+## Обоз — единственное, что ездит НЕ характер-телом: Node3D, двигаемый
+## прибавлением к позиции. Все остальные упираются в стены сами, а он проезжал
+## дома насквозь, и увидеть это можно было только глазами: проверки смотрели,
+## ДОШЁЛ ли обоз, и ни одна не смотрела, ГДЕ он ехал.
+##
+## Дом ставим посреди уже проложенного маршрута — так он заведомо на пути, а не
+## рядом с ним. И проверяем ДВЕ вещи, а не одну: что обоз к дому подъехал и что
+## не въехал в него. Без первой проверки вторая проходила бы и у обоза, который
+## до дома вообще не доехал, — а это самый вероятный способ сломать её случайно.
+func _test_avoids_buildings(me: Node3D) -> void:
+	# Ждём, пока прошлые обозы уедут: взяв первый попавшийся, мы взяли бы
+	# чужой, уже прошедший половину пути, и поставили бы дом ПОЗАДИ него.
+	for i in 60:
+		if _caravans(me).is_empty():
+			break
+		await get_tree().create_timer(0.5).timeout
+	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
+	await get_tree().create_timer(0.5).timeout
+	var list: Array = _caravans(me)
+	if list.is_empty():
+		fail("обоз для проверки объезда не отправлен")
+		return
+	var caravan: Node3D = list[0]
+
+	var route: PackedVector3Array = caravan.route
+	var spot := Vector3.ZERO
+	for i in range(1, route.size()):
+		var mid: Vector3 = (route[i - 1] + route[i]) * 0.5
+		if mid.distance_to(caravan.position) > 30.0:
+			spot = mid
+			break
+	if spot == Vector3.ZERO:
+		fail("маршрут слишком короткий, ставить дом некуда")
+		return
+	spot.y = 0.0
+	# Ставим ТРИ казармы поперёк дороги, а не одну.
+	#
+	# С одной проверка проходила и с ВЫКЛЮЧЕННЫМ объездом: дом четырнадцать
+	# метров шириной, а точки маршрута идут через пятнадцать, и обозу хватало
+	# пропустить одну точку, чтобы прицелиться уже за домом и промахнуться мимо
+	# него по прямой. Проверка охраняла пропуск точек, а не объезд — и молчала бы
+	# о сломанном объезде ровно до первого тестера.
+	#
+	# Три казармы дают стену метров в сорок пять: обогнуть её пропуском точек
+	# нельзя, только рулём.
+	var kind: int = RES.Building.SWORD_BARRACKS
+	var size: Vector3 = RES.BUILDING_SIZE[kind]
+	var along: Vector3 = (route[route.size() - 1] - route[0])
+	along.y = 0.0
+	var across: Vector3 = Vector3(-along.z, 0.0, along.x).normalized() * (size.x + 1.0)
+	for step in [-1.0, 0.0, 1.0]:
+		_world.spawn_building(kind, spot + across * step, 0, int(me.faction), true)
+
+	var nearest := 9999.0
+	var deepest := 9999.0
+	for i in 900:
+		await get_tree().physics_frame
+		if not is_instance_valid(caravan):
+			break
+		nearest = minf(nearest, caravan.position.distance_to(spot))
+		deepest = minf(deepest, _gap_to_any_building(caravan.position))
+		if caravan.state == caravan.State.TO_HOME:
+			break
+
+	check(nearest < 30.0, "обоз доехал до поставленной на пути постройки",
+		"подошёл на %.1f м" % nearest)
+	check(deepest > 0.0, "и НЕ въехал в неё",
+		"ближе всего был на %.1f м от стены" % deepest)
+
+
+## Ближайшая стена ЛЮБОЙ постройки. Отрицательное — внутри.
+##
+## Меряем по всем, а не по одной поставленной. Первая версия смотрела только на
+## среднюю казарму из трёх — и проверка проходила с выключенным объездом: обоз
+## аккуратно обходил ту, за которой следили, и ехал сквозь соседнюю.
+func _gap_to_any_building(at: Vector3) -> float:
+	var worst := 9999.0
+	for node in get_tree().get_nodes_in_group("building"):
+		if not is_instance_valid(node):
+			continue
+		# Склад — конец маршрута, к нему обоз обязан подъехать вплотную и даже
+		# заехать: его в счёт не берём.
+		if int(node.kind) == RES.Building.STORAGE:
+			continue
+		var size: Vector3 = RES.BUILDING_SIZE[int(node.kind)]
+		worst = minf(worst, _outside_by(at, node.position, size))
+	return worst
+
+
+## На сколько метров точка снаружи коробки. Отрицательное — внутри.
+func _outside_by(at: Vector3, box_at: Vector3, size: Vector3) -> float:
+	var dx: float = absf(at.x - box_at.x) - size.x * 0.5
+	var dz: float = absf(at.z - box_at.z) - size.z * 0.5
+	if dx <= 0.0 and dz <= 0.0:
+		return maxf(dx, dz)
+	return Vector2(maxf(dx, 0.0), maxf(dz, 0.0)).length()
 
 
 func _test_raid(me: Node3D) -> void:

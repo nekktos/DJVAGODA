@@ -33,7 +33,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "walk"
-	expected_host = 7
+	expected_host = 10
 	expected_client = 7
 	_world = world
 	_run.call_deferred()
@@ -115,4 +115,50 @@ func _run() -> void:
 	var looping: bool = bool(anim.get("looping", false))
 	check(walking, "анимация ходьбы играет", str(anim))
 	check(looping, "анимация ходьбы зациклена", str(looping))
+
+	await _test_sprint(player)
 	finish()
+
+
+## Бег на Shift: дальше за то же время и другой анимацией.
+##
+## Меряем ПРОЙДЕННОЕ РАССТОЯНИЕ, а не выставленную скорость: скорость проходит
+## через ранения, благословение и седло, и проверка выставленного числа
+## разошлась бы с тем, что видит игрок, при первой же правке любого из них.
+func _test_sprint(player: Node3D) -> void:
+	var walked: float = await _dash(player, false)
+	var ran: float = await _dash(player, true)
+	check(ran > walked * 1.4, "бегом дальше, чем шагом",
+		"%.1f м против %.1f за те же две секунды" % [ran, walked])
+
+	# И бег ВИДНО: чужой персонаж, кроющий землю бегом переставляя ноги шагом,
+	# читается как ошибка сети.
+	player.global_position = Vector3(-60.0, 2.0, 60.0)
+	player.velocity = Vector3.ZERO
+	player.scripted_input = {"move": Vector2(0.0, -1.0), "jump": false, "run": true}
+	await get_tree().create_timer(1.5).timeout
+	var anim: Dictionary = player.animation_state()
+	player.scripted_input = {}
+	check(String(anim.get("name", "")) == "run", "на бегу играет анимация бега", str(anim))
+
+	# Ползущий не бежит: без ноги персонаж и так еле двигается, и «бег ползком»
+	# был бы издевательством, а не механикой.
+	player.body.severed_mask = player.body.severed_mask | 0b0100
+	var crawled: float = await _dash(player, true)
+	player.body.severed_mask = 0
+	check(crawled < walked, "безногий не разгоняется бегом",
+		"%.1f м против %.1f шагом на своих двоих" % [crawled, walked])
+
+
+## Пробежка на две секунды по прямой. Возвращает пройденное расстояние.
+func _dash(player: Node3D, running: bool) -> float:
+	player.global_position = Vector3(-60.0, 2.0, 60.0)
+	player.velocity = Vector3.ZERO
+	player.rotation.y = 0.0
+	await get_tree().physics_frame
+	var from: Vector3 = player.global_position
+	player.scripted_input = {"move": Vector2(0.0, -1.0), "jump": false, "run": running}
+	await get_tree().create_timer(2.0).timeout
+	player.scripted_input = {}
+	var to: Vector3 = player.global_position
+	return Vector2(to.x - from.x, to.z - from.z).length()

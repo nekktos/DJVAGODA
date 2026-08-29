@@ -14,6 +14,7 @@ const RES := preload("res://scripts/economy/resources.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const LOOK := preload("res://scripts/economy/building_look.gd")
+const TEXTURES := preload("res://scripts/textures.gd")
 
 ## Запас прочности постройки. Разрушить её должно быть заметным делом, а не
 ## случайным попаданием: казарма стражи — условие её поражения (GDD раздел 7).
@@ -131,9 +132,12 @@ func show_hit(point: Vector3, _dir: Vector3, _amount: float) -> void:
 	EFFECTS.chips(get_parent().get_parent(), point, RES.Kind.WOOD)
 
 
+## Материал растущей коробки. КОПИЯ, а не общий материал: у недостроенного
+## дома он становится полупрозрачным и меняется каждый кадр по мере стройки, и
+## общий покрасил бы разом все постройки мира.
 func _material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.42, 0.30, 0.19) if kind == RES.Building.STORAGE else Color(0.34, 0.33, 0.36)
+	var mat: StandardMaterial3D = TEXTURES.copy_of(
+		"wood" if kind == RES.Building.STORAGE else "dark_stone")
 	mat.roughness = 0.9
 	return mat
 

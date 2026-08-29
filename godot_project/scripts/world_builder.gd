@@ -12,6 +12,7 @@ extends RefCounted
 
 ## Карта занимает от -600 до +600 по X и Z. Зона — четверть, 600x600 м.
 const RES := preload("res://scripts/economy/resources.gd")
+const TEXTURES := preload("res://scripts/textures.gd")
 
 const WORLD_SIZE := 1200.0
 const ZONE_SIZE := 600.0
@@ -65,14 +66,16 @@ func build(root: Node3D) -> void:
 func _make_materials() -> void:
 	_add_material("ground", Color(0.36, 0.40, 0.32))
 	_add_material("road", Color(0.46, 0.42, 0.35))
-	_add_material("stone", Color(0.55, 0.55, 0.58))
-	_add_material("dark_stone", Color(0.34, 0.33, 0.36))
-	_add_material("wood", Color(0.45, 0.32, 0.20))
 	_add_material("foliage", Color(0.24, 0.44, 0.24))
 	_add_material("trunk", Color(0.33, 0.25, 0.17))
-	_add_material("marble", Color(0.80, 0.78, 0.72))
-	_add_material("rock", Color(0.42, 0.38, 0.36))
 	_add_material("accent", Color(0.72, 0.24, 0.22))
+	# Камень, кладка и доски — с текстурой, нарисованной кодом (`textures.gd`).
+	# Именно из них сложены стены форта, дворец, донжон, казармы и горы, то есть
+	# всё, на что игрок смотрит вблизи и подолгу. Земля, листва и стволы остаются
+	# заливкой: землю видно под ногами вскользь, а листву и стволы давно закрыли
+	# модели деревьев.
+	for key in ["stone", "dark_stone", "marble", "wood", "rock"]:
+		_materials[key] = TEXTURES.of(key)
 
 
 func _add_material(key: String, color: Color) -> void:

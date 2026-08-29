@@ -24,6 +24,7 @@ extends RefCounted
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const TEXTURES := preload("res://scripts/textures.gd")
 
 ## Каменные модули — для склада и конюшни, деревянные — для казарм: разные
 ## стороны и разные постройки должны отличаться хоть чем-то, кроме размера.
@@ -144,9 +145,10 @@ static func _side_row(root: Node3D, set_name: Dictionary, y: float, floor_h: flo
 
 ## Двускатная крыша из двух брусьев и двух торцов.
 static func _roof(root: Node3D, size: Vector3) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = ROOF_COLOR
-	mat.roughness = 0.85
+	# Черепица с текстурой: скат — самая большая сплошная плоскость постройки, и
+	# заливка одним цветом на ней читалась как пластмасса. Материал общий на все
+	# крыши мира и не копируется: его никто не меняет на месте.
+	var mat: StandardMaterial3D = TEXTURES.of("roof")
 
 	var length: float = size.z * 0.5 + ROOF_OVERHANG
 	var slope := sqrt(length * length + ROOF_RISE * ROOF_RISE)
@@ -168,9 +170,7 @@ static func _roof(root: Node3D, size: Vector3) -> void:
 		root.add_child(panel)
 
 	# Торцы: без них крыша просвечивает насквозь и выглядит навесом.
-	var gable_mat := StandardMaterial3D.new()
-	gable_mat.albedo_color = Color(0.86, 0.82, 0.74)
-	gable_mat.roughness = 0.9
+	var gable_mat: StandardMaterial3D = TEXTURES.of("plaster")
 	for side in [-1.0, 1.0]:
 		var wedge := MeshInstance3D.new()
 		var prism := PrismMesh.new()
