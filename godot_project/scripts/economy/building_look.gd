@@ -96,6 +96,9 @@ static func _wooden(kind: int) -> bool:
 ## стены встают решёткой из вертикальных ламелей, без второго — уезжают наружу
 ## на полклетки.
 const MODULE_EDGE_OFFSET := 0.45
+## Насколько знамя выносится вперёд от плоскости фасада. Больше половины
+## толщины стены — иначе полотнище окажется внутри неё.
+const BANNER_STANDOFF := 0.6
 
 
 ## Ряд модулей вдоль длинной стороны. Фасад смотрит на +Z, задняя стена на -Z.
@@ -209,6 +212,13 @@ static func _trim(root: Node3D, kind: int, size: Vector3) -> void:
 
 ## Знамя висит на фасаде. Полотнище в наборе — такая же прижатая к краю
 ## клетки плита, что и стена, поэтому и разворот, и поправка те же.
+##
+## ВЫНОС ВПЕРЁД обязателен. Стена — не плоскость, а плита толщиной в десятую
+## клетки, то есть почти в треть метра при нашем масштабе. Знамя, поставленное
+## «вровень с фасадом», оказывается ВНУТРИ этой толщины, и снаружи его не видно
+## вовсе — ровно это и случилось: знамёна на казармах строились, а на снимке их
+## не было. Разницу между «не создали» и «создали не там» глазами не увидеть,
+## её показал `tools/look_probe.gd`.
 static func _banner(root: Node3D, packed: PackedScene, size: Vector3) -> void:
 	var flag_scale := 2.2
 	for side in [-1.0, 1.0]:
@@ -216,7 +226,7 @@ static func _banner(root: Node3D, packed: PackedScene, size: Vector3) -> void:
 		flag.position = Vector3(
 			side * size.x * 0.28,
 			size.y * 0.55,
-			size.z * 0.5 - MODULE_EDGE_OFFSET * flag_scale + 0.15,
+			size.z * 0.5 - MODULE_EDGE_OFFSET * flag_scale + BANNER_STANDOFF,
 		)
 		flag.scale = Vector3.ONE * flag_scale
 		flag.rotation.y = -PI * 0.5

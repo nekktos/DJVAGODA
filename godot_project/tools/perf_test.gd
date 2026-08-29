@@ -32,7 +32,43 @@ func _run() -> void:
 		await _settle()
 		print("[perf] стратегическая камера, высота %d м: %.0f fps" % [int(h), await _measure()])
 
+	# ЗАМЕР В ПУСТОМ МИРЕ НИЧЕГО НЕ ЗНАЧИТ.
+	#
+	# Свежая партия — это четыре домика и десяток человек, и с такой нагрузкой
+	# любая сборка покажет свои двести сорок. Тестер увидит игру на двадцатой
+	# минуте: два десятка построенных домов, полсотни скиннутых персонажей на
+	# экране, обозы. Именно там и просядет, если просядет, — и узнать об этом
+	# надо здесь, а не из отчёта.
+	await _crowd()
+	_world.set_strategy_mode(false)
+	await _settle()
+	print("[perf] людно, экшен-камера: %.0f fps" % await _measure())
+	_world.set_strategy_mode(true, 120.0)
+	await _settle()
+	print("[perf] людно, стратегическая камера: %.0f fps" % await _measure())
+
 	get_tree().quit()
+
+
+## Набить сцену тем, что в ней бывает к середине партии: домами и людьми.
+##
+## Числа с запасом против настоящей партии: потолок отряда меньше, построек
+## столько не бывает. Если провалится здесь — в игре будет запас; если нет,
+## запас тем более.
+func _crowd() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	var here := me.global_position
+	var kinds := [0, 1, 2, 3]
+	for i in 12:
+		var at := here + Vector3(-40.0 + float(i % 4) * 26.0, 0.0, -30.0 - float(i / 4) * 24.0)
+		_world.spawn_building(kinds[i % kinds.size()], at, int(me.peer_id), int(me.faction), true)
+	for i in 40:
+		var at := here + Vector3(-20.0 + float(i % 8) * 3.0, 1.0, -10.0 - float(i / 8) * 3.0)
+		_world.spawn_unit(int(me.peer_id), i, at, false, i % 3 == 0)
+	# Дать им построиться, а анимациям — начать играть.
+	await get_tree().create_timer(3.0).timeout
 
 
 ## Дать кадрам устояться после переключения, чтобы не мерить разовый скачок.

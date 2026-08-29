@@ -163,6 +163,12 @@ func _shots() -> Array:
 			"loot": true,
 		},
 		{
+			"name": "22_все_постройки",
+			"pos": Vector3(-70.0, 26.0, 74.0),
+			"look": Vector3(-70.0, 3.0, 40.0),
+			"all_buildings": true,
+		},
+		{
 			"name": "21_свободная_лошадь",
 			"pos": Vector3(-44.0, 2.6, 38.0),
 			"look": Vector3(-44.0, 1.2, 31.0),
@@ -216,6 +222,9 @@ func _run() -> void:
 			# Гарнизон выставляется хостом сам, надо лишь дождаться его проверки
 			# состава сторон.
 			await get_tree().create_timer(5.0).timeout
+		if shot.get("all_buildings", false):
+			_stage_all_buildings()
+			await get_tree().create_timer(1.0).timeout
 		if shot.get("horse", false):
 			_stage_horse()
 			await get_tree().create_timer(1.0).timeout
@@ -450,6 +459,21 @@ func _stage_roles() -> void:
 
 
 ## Кучи всех четырёх сортов в ряд: дерево, камень, золото, железо.
+## Все четыре вида построек в ряд: склад, две казармы и конюшня.
+##
+## Знамя на казарме и загон у конюшни ставились по тем же правилам, что и стены,
+## но проверить их было негде: в кадре стройки конюшни нет вовсе. А ошибка в
+## развороте модуля видна только глазами — headless-прогон о ней молчит.
+func _stage_all_buildings() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.teleport.rpc(Vector3(-70.0, 2.0, 70.0))
+	for kind in 4:
+		_world.spawn_building(kind, Vector3(-100.0 + float(kind) * 22.0, 0.0, 40.0),
+			int(me.peer_id), int(me.faction), true)
+
+
 ## Свободная лошадь рядом с игроком: проверяем модель, размер и разворот.
 func _stage_horse() -> void:
 	var me: Node3D = _world.local_player()
