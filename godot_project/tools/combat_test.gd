@@ -52,6 +52,17 @@ func _find_other(mine: Node3D) -> Node3D:
 
 func _run_host(mine: Node3D, other: Node3D) -> void:
 	for kind in [WEAPONS.Kind.SWORD, WEAPONS.Kind.BOW, WEAPONS.Kind.SPELL]:
+		# Ждём респавна, если предыдущее оружие цель добило.
+		#
+		# Респавн УНОСИТ цель на её базу, и делает это с задержкой: пока идёт
+		# отсчёт, цель ещё лежит на месте, `_aim_at` наводится по ней — а через
+		# секунду она оказывается за сотню метров, и следующий выстрел летит в
+		# пустоту. Один раз это уже стоило получаса разбора: провалился огненный
+		# шар, а виноват был меч, убивший цель тактом раньше.
+		var waited := 0.0
+		while not other.health.alive and waited < 12.0:
+			await get_tree().create_timer(0.5).timeout
+			waited += 0.5
 		other.health.revive()
 		await get_tree().process_frame
 

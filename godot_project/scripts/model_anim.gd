@@ -36,3 +36,41 @@ static func is_one_shot(anim_name: String) -> bool:
 		if lowered.begins_with(prefix):
 			return true
 	return false
+
+
+## Чем игра называет движение и как это называется в паке.
+##
+## Игра говорит «walk», «die», «sit» — своими словами, не зная, чья сегодня
+## модель. Пак называет то же самое по-своему, и словарей таких уже два: у
+## Kenney строчными, у Quaternius с заглавной и другими словами вовсе. Держим
+## перевод ЗДЕСЬ, а не разбрасываем `has_animation` по коду персонажа и бойца.
+##
+## Пустой список означает «в этом паке такого движения нет» — тогда `resolve`
+## вернёт пустую строку, и вызывающий оставит то, что играется сейчас.
+const SYNONYMS := {
+	"idle": ["idle", "Idle"],
+	"walk": ["walk", "Walk"],
+	"run": ["run", "Run", "walk", "Walk"],
+	"die": ["die", "Death"],
+	# Ползания нет ни в одном паке: показываем безногого сидящим, а модель
+	# опускаем к земле (см. player.gd::_refresh_posture). Отдельная анимация
+	# ползания есть в Universal Animation Library, но это ещё один пак ради
+	# одной позы.
+	"sit": ["sit", "Idle"],
+	"wheelchair-sit": ["wheelchair-sit", "sit", "Idle"],
+	"wheelchair-move-forward": ["wheelchair-move-forward", "Walk"],
+}
+
+
+## Как в этой модели называется движение. Пустая строка — такого в ней нет.
+static func resolve(player: AnimationPlayer, wanted: String) -> String:
+	if player == null:
+		return ""
+	for name in SYNONYMS.get(wanted, [wanted]):
+		if player.has_animation(name):
+			return name
+	# Слова нет в словаре — пробуем как есть и с заглавной буквы.
+	if player.has_animation(wanted):
+		return wanted
+	var capitalised := wanted.substr(0, 1).to_upper() + wanted.substr(1)
+	return capitalised if player.has_animation(capitalised) else ""

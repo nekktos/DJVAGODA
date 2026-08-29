@@ -19,7 +19,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "раны"
-	expected_host = 34
+	expected_host = 37
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -88,6 +88,13 @@ func _reset(me: Node3D, body: Node, health: Node) -> void:
 	body.reset()
 	health.revive()
 	await get_tree().process_frame
+	# Ждём ДВА физических кадра. Облик сверяется с маской в `_physics_process`,
+	# а `physics_frame` будит нас в начале шага — до того, как ноды его отработают.
+	# С одним кадром проверка «конечности вернулись на модель» читала состояние
+	# на кадр раньше, чем оно менялось, и падала, показывая маску 0 при
+	# схлопнутой кости: правило уже сработало, картинка ещё нет.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 
 
 func _test_arm(me: Node3D, body: Node, health: Node) -> void:
@@ -95,6 +102,13 @@ func _test_arm(me: Node3D, body: Node, health: Node) -> void:
 
 	await _sever(body, health, "arm_r")
 	check(body.is_severed(BODY.Limb.ARM_R), "отрыв правой руки", "severed_mask=%d" % body.severed_mask)
+	# Отдельно спрашиваем МОДЕЛЬ, а не маску. Расчленение на скиннутом персонаже
+	# делается схлопыванием кости, и если в новой модели кость зовут иначе, маска
+	# встанет, все проверки правил останутся зелёными, а рука будет на месте.
+	check(me.limb_hidden(BODY.Limb.ARM_R), "оторванной руки не видно на модели",
+		"кость схлопнута")
+	check(not me.limb_hidden(BODY.Limb.ARM_L), "целая рука на месте",
+		"левая кость не тронута")
 	check(body.bleeding, "кровотечение началось", "bleeding=%s" % body.bleeding)
 	check(body.can_attack_ranged(), "вторая рука ещё работает", "лук доступен")
 
@@ -225,6 +239,13 @@ func _test_wheelchair(me: Node3D, body: Node, health: Node) -> void:
 
 	await _reset(me, body, health)
 	check(not body.set_wheelchair(true), "со здоровыми ногами коляска не нужна", "отказано")
+	# Респавн возвращает конечности на место — и на модели тоже, а не только в
+	# маске: воскресший безрукий выглядел бы ошибкой.
+	check(not me.limb_hidden(BODY.Limb.LEG_L) and not me.limb_hidden(BODY.Limb.LEG_R),
+		"после сброса конечности вернулись на модель",
+		"маска %d, левая схлопнута=%s, правая схлопнута=%s" % [
+			body.severed_mask, me.limb_hidden(BODY.Limb.LEG_L), me.limb_hidden(BODY.Limb.LEG_R)
+		])
 
 
 ## Трофеи: отрубленное у ЧУЖИХ идёт на счёт того, кто рубил.

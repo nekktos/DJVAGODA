@@ -14,6 +14,7 @@ extends CharacterBody3D
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const BODY := preload("res://scripts/combat/body.gd")
+const RIG := preload("res://scripts/combat/rig.gd")
 ## Виды трофеев — те же цифры, что в `player.gd::Trophy`. Держим их числами, а
 ## не ссылкой на скрипт игрока: боец о игроке знать не должен.
 const TROPHY_ARMS := 0
@@ -33,9 +34,9 @@ const EFFECTS := preload("res://scripts/combat/effects.gd")
 ## ополченца, а лучника от мечника — отдать приказ «поставь двоих на стройку»
 ## значило гадать. Роль читается с первого взгляда, номер в отряде — нет, и
 ## смотреть надо именно на неё.
-const MODEL_SWORD := "res://assets/characters/character-d.glb"
-const MODEL_ARCHER := "res://assets/characters/character-e.glb"
-const MODEL_CHAMPION := "res://assets/characters/character-f.glb"
+const MODEL_SWORD := "res://assets/people/Warrior.gltf"
+const MODEL_ARCHER := "res://assets/people/Ranger.gltf"
+const MODEL_CHAMPION := "res://assets/people/Cleric.gltf"
 ## Волк — настоящая модель со скелетом и анимациями (Quaternius, CC0). До этого
 ## он собирался из коробок: узнаваемо, но неподвижно, и в бою это было видно.
 const MODEL_BEAST := "res://assets/animals/Wolf.gltf"
@@ -43,16 +44,8 @@ const MODEL_BEAST := "res://assets/animals/Wolf.gltf"
 ## высота 2.7. Приводим к полутора метрам в холке — крупнее настоящего волка,
 ## но призванный зверь и должен читаться как угроза, а не как собака.
 const BEAST_MODEL_SCALE := 0.35
-const MODEL_SCALE := 0.68
+const MODEL_SCALE := 0.63
 
-const PART_ZONES := {
-	"head": "head",
-	"torso": "torso",
-	"arm-left": "arm_l",
-	"arm-right": "arm_r",
-	"leg-left": "leg_l",
-	"leg-right": "leg_r",
-}
 const ZONE_MULTIPLIERS := {
 	"head": 2.0, "torso": 1.0,
 	"arm_l": 0.7, "arm_r": 0.7, "leg_l": 0.7, "leg_r": 0.7,
@@ -246,7 +239,10 @@ var life_left := 0.0
 
 var _model: Node3D
 var _anim: AnimationPlayer
-var _parts := {}
+## Скелет модели: на нём зоны попадания и расчленение.
+var _skeleton: Skeleton3D
+## Ключ зоны -> список зон (рука это плечо И предплечье).
+var _zones := {}
 var _cooldown := 0.0
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var _current_anim := ""
@@ -340,7 +336,7 @@ func _build_model() -> void:
 	if is_champion:
 		# Крупнее и в красном: в толпе стражи он должен читаться с первого
 		# взгляда, иначе нападать на него будут по незнанию.
-		_tint(_model, CHAMPION_COLOR)
+		RIG.tint(_model, CHAMPION_COLOR)
 
 	# Тело зверя ниже и длиннее человеческого. Пока волк собирался коробками,
 	# этого куска у него не было вовсе: он проходил сквозь всё и по нему нельзя
@@ -365,17 +361,12 @@ func _build_model() -> void:
 		_build_beast_zone()
 		_play("idle")
 		return
-	for part_name in PART_ZONES.keys():
-		var mesh := _find_by_name(_model, part_name) as MeshInstance3D
-		if mesh == null:
-			continue
-		var key: String = PART_ZONES[part_name]
-		_parts[key] = mesh
-		HIT_ZONE.attach(mesh, key, ZONE_MULTIPLIERS.get(key, 1.0), HITBOX_LAYER)
-	# Мечник — с мечом в руке, точка хвата считается по габаритам руки.
-	# Зверь дерётся зубами: меч в лапе выглядел бы нелепо.
-	if not is_beast:
-		WEAPON_VISUAL.attach(_parts.get("arm_r"), _hand_weapon(), null, 0)
+	# Тело — один скиннутый меш: зоны попадания и расчленение живут на костях.
+	_skeleton = RIG.find_skeleton(_model)
+	RIG.hide_built_in_weapon(_model)
+	_zones = RIG.build_zones(_skeleton, ZONE_MULTIPLIERS, HITBOX_LAYER)
+	# Меч в руке — свой, а не тот, что положил художник: он меняется по роли.
+	WEAPON_VISUAL.attach_at(RIG.weapon_mount(_skeleton), _hand_weapon(), null, 0)
 	_play("idle")
 
 
@@ -403,7 +394,7 @@ func _refresh_look() -> void:
 	if is_beast or _model == null or _look_model() == _shown_look:
 		return
 	_model.queue_free()
-	_parts.clear()
+	_zones.clear()
 	_shown_eyes = 0
 	_build_model()
 	# Увечья пережили смену роли: новая модель обязана быть такой же калекой.
@@ -421,28 +412,18 @@ func _find_anim(node: Node) -> AnimationPlayer:
 	return null
 
 
-func _find_by_name(node: Node, wanted: String) -> Node:
-	if String(node.name) == wanted:
-		return node
-	for child in node.get_children():
-		var found := _find_by_name(child, wanted)
-		if found != null:
-			return found
-	return null
 
 
+## Игра говорит своими словами («walk»), пак называет то же самое по-своему —
+## перевод живёт в `model_anim.gd::resolve`.
 func _play(anim_name: String) -> void:
 	if _anim == null or anim_name == _current_anim:
 		return
-	# Наборы называют анимации по-разному: у Kenney «walk», у Quaternius
-	# «Walk». Разводить два словаря ради регистра не стоит — пробуем оба.
-	var wanted := anim_name
-	if not _anim.has_animation(wanted):
-		wanted = anim_name.substr(0, 1).to_upper() + anim_name.substr(1)
-		if not _anim.has_animation(wanted):
-			return
+	var real := MODEL_ANIM.resolve(_anim, anim_name)
+	if real == "":
+		return
 	_current_anim = anim_name
-	_anim.play(wanted)
+	_anim.play(real)
 
 
 func _physics_process(delta: float) -> void:
@@ -826,13 +807,10 @@ func _navigation() -> Node:
 ## выпущенный лучником снаряд не воткнулся в него самого.
 func own_collision_rids() -> Array[RID]:
 	var rids: Array[RID] = [get_rid()]
-	for key in _parts.keys():
-		var mesh: Node = _parts[key]
-		if mesh == null:
-			continue
-		for child in mesh.get_children():
-			if child is Area3D:
-				rids.append((child as Area3D).get_rid())
+	for key in _zones.keys():
+		for zone in _zones[key]:
+			if zone != null:
+				rids.append((zone as Area3D).get_rid())
 	return rids
 
 
@@ -974,58 +952,41 @@ func lose_eye(point: Vector3, dir: Vector3) -> void:
 	_apply_eyes()
 
 
-## Показать выбитые глаза. Модель Kenney рисует глаза текстурой, менять её на
-## лету дорого, поэтому кладём поверх лица тёмные накладки — по одной на глаз.
+## Показать выбитые глаза — кровью на лице (см. `rig.gd::mark_eye_loss`).
 func _apply_eyes() -> void:
-	var head: MeshInstance3D = _parts.get("head", null)
-	if head == null:
+	if _shown_eyes == eyes_lost:
 		return
-	while _shown_eyes < eyes_lost and _shown_eyes < 2:
-		var size: Vector3 = head.get_aabb().size
-		var patch := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(size.x * 0.26, size.y * 0.16, 0.02)
-		patch.mesh = box
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.12, 0.03, 0.03)
-		patch.material_override = mat
-		# Лицо смотрит в -Z: модели развёрнуты так же, как и весь боец.
-		var side := -1.0 if _shown_eyes == 0 else 1.0
-		patch.position = Vector3(size.x * 0.22 * side, size.y * 0.62, -size.z * 0.5 - 0.01)
-		head.add_child(patch)
-		_shown_eyes += 1
+	_shown_eyes = eyes_lost
+	RIG.mark_eye_loss(_model, eyes_lost)
 
 
-## Оторвать конечность у ВСЕХ пиров: прячем меш и роняем его на землю.
+## Оторвать конечность у ВСЕХ пиров: схлопываем кость и роняем кусок.
 ##
-## Своей репликации у этого нет и быть не может: меш прячется локально, а
+## Своей репликации у этого нет и быть не может: кость схлопывается локально, а
 ## `severed` реплицируется отдельно — но клиент, подключившийся позже, увидит
-## только маску, и по ней спрячет то же самое (см. `_apply_severed`).
+## только маску, и по ней сделает то же самое (см. `_apply_severed`).
 @rpc("authority", "call_local", "reliable")
 func tear_off(limb: int, point: Vector3, dir: Vector3) -> void:
 	_apply_severed()
-	var key: String = BODY.LIMB_KEYS[limb] if limb < BODY.LIMB_KEYS.size() else ""
-	var mesh: MeshInstance3D = _parts.get(key, null)
-	if mesh == null:
-		return
 	var root: Node = get_parent().get_parent()
 	EFFECTS.blood(root, point, dir, 60.0)
 	var piece: Node3D = SEVERED_LIMB.instantiate()
 	root.add_child(piece)
-	piece.setup(mesh.mesh, mesh.global_transform, MODEL_SCALE)
-	mesh.visible = false
+	piece.setup(RIG.limb_mesh(limb), Transform3D(Basis(), RIG.limb_point(_skeleton, limb)),
+		MODEL_SCALE)
 
 
-## Спрятать то, что оторвано. Зовём и при получении маски по сети: поздний
+## Показать то, что оторвано. Зовём и при получении маски по сети: поздний
 ## клиент обязан увидеть безрукого безруким.
 func _apply_severed() -> void:
 	_apply_eyes()
+	RIG.apply_severed(_skeleton, severed)
 	for limb in BODY.LIMB_KEYS.size():
-		if severed & (1 << limb) == 0:
-			continue
-		var mesh: MeshInstance3D = _parts.get(BODY.LIMB_KEYS[limb], null)
-		if mesh != null:
-			mesh.visible = false
+		var gone: bool = severed & (1 << limb) != 0
+		for zone in _zones.get(BODY.LIMB_KEYS[limb], []):
+			# Зона оторванной руки уходит с радара оружия: бить по пустому
+			# месту нельзя.
+			zone.collision_layer = 0 if gone else HITBOX_LAYER
 
 
 ## Насколько боец медленнее из-за ран. Без ноги — ползёт, как и персонаж.
@@ -1082,10 +1043,13 @@ func _separation() -> Vector3:
 func animation_state() -> Dictionary:
 	if _anim == null:
 		return {}
-	var current: String = _anim.current_animation
-	var anim: Animation = _anim.get_animation(current) if current != "" else null
+	# Под `name` — слово ИГРЫ, а не название клипа в паке: проверка спрашивает
+	# «идёт ли он», и ответ не должен меняться от смены модели.
+	var clip: String = _anim.current_animation
+	var anim: Animation = _anim.get_animation(clip) if clip != "" else null
 	return {
-		"name": current,
+		"name": _current_anim,
+		"clip": clip,
 		"playing": _anim.is_playing(),
 		"looping": anim != null and anim.loop_mode != Animation.LOOP_NONE,
 	}
@@ -1093,11 +1057,3 @@ func animation_state() -> Dictionary:
 
 ## Перекрасить модель целиком: зверя в тёмное, распорядителя в красное.
 ## Идём по дереву — у ассетов Kenney меши лежат на разной глубине.
-func _tint(node: Node, color: Color) -> void:
-	if node is MeshInstance3D:
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = color
-		mat.roughness = 0.95
-		(node as MeshInstance3D).material_override = mat
-	for child in node.get_children():
-		_tint(child, color)

@@ -53,6 +53,24 @@ static func attach(arm: MeshInstance3D, kind: int, previous: Node3D, tier: int =
 	return holder
 
 
+## Повесить оружие в готовую точку хвата. Возвращает узел оружия.
+##
+## У скелетной модели точка хвата уже есть — кость `Weapon.R`, поставленная
+## художником там, где кисть смыкается. Считать её по габаритам руки, как для
+## коробочной модели, не надо и вредно: габариты скиннутого меша — это габариты
+## ВСЕГО тела, и оружие уехало бы человеку в живот.
+static func attach_at(mount: Node3D, kind: int, previous: Node3D, tier: int = 0) -> Node3D:
+	if previous != null and is_instance_valid(previous):
+		previous.queue_free()
+	if mount == null:
+		return null
+	var holder := Node3D.new()
+	holder.name = "Weapon"
+	_build(holder, kind, clampi(tier, 0, TIER_METAL.size() - 1))
+	mount.add_child(holder)
+	return holder
+
+
 static func _build(holder: Node3D, kind: int, tier: int) -> void:
 	var metal: Color = TIER_METAL[tier]
 	var glow: float = TIER_GLOW if tier >= TIER_METAL.size() - 1 else 0.0

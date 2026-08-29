@@ -2,17 +2,28 @@ extends Node3D
 ##
 ## Труп. GDD, раздел 3: труп остаётся в 3D-мире и не исчезает мгновенно.
 ##
-## Показываем ту же модель персонажа в позе смерти — анимация "die" из пака
-## Kenney, поставленная на последний кадр. Коллизии нет, чтобы живые не
-## застревали в телах.
+## Показываем ту же модель персонажа в позе смерти — анимацию `Death`,
+## поставленную на последний кадр. Коллизии нет, чтобы живые не застревали в
+## телах.
+##
+## Модель тут своя, а не «та же, что была у покойника»: труп живёт отдельной
+## нодой уже после того, как персонаж исчез из дерева, и тащить за собой его
+## сборку значит держать вторую копию всей логики облика. Слот выбирает, кто
+## именно лежит, — этого хватает, чтобы поле после схватки выглядело разным.
 ##
 
+const RIG := preload("res://scripts/combat/rig.gd")
+const MODEL_ANIM := preload("res://scripts/model_anim.gd")
+
 const MODELS := [
-	"res://assets/characters/character-a.glb",
-	"res://assets/characters/character-b.glb",
-	"res://assets/characters/character-c.glb",
+	"res://assets/people/Wizard.gltf",
+	"res://assets/people/Ranger.gltf",
+	"res://assets/people/Warrior.gltf",
+	"res://assets/people/Monk.gltf",
+	"res://assets/people/Rogue.gltf",
+	"res://assets/people/Cleric.gltf",
 ]
-const MODEL_SCALE := 0.68
+const MODEL_SCALE := 0.63
 
 
 func setup(data: Dictionary) -> void:
@@ -30,20 +41,19 @@ func _ready() -> void:
 	# Тот же разворот, что у живых: модель смотрит в +Z, игра — в -Z.
 	model.rotation.y = PI
 	add_child(model)
+	RIG.hide_built_in_weapon(model)
 
-	# Оторванные при жизни части у трупа тоже отсутствуют.
-	var severed: int = get_meta("severed", 0)
-	const PARTS := ["arm-left", "arm-right", "leg-left", "leg-right"]
-	for i in PARTS.size():
-		if severed & (1 << i):
-			var mesh := _find_by_name(model, PARTS[i])
-			if mesh != null:
-				(mesh as MeshInstance3D).visible = false
+	# Оторванные при жизни части у трупа тоже отсутствуют: тем же схлопыванием
+	# костей, что и у живого (см. `rig.gd`). Труп с целыми руками рядом с парой
+	# оторванных стирает то, что человек только что видел.
+	var skeleton := RIG.find_skeleton(model)
+	RIG.apply_severed(skeleton, int(get_meta("severed", 0)))
 
 	var anim := _find_anim(model)
-	if anim != null and anim.has_animation("die"):
-		anim.play("die")
-		anim.seek(anim.get_animation("die").length, true)
+	var death := MODEL_ANIM.resolve(anim, "die")
+	if anim != null and death != "":
+		anim.play(death)
+		anim.seek(anim.get_animation(death).length, true)
 		anim.pause()
 
 
@@ -52,16 +62,6 @@ func _find_anim(node: Node) -> AnimationPlayer:
 		return node
 	for child in node.get_children():
 		var found := _find_anim(child)
-		if found != null:
-			return found
-	return null
-
-
-func _find_by_name(node: Node, wanted: String) -> Node:
-	if String(node.name) == wanted:
-		return node
-	for child in node.get_children():
-		var found := _find_by_name(child, wanted)
 		if found != null:
 			return found
 	return null

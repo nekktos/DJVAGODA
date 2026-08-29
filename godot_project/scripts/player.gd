@@ -26,24 +26,18 @@ const RES := preload("res://scripts/economy/resources.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
+const RIG := preload("res://scripts/combat/rig.gd")
 
+## Своя модель на сторону. Порядок — как в `factions.gd::Kind`: злодей,
+## эльфы, стража. Классы подобраны по роли, а не по красоте: маг колдует,
+## следопыт стреляет из лука, воин держит строй.
 const MODELS := [
-	"res://assets/characters/character-a.glb",
-	"res://assets/characters/character-b.glb",
-	"res://assets/characters/character-c.glb",
+	"res://assets/people/Wizard.gltf",
+	"res://assets/people/Ranger.gltf",
+	"res://assets/people/Warrior.gltf",
 ]
-## Модель Kenney ростом 2.70 м — приводим к человеческим 1.84 м.
-const MODEL_SCALE := 0.68
-
-## Имя меша в модели -> ключ зоны попадания.
-const PART_ZONES := {
-	"head": "head",
-	"torso": "torso",
-	"arm-left": "arm_l",
-	"arm-right": "arm_r",
-	"leg-left": "leg_l",
-	"leg-right": "leg_r",
-}
+## Модель ростом 2.9 «единиц Blender» — приводим к человеческим 1.84 м.
+const MODEL_SCALE := 0.63
 
 const ZONE_MULTIPLIERS := {
 	"head": 2.0,
@@ -192,8 +186,16 @@ var stock: Node:
 
 var _model: Node3D
 var _anim: AnimationPlayer
-var _parts := {}
+## Скелет модели: на нём и зоны попадания, и расчленение.
+var _skeleton: Skeleton3D
+## Ключ зоны -> СПИСОК зон. Их несколько на ключ: рука это плечо и предплечье,
+## корпус — грудь и таз. Один шар на конечность либо не достаёт до кисти, либо
+## залезает в туловище.
 var _zones := {}
+## Узел на кости кисти, к которому крепится оружие.
+var _weapon_mount: BoneAttachment3D
+## Какая маска увечий уже показана на модели.
+var _shown_severed := -1
 var _weapon_visual: Node3D
 ## Какое оружие сейчас показано. Нужно, чтобы перерисовывать при смене — в том
 ## числе у чужих персонажей, у которых sync_weapon приезжает по сети.
@@ -259,23 +261,20 @@ func _build_model(slot: int) -> void:
 	# Без этого ходьба играется один раз и персонаж дальше едет в позе
 	# последнего кадра — glTF приезжает с LOOP_NONE.
 	MODEL_ANIM.make_looping(_anim)
-	for part_name in PART_ZONES.keys():
-		var mesh := _find_by_name(_model, part_name) as MeshInstance3D
-		if mesh == null:
-			push_warning("В модели нет части «%s»" % part_name)
-			continue
-		var key: String = PART_ZONES[part_name]
-		_parts[key] = mesh
-		_zones[key] = _attach_zone(mesh, key)
+
+	# Тело — один скиннутый меш, прятать по частям нечего: и зоны попадания, и
+	# расчленение живут на костях (см. `rig.gd`).
+	_skeleton = RIG.find_skeleton(_model)
+	RIG.hide_built_in_weapon(_model)
+	_zones = RIG.build_zones(_skeleton, ZONE_MULTIPLIERS, HITBOX_LAYER)
+	_weapon_mount = RIG.weapon_mount(_skeleton)
 
 	_refresh_weapon_visual()
+	# Состояние тела могло приехать РАНЬШЕ модели: поздний клиент получает
+	# готового калеку одним пакетом, и сигнала об отрыве при нём уже не будет.
+	# Поэтому применяем маску сразу, а не ждём события.
+	_apply_severed()
 	_play("idle")
-
-
-## Зона попадания строится из размеров самого меша и вешается на него же —
-## общий помощник с юнитами, см. hit_zone.gd::attach.
-func _attach_zone(mesh: MeshInstance3D, key: String) -> Area3D:
-	return HIT_ZONE.attach(mesh, key, ZONE_MULTIPLIERS.get(key, 1.0), HITBOX_LAYER)
 
 
 func _find_node(node: Node, type) -> Node:
@@ -283,16 +282,6 @@ func _find_node(node: Node, type) -> Node:
 		return node
 	for child in node.get_children():
 		var found := _find_node(child, type)
-		if found != null:
-			return found
-	return null
-
-
-func _find_by_name(node: Node, wanted: String) -> Node:
-	if String(node.name) == wanted:
-		return node
-	for child in node.get_children():
-		var found := _find_by_name(child, wanted)
 		if found != null:
 			return found
 	return null
@@ -320,6 +309,13 @@ func _physics_process(delta: float) -> void:
 
 	_swing_left = maxf(0.0, _swing_left - delta)
 	_refresh_weapon_visual()
+	# Следим за МАСКОЙ, а не только за сигналом об отрыве. Сигнал приходит один
+	# раз и только когда бит ЗАЖИГАЕТСЯ: он не расскажет ни про снятие увечий
+	# (сброс тела при респавне), ни про позднего клиента, которому готовое
+	# состояние приехало одним пакетом. Сверка дешёвая — сравнение двух чисел.
+	if body != null and body.severed_mask != _shown_severed:
+		_shown_severed = body.severed_mask
+		_apply_severed()
 
 	if is_multiplayer_authority():
 		var inp := _gather_input()
@@ -424,13 +420,18 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 
 # --- анимация и поза -------------------------------------------------------
 
+## Игра говорит своими словами («walk», «die»), пак называет то же самое
+## по-своему — перевод живёт в `model_anim.gd::resolve`. Пустой ответ значит
+## «такого движения в этой модели нет»: тогда оставляем то, что играется, а не
+## замираем в первом кадре.
 func _play(anim_name: String, force := false) -> void:
 	if _anim == null or (anim_name == _current_anim and not force):
 		return
-	if not _anim.has_animation(anim_name):
+	var real := MODEL_ANIM.resolve(_anim, anim_name)
+	if real == "":
 		return
 	_current_anim = anim_name
-	_anim.play(anim_name)
+	_anim.play(real)
 
 
 func _update_animation() -> void:
@@ -1081,36 +1082,38 @@ func _on_died_on_server(killer_id: int) -> void:
 ## Реагируем на РЕПЛИЦИРОВАННОЕ состояние, поэтому отрыв виден одинаково на
 ## хосте и на клиентах, и отдельной сетевой команды для этого не нужно.
 func _on_limb_severed(limb: int) -> void:
-	var key: String = body.LIMB_KEYS[limb]
-	var mesh: MeshInstance3D = _parts.get(key)
-	if mesh == null:
-		return
-
-	var at := mesh.global_transform
-	mesh.visible = false
-	var zone: Area3D = _zones.get(key)
-	if zone != null:
-		zone.collision_layer = 0
+	_apply_severed()
+	var at := RIG.limb_point(_skeleton, limb)
 
 	# Кровь и сама оторванная часть, которая падает и остаётся лежать.
-	EFFECTS.blood(_effects_root(), at.origin, Vector3.UP, 80.0)
+	EFFECTS.blood(_effects_root(), at, Vector3.UP, 80.0)
 	var piece: Node3D = SEVERED_LIMB.instantiate()
 	# Кладём прямо в мир, а не в Spawned: за той нодой следит MultiplayerSpawner,
 	# а оторванная часть — локальный визуал, её каждый пир создаёт себе сам по
 	# реплицированному состоянию тела.
 	get_parent().get_parent().add_child(piece)
-	piece.setup(mesh.mesh, at, MODEL_SCALE)
+	piece.setup(RIG.limb_mesh(limb), Transform3D(Basis(), at), MODEL_SCALE)
 	_refresh_posture()
+
+
+## Схлопнуть оторванное и погасить его зоны попадания.
+##
+## Считаем по МАСКЕ, а не по одному пришедшему сигналу: поздний клиент увидел
+## сразу готовое состояние, сигнала об отрыве при нём не было, и безрукий
+## обязан быть безруким и для него тоже.
+func _apply_severed() -> void:
+	RIG.apply_severed(_skeleton, body.severed_mask)
+	for limb in body.LIMB_KEYS.size():
+		var gone: bool = body.is_severed(limb)
+		for zone in _zones.get(body.LIMB_KEYS[limb], []):
+			# Бить по пустому месту нельзя: зона оторванной руки должна уйти с
+			# радара оружия, иначе безрукого продолжают рубить за руку.
+			zone.collision_layer = 0 if gone else HITBOX_LAYER
 
 
 ## Вернуть все части на место. Зовётся при респавне.
 func restore_body() -> void:
-	for key in _parts.keys():
-		var mesh: MeshInstance3D = _parts[key]
-		mesh.visible = true
-		var zone: Area3D = _zones.get(key)
-		if zone != null:
-			zone.collision_layer = HITBOX_LAYER
+	_apply_severed()
 	_refresh_posture()
 
 
@@ -1122,7 +1125,12 @@ func set_dead(dead: bool) -> void:
 		return
 	control_enabled = not dead
 	for key in _zones.keys():
-		(_zones[key] as Area3D).collision_layer = 0 if dead else HITBOX_LAYER
+		for zone in _zones[key]:
+			(zone as Area3D).collision_layer = 0 if dead else HITBOX_LAYER
+	if not dead:
+		# Оторванное остаётся оторванным: воскрешение зон не должно вернуть на
+		# радар оружия те, которых нет.
+		_apply_severed()
 	set_collision_layer_value(2, not dead)
 	if dead:
 		_play("die", true)
@@ -1160,7 +1168,7 @@ func _refresh_weapon_visual() -> void:
 		return
 	_weapon_shown = sync_weapon
 	_tier_shown = gear_tier
-	_weapon_visual = WEAPON_VISUAL.attach(_parts.get("arm_r"), sync_weapon, _weapon_visual, gear_tier)
+	_weapon_visual = WEAPON_VISUAL.attach_at(_weapon_mount, sync_weapon, _weapon_visual, gear_tier)
 
 
 static func _is_bot() -> bool:
@@ -1175,9 +1183,9 @@ static func _is_bot() -> bool:
 func own_collision_rids() -> Array[RID]:
 	var rids: Array[RID] = [get_rid()]
 	for key in _zones.keys():
-		var zone: Area3D = _zones[key]
-		if zone != null:
-			rids.append(zone.get_rid())
+		for zone in _zones[key]:
+			if zone != null:
+				rids.append((zone as Area3D).get_rid())
 	return rids
 
 
@@ -2167,14 +2175,28 @@ func cheat_answer(text: String) -> void:
 	cheat_reply.emit(text)
 
 
+## Для автопроверок: ВИДНО ли, что конечности нет.
+##
+## Спрашиваем модель, а не маску: маска и вид расходятся молча, и разошлись бы
+## при первой же смене персонажа.
+func limb_hidden(limb: int) -> bool:
+	return RIG.is_collapsed(_skeleton, limb)
+
+
 ## Для автопроверок: что сейчас играет и зациклено ли оно.
+##
+## Под `name` отдаём слово ИГРЫ («walk»), а не название клипа в паке («Walk»,
+## а в следующем паке будет третье). Проверка спрашивает «идёт ли он», и ответ
+## на этот вопрос не должен меняться от смены модели. Название клипа кладём
+## рядом, для разбора провалов.
 func animation_state() -> Dictionary:
 	if _anim == null:
 		return {}
-	var current: String = _anim.current_animation
-	var anim: Animation = _anim.get_animation(current) if current != "" else null
+	var clip: String = _anim.current_animation
+	var anim: Animation = _anim.get_animation(clip) if clip != "" else null
 	return {
-		"name": current,
+		"name": _current_anim,
+		"clip": clip,
 		"playing": _anim.is_playing(),
 		"looping": anim != null and anim.loop_mode != Animation.LOOP_NONE,
 	}
