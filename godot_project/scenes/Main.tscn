@@ -296,9 +296,19 @@ popup/item_0/id = 0
 popup/item_1/text = "Steam (P2P)"
 popup/item_1/id = 1
 
-[node name="HostBtn" type="Button" parent="UI/Menu/Panel/VBox"]
+[node name="SaveInfo" type="Label" parent="UI/Menu/Panel/VBox"]
+custom_minimum_size = Vector2(0, 34)
+autowrap_mode = 3
+horizontal_alignment = 1
+text = "Сохранений нет"
+
+[node name="ContinueBtn" type="Button" parent="UI/Menu/Panel/VBox"]
 custom_minimum_size = Vector2(0, 44)
-text = "Создать игру (хост)"
+text = "Продолжить"
+
+[node name="NewBtn" type="Button" parent="UI/Menu/Panel/VBox"]
+custom_minimum_size = Vector2(0, 44)
+text = "Новая игра"
 
 [node name="JoinRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
 theme_override_constants/separation = 8

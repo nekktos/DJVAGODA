@@ -53,6 +53,19 @@ func _ready() -> void:
 	_seen_owner = palace_owner
 
 
+## Вернуть исход партии к нерешённому. Зовётся при начале новой партии: без
+## этого объявленная победа и павшие вожаки переезжали бы в новый мир, и он
+## начинался бы уже проигранным для кого-то.
+func reset() -> void:
+	palace_owner = FACTIONS.Kind.GUARD
+	capture_progress = 0.0
+	contested = false
+	claimant = -1
+	victors = PackedByteArray([0, 0, 0])
+	leader_down = PackedByteArray([0, 0, 0])
+	_seen_owner = palace_owner
+
+
 func _process(delta: float) -> void:
 	# Объявление идёт ТОЛЬКО по RPC. Раньше здесь дублировалась ещё и реакция на
 	# смену реплицированного владельца, и клиенты получали баннер дважды.

@@ -28,6 +28,7 @@ extends Node
 ##   --victorytest   автопроверка условий победы и командования (headless)
 ##   --diptest       автопроверка репутации и дипломатии (headless)
 ##   --savetest      автопроверка сохранений и профиля игрока (headless)
+##   --newgametest   автопроверка «Новой игры»: что она правда новая (headless)
 ##   --garrisontest  автопроверка гарнизонов свободных сторон (headless)
 ##   --warbandtest   автопроверка воюющего ИИ свободных сторон (headless)
 ##   --soaktest      трёхминутный прогон мира без людей: не деградирует ли ИИ
@@ -63,6 +64,9 @@ const LABOURER := preload("res://scripts/units/labourer.gd")
 const ORDERS := preload("res://scripts/orders.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
 
+## Кнопка «Новая игра» уже спросила подтверждение и ждёт второго нажатия.
+var _new_confirm := false
+
 ## Сколько секунд держится объявление о результате.
 const ANNOUNCE_SECONDS := 7.0
 
@@ -70,7 +74,9 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _status: Label = $UI/Menu/Panel/VBox/Status
 @onready var _transport_opt: OptionButton = $UI/Menu/Panel/VBox/TransportRow/TransportOpt
 @onready var _ip_edit: LineEdit = $UI/Menu/Panel/VBox/JoinRow/IpEdit
-@onready var _host_btn: Button = $UI/Menu/Panel/VBox/HostBtn
+@onready var _continue_btn: Button = $UI/Menu/Panel/VBox/ContinueBtn
+@onready var _new_btn: Button = $UI/Menu/Panel/VBox/NewBtn
+@onready var _save_info: Label = $UI/Menu/Panel/VBox/SaveInfo
 @onready var _join_btn: Button = $UI/Menu/Panel/VBox/JoinRow/JoinBtn
 @onready var _hud: Control = $UI/Hud
 @onready var _world: Node3D = $World
@@ -91,7 +97,8 @@ func _ready() -> void:
 	Net.status_changed.connect(_on_status)
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
-	_host_btn.pressed.connect(_on_host_pressed)
+	_continue_btn.pressed.connect(_on_continue_pressed)
+	_new_btn.pressed.connect(_on_new_pressed)
 	_join_btn.pressed.connect(_on_join_pressed)
 	_transport_opt.item_selected.connect(_on_transport_selected)
 	_ip_edit.text_submitted.connect(func(_t: String) -> void: _on_join_pressed())
@@ -492,13 +499,77 @@ func _on_transport_selected(index: int) -> void:
 		_status.text = LOCAL_HINT
 
 
-func _on_host_pressed() -> void:
+## Продолжить прошлую партию. Ровно то, что игра делала всегда, — теперь у
+## этого есть имя и кнопка, а не молчаливое «хост всегда грузит последний мир».
+func _on_continue_pressed() -> void:
 	_set_buttons_enabled(false)
 	if not Net.host_game():
 		_set_buttons_enabled(true)
 
 
+## Новая партия. Спрашиваем подтверждение ВТОРЫМ нажатием той же кнопки.
+##
+## Файл прошлой партии остаётся на диске целым — новая игра заводит новый мир, а
+## не стирает старый. Но из меню к прежнему миру уже не вернуться, и для
+## человека это неотличимо от потери. Второе нажатие стоит секунды, а промах
+## мимо кнопки — кампании.
+func _on_new_pressed() -> void:
+	if not _new_confirm:
+		_new_confirm = true
+		_new_btn.text = "Точно? Нажмите ещё раз"
+		_status.text = "Прежний мир останется на диске, но из меню к нему не вернуться."
+		return
+	_reset_new_button()
+	_set_buttons_enabled(false)
+	# Порядок важен: сначала стираем прошлую партию из ПАМЯТИ, потом заводим ей
+	# новое имя, и только потом поднимаем сессию. Наоборот — и новый мир при
+	# первом же автосейве запишет в свой файл чужие дома.
+	_world.reset_for_new_game()
+	var fresh: String = _world.savegame.begin_new_world()
+	print("[меню] новая партия в мире %s" % fresh)
+	if not Net.host_game():
+		_set_buttons_enabled(true)
+
+
+## Сбросить кнопку «Новая игра» из состояния «переспрашиваю».
+func _reset_new_button() -> void:
+	_new_confirm = false
+	_new_btn.text = "Новая игра"
+
+
+## Что предлагаем продолжить. Кнопка «Продолжить» без единого слова о том, какая
+## это партия и как давно она была, — это кнопка наугад.
+##
+## Занимается ТОЛЬКО подписью. Доступностью кнопок ведает `_set_buttons_enabled`
+## и никто больше: две функции, независимо решающие одно и то же, однажды решат
+## по-разному — и «Продолжить» окажется живой посреди подключения.
+func _refresh_save_info() -> void:
+	var info: Dictionary = _world.savegame.save_summary()
+	if info.is_empty():
+		_save_info.text = "Сохранений нет — начните новую игру"
+		return
+	var side := int(info.get("faction", -1))
+	var who := "" if side < 0 else ", вы играли за «%s»" % FACTIONS.name_of(side)
+	_save_info.text = "Мир %s, сохранён %s%s" % [
+		info.get("world", "?"), _human_time(String(info.get("at", ""))), who
+	]
+
+
+## «2026-08-29T11:54:22» человеку читать незачем.
+func _human_time(stamp: String) -> String:
+	if stamp.is_empty():
+		return "неизвестно когда"
+	var parts := stamp.split("T")
+	if parts.size() < 2:
+		return stamp
+	var day := parts[0].split("-")
+	if day.size() < 3:
+		return stamp
+	return "%s.%s.%s в %s" % [day[2], day[1], day[0], parts[1].substr(0, 5)]
+
+
 func _on_join_pressed() -> void:
+	_reset_new_button()
 	_set_buttons_enabled(false)
 	if not Net.join_game(_ip_edit.text):
 		_set_buttons_enabled(true)
@@ -526,10 +597,16 @@ func _on_session_ended() -> void:
 func _show_menu(visible_now: bool) -> void:
 	_menu.visible = visible_now
 	_set_buttons_enabled(true)
+	if visible_now:
+		_reset_new_button()
+		_refresh_save_info()
 
 
 func _set_buttons_enabled(enabled: bool) -> void:
-	_host_btn.disabled = not enabled
+	# «Продолжить» гасим ещё и когда продолжать нечего: кнопка, которая ничего
+	# не делает, хуже отсутствующей — по ней жмут и решают, что игра сломана.
+	_continue_btn.disabled = not enabled or not _world.savegame.has_save()
+	_new_btn.disabled = not enabled
 	_join_btn.disabled = not enabled
 
 
@@ -643,6 +720,12 @@ func _apply_cmdline() -> void:
 		garrison_test.start(_world)
 		needs_session = true
 
+	if args.has("--newgametest"):
+		var newgame_test: Node = preload("res://tools/newgame_test.gd").new()
+		add_child(newgame_test)
+		newgame_test.start(_world)
+		needs_session = true
+
 	if args.has("--savetest"):
 		var save_test: Node = preload("res://tools/save_test.gd").new()
 		add_child(save_test)
@@ -746,7 +829,7 @@ func _apply_cmdline() -> void:
 
 	for arg in args:
 		if arg == "--host":
-			_on_host_pressed()
+			_on_continue_pressed()
 			return
 		if arg == "--join":
 			_on_join_pressed()
@@ -758,7 +841,7 @@ func _apply_cmdline() -> void:
 
 	# Инструментам нужна живая сессия, иначе персонажа в мире не будет.
 	if needs_session:
-		_on_host_pressed()
+		_on_continue_pressed()
 
 
 ## В стратегическом режиме курсор нужен свободным — им будут отдавать приказы.

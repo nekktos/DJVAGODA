@@ -53,6 +53,10 @@ var world_id := ""
 ## записанный предыдущим, и тесты перестали бы быть герметичными. Это не
 ## теория — ровно так они и посыпались все разом, когда автосейв появился.
 var _frozen := false
+## Мир задан ключом --world=ИМЯ. Такой мир «новой игрой» не подменяют: набор
+## проверок сам выбирает, в каком файле работать, и смена имени под ним увела
+## бы проверку в пустоту.
+var _world_from_cmdline := false
 
 var _autosave_t := 0.0
 ## Профили, уже восстановленные в этой сессии: второй раз накатывать нельзя.
@@ -65,6 +69,7 @@ func _ready() -> void:
 	for arg in args:
 		if arg.begins_with("--world="):
 			world_id = arg.substr("--world=".length())
+			_world_from_cmdline = true
 	if world_id.is_empty():
 		world_id = _load_or_make_world_id()
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
@@ -370,6 +375,47 @@ func has_save() -> bool:
 	return FileAccess.file_exists(save_path())
 
 
+## Коротко о том, что лежит в сейве, — для главного меню. Пустой словарь, если
+## сохранения нет.
+##
+## Меню обязано показывать, ЧТО именно оно предлагает продолжить. «Продолжить»
+## без единого слова о том, какая это партия и как давно она была, — это кнопка
+## наугад: человек с двумя мирами и одним компьютером нажмёт её и потеряет
+## понимание, куда попал.
+func save_summary() -> Dictionary:
+	var cfg := ConfigFile.new()
+	if cfg.load(save_path()) != OK:
+		return {}
+	return {
+		"world": world_id,
+		"at": String(cfg.get_value("meta", "saved_at", "")),
+		"faction": saved_faction(Net.profile_id),
+	}
+
+
+## Начать НОВУЮ партию.
+##
+## Не стираем старую, а заводим новый идентификатор мира: файлы лежат по одному
+## на мир, и «новая игра» — это новое имя, а не пустой файл. Старая партия
+## остаётся на диске целой, и промах мимо кнопки не стоит человеку кампании;
+## вернуться к ней можно ключом `--world=ИМЯ`, а прежнее имя мы для этого и
+## записываем рядом.
+##
+## Возвращает имя нового мира.
+func begin_new_world() -> String:
+	if _frozen or _world_from_cmdline:
+		return world_id
+	var cfg := ConfigFile.new()
+	cfg.load(WORLD_ID_PATH)
+	cfg.set_value("world", "previous", world_id)
+	world_id = _mint_world_id(cfg)
+	_restored.clear()
+	_autosave_t = 0.0
+	print("[сейв] новая партия, мир %s (прежний %s остался на диске)"
+		% [world_id, cfg.get_value("world", "previous", "—")])
+	return world_id
+
+
 # --- идентификатор мира ----------------------------------------------------
 
 ## Мир хозяина. Заводится один раз и живёт в user://, поэтому «мир первого
@@ -380,6 +426,11 @@ func _load_or_make_world_id() -> String:
 		var saved_id := String(cfg.get_value("world", "id", ""))
 		if not saved_id.is_empty():
 			return saved_id
+	return _mint_world_id(cfg)
+
+
+## Завести имя нового мира и записать его как текущее.
+func _mint_world_id(cfg: ConfigFile) -> String:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	var fresh := "w%08x" % rng.randi()

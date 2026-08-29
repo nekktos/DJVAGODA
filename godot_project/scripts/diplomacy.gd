@@ -53,6 +53,12 @@ var _seen := PackedFloat32Array([0.0, 0.0, 0.0])
 
 
 func _ready() -> void:
+	reset()
+
+
+## Вернуть отношения к стартовым. Зовётся и при загрузке сцены, и при начале
+## новой партии: иначе новая партия начиналась бы с враждой, нажитой в прошлой.
+func reset() -> void:
 	# Значения константные и одинаковые на всех пирах, поэтому раскладываем без
 	# проверки на хоста: сетевого пира в момент загрузки сцены ещё нет.
 	var start := PackedFloat32Array()
@@ -60,6 +66,7 @@ func _ready() -> void:
 		start.append(float(v))
 	values = start
 	_seen = values.duplicate()
+	_offers.clear()
 
 
 func _process(delta: float) -> void:
