@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "сейв"
-	expected_host = 23
+	expected_host = 31
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -39,6 +39,10 @@ func _run() -> void:
 	await _test_round_trip(me)
 	_test_faction_memory(me)
 	_test_restore_is_once(me)
+	# Стройки — ПОСЛЕДНИМИ, и это не вкусовщина: проверка «второй раз прогресс
+	# не накатывается» читает список уже восстановленных профилей, а любая
+	# загрузка мира его очищает. Стоя раньше, эта проверка роняла ту.
+	await _test_buildings(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -47,6 +51,50 @@ func _run() -> void:
 
 func _save() -> Node:
 	return _world.savegame
+
+
+func _buildings() -> Array:
+	return get_tree().get_nodes_in_group("building")
+
+
+## Постройки переживают перезаход.
+##
+## Проверять надо не только «дом вернулся», но и «потолок склада не удвоился».
+## Достроенный склад поднимает стороне потолок хранения, а сам потолок лежит в
+## сейве отдельно: если восстановленный склад засчитывается как достроенный
+## заново, потолок растёт на бонус при каждом заходе в мир. Это тот случай,
+## когда починка одной дыры открывает другую, и увидеть её можно только здесь.
+func _test_buildings(me: Node3D) -> void:
+	var wallet: Node = _world.treasury.of(me.faction)
+	var cap_before: int = int(wallet.stored.capacity)
+	var spot := Vector3(140.0, 0.0, -60.0)
+	_world.spawn_building(RES.Building.STORAGE, spot, 1, int(me.faction), true)
+	await get_tree().physics_frame
+	var before: int = _buildings().size()
+	check(before >= 2, "постройки стоят на карте", "%d штук" % before)
+
+	_save().save_world()
+	for node in _buildings():
+		node.free()
+	await get_tree().physics_frame
+	check(_buildings().is_empty(), "перед загрузкой снесли всё",
+		"%d осталось" % _buildings().size())
+
+	check(_save().load_world(), "мир загружен со стройками", "успех")
+	await get_tree().physics_frame
+	check(_buildings().size() == before, "ПОСТРОЙКИ вернулись",
+		"%d из %d" % [_buildings().size(), before])
+	var found := false
+	for node in _buildings():
+		if node.position.distance_to(spot) < 0.5 and int(node.kind) == RES.Building.STORAGE:
+			found = true
+	check(found, "склад вернулся на своё место", "(%.0f, %.0f)" % [spot.x, spot.z])
+
+	# Двух кадров хватает: сигнал о достройке идёт из _process, а не из _ready.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check(int(wallet.stored.capacity) == cap_before, "потолок склада не удвоился",
+		"было %d, стало %d" % [cap_before, int(wallet.stored.capacity)])
 
 
 ## Профиль устойчив и НЕ равен сетевому id: именно в этом весь смысл.
@@ -71,8 +119,12 @@ func _test_round_trip(me: Node3D) -> void:
 	dip.values = PackedFloat32Array([11.0, 22.0, 33.0])
 	wallet.carried.amounts = PackedInt32Array([1, 2, 3, 4])
 	wallet.stored.capacity = 777
+	# Лошади — имущество стороны, и дорогое: до дюжины по 25 золота и 12 железа.
+	wallet.horses = 9
+	wallet.horses_out = 4
 	me.gear_tier = 2
 	me.orders_done = 4
+	me.harness_size = 5
 	me.body.severed_mask = 0b0100
 	me.body.bandages = 7
 	# Трофеи и вставленный глаз — то, что копится ДОЛЬШЕ одного захода.
@@ -90,6 +142,8 @@ func _test_round_trip(me: Node3D) -> void:
 	dip.values = PackedFloat32Array([-99.0, -99.0, -99.0])
 	wallet.carried.amounts = PackedInt32Array([0, 0, 0, 0])
 	wallet.stored.capacity = 0
+	wallet.horses = 0
+	wallet.horses_out = 0
 	await get_tree().physics_frame
 
 	check(_save().load_world(), "мир загружен", "успех")
@@ -105,10 +159,16 @@ func _test_round_trip(me: Node3D) -> void:
 		"железа %d" % wallet.carried.get_amount(RES.Kind.IRON))
 	check(wallet.stored.capacity == 777, "потолок склада вернулся",
 		"%d" % wallet.stored.capacity)
+	check(int(wallet.horses) == 9, "ЛОШАДИ вернулись", "%d в конюшне" % int(wallet.horses))
+	# Уведённые с обозом возвращаются в конюшню, а не остаются занятыми:
+	# обозов после загрузки нет ни одного, и «занятые» лошади висели бы вечно.
+	check(int(wallet.horses_out) == 0, "уведённые лошади вернулись в конюшню",
+		"занято %d, свободно %d" % [int(wallet.horses_out), wallet.horses_free()])
 
 	# Состояние персонажа накатывается отдельно, при спавне.
 	me.gear_tier = 0
 	me.orders_done = 0
+	me.harness_size = 2
 	me.body.severed_mask = 0
 	me.body.bandages = 0
 	me.trophies = PackedInt32Array([0, 0, 0])
@@ -120,6 +180,8 @@ func _test_round_trip(me: Node3D) -> void:
 	check(int(me.body.severed_mask) == 0b0100, "РАНЕНИЯ вернулись",
 		"маска %d" % int(me.body.severed_mask))
 	check(int(me.body.bandages) == 7, "бинты вернулись", "%d" % int(me.body.bandages))
+	check(int(me.harness_size) == 5, "выбор упряжки вернулся",
+		"%d лошадей" % int(me.harness_size))
 	# Некротический протез стоит десять чужих конечностей одного вида, и набрать
 	# столько за один заход почти нельзя. Не переживи счёт выход — самый дорогой
 	# протез в игре стал бы недостижимым для всех, кто хоть раз вышел.

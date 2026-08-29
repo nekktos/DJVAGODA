@@ -48,6 +48,11 @@ func setup(data: Dictionary) -> void:
 	faction = int(data.get("faction", 0))
 	if bool(data.get("prebuilt", false)):
 		progress = 1.0
+		# «Уже стояла» значит и «уже достроена»: последствия достройки за ней
+		# числятся с прошлого раза. Без этого восстановленный из сейва склад
+		# поднимал стороне потолок хранения ВТОРОЙ раз — а потолок мы и так
+		# сохраняем, — и на старте партии играл звук готовой стройки.
+		_done = true
 	position = data["point"]
 	rotation.y = float(data.get("yaw", 0.0))
 

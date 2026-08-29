@@ -243,7 +243,11 @@ func _on_session_started() -> void:
 		# Мир поднимаем ДО игроков: восстановленная казна и репутация должны
 		# существовать к моменту, когда первый персонаж встанет в мир.
 		savegame.load_world()
-		_spawn_guard_barracks()
+		# Если сейв вернул постройки, стартовую казарму он вернул тоже — или
+		# не вернул, потому что её снесли. Ставить её здесь заново значит
+		# отменять снос, а это половина условия поражения стражи.
+		if not savegame.restored_buildings:
+			_spawn_guard_barracks()
 		_spawn_starting_labourers()
 		_spawn_player(1, Net.chosen_faction, Net.profile_id)
 	else:

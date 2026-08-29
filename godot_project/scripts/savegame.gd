@@ -16,10 +16,16 @@ extends Node
 ##   - казна каждой стороны, отдельно «при себе» и «в складе»;
 ##   - игроки по профилям: сторона, снаряжение, ранения, прогресс службы.
 ##
-## Что НЕ сохраняется намеренно: позиции персонажей, снаряды, трупы, кучи груза
-## и построенные здания. Это состояние боя, а не прогресса; восстанавливать его
-## значит воскрешать середину чужой драки. Игроки возвращаются на базы своей
-## стороны — как после смерти.
+##   - постройки: что стоит, где, чьё и достроено ли.
+##
+## Что НЕ сохраняется намеренно: позиции персонажей, снаряды, трупы и кучи
+## груза. Это состояние боя, а не прогресса; восстанавливать его значит
+## воскрешать середину чужой драки. Игроки возвращаются на базы своей стороны —
+## как после смерти.
+##
+## ПОСТРОЙКИ раньше лежали в том же списке, и это была ошибка. Склад стоит сотни
+## камня и поднимает стороне потолок хранения — а потолок мы сохраняли. Выходило
+## худшее из двух: ресурсы списаны, потолок поднят, а склада на месте нет.
 ##
 
 const FACTIONS := preload("res://scripts/factions.gd")
@@ -96,6 +102,23 @@ func save_world() -> String:
 
 	cfg.set_value("diplomacy", "values", world.diplomacy.values)
 
+	# Недостроенное сохраняем вместе с прогрессом: стройка идёт минутами, и
+	# выход из игры посреди неё не должен стоить всей затраченной кучи.
+	var built: Array = []
+	for node in world.get_tree().get_nodes_in_group("building"):
+		if not is_instance_valid(node):
+			continue
+		built.append({
+			"kind": int(node.kind),
+			"point": node.position,
+			"yaw": float(node.rotation.y),
+			"owner": int(node.owner_id),
+			"faction": int(node.faction),
+			"progress": float(node.progress),
+			"health": float(node.health),
+		})
+	cfg.set_value("world", "buildings", built)
+
 	for faction in FACTIONS.COUNT:
 		var wallet: Node = world.treasury.of(faction)
 		if wallet == null:
@@ -105,6 +128,10 @@ func save_world() -> String:
 		cfg.set_value(key, "carried_cap", wallet.carried.capacity)
 		cfg.set_value(key, "stored", wallet.stored.amounts)
 		cfg.set_value(key, "stored_cap", wallet.stored.capacity)
+		# Лошади — такое же имущество стороны, как золото, и стоят дороже:
+		# двадцать пять золота и двенадцать железа за голову, до дюжины в
+		# конюшне. Не сохраняя их, мы сжигали всю конюшню при каждом выходе.
+		cfg.set_value(key, "horses", int(wallet.horses))
 
 	for child in world.get_node("Players").get_children():
 		var profile := String(child.profile_id)
@@ -121,6 +148,10 @@ func save_world() -> String:
 		cfg.set_value("player/" + profile, "last_faction", int(child.faction))
 		cfg.set_value(key, "faction", int(child.faction))
 		cfg.set_value(key, "gear_tier", int(child.gear_tier))
+		# Сколько лошадей запрягать — решение игрока, а не случайное число.
+		# Сбрасывать его к двойке при каждом входе значит заставлять принимать
+		# это решение заново каждый раз.
+		cfg.set_value(key, "harness_size", int(child.harness_size))
 		cfg.set_value(key, "is_leader", bool(child.is_leader))
 		cfg.set_value(key, "orders_done", int(child.orders_done))
 		cfg.set_value(key, "final_threshold", int(child.final_threshold))
@@ -168,6 +199,7 @@ func load_world() -> bool:
 	objective.victors = cfg.get_value("world", "victors", objective.victors)
 
 	world.diplomacy.values = cfg.get_value("diplomacy", "values", world.diplomacy.values)
+	_restore_buildings(world, cfg)
 
 	for faction in FACTIONS.COUNT:
 		var wallet: Node = world.treasury.of(faction)
@@ -180,11 +212,47 @@ func load_world() -> bool:
 		wallet.carried.capacity = int(cfg.get_value(key, "carried_cap", wallet.carried.capacity))
 		wallet.stored.amounts = cfg.get_value(key, "stored", wallet.stored.amounts)
 		wallet.stored.capacity = int(cfg.get_value(key, "stored_cap", wallet.stored.capacity))
+		wallet.horses = int(cfg.get_value(key, "horses", wallet.horses))
+		# А вот УВЕДЁННЫХ с обозом лошадей возвращаем в конюшню, а не
+		# восстанавливаем счётчик: обозов после загрузки нет ни одного, и
+		# «занятые» лошади остались бы занятыми навсегда — с караваном, которого
+		# не существует.
+		wallet.horses_out = 0
 
 	_restored.clear()
 	print("[сейв] мир загружен: %s" % path)
 	loaded.emit(path)
 	return true
+
+
+## Поставить обратно всё, что было построено.
+##
+## Сносим ВСЁ, что стоит сейчас, и ставим заново по списку. Иначе загрузка
+## посреди партии (через консоль) удваивала бы каждый дом, а казарма стражи,
+## снесённая в прошлой партии, возвращалась бы из мировой генерации — и половина
+## условия поражения стражи отменялась сама собой.
+##
+## `restored_buildings` нужен миру: увидев его, он НЕ ставит стартовую казарму
+## сам. У старых сейвов раздела нет, флаг остаётся снятым, и мир ведёт себя
+## по-прежнему.
+var restored_buildings := false
+
+func _restore_buildings(world: Node, cfg: ConfigFile) -> void:
+	restored_buildings = cfg.has_section_key("world", "buildings")
+	if not restored_buildings:
+		return
+	for node in world.get_tree().get_nodes_in_group("building"):
+		if is_instance_valid(node):
+			node.free()
+	for entry in cfg.get_value("world", "buildings", []):
+		var progress := float(entry.get("progress", 1.0))
+		var node: Node = world.spawn_building(
+			int(entry["kind"]), entry["point"], int(entry.get("owner", 0)),
+			int(entry.get("faction", 0)), progress >= 1.0)
+		if node == null:
+			continue
+		node.progress = progress
+		node.health = float(entry.get("health", node.health))
 
 
 ## Какую сторону этот профиль занимал в прошлый раз. -1 — профиль незнакомый.
@@ -231,6 +299,7 @@ func restore_player(player: Node3D) -> bool:
 			return false
 
 	player.gear_tier = int(cfg.get_value(key, "gear_tier", 0))
+	player.harness_size = int(cfg.get_value(key, "harness_size", player.harness_size))
 	player.is_leader = bool(cfg.get_value(key, "is_leader", player.is_leader))
 	player.orders_done = int(cfg.get_value(key, "orders_done", 0))
 	player.final_threshold = int(cfg.get_value(key, "final_threshold", player.final_threshold))
