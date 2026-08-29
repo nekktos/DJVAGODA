@@ -17,7 +17,8 @@ extends Node
 ##   - игроки по профилям: сторона, снаряжение, ранения, прогресс службы.
 ##
 ##   - постройки: что стоит, где, чьё и достроено ли;
-##   - батраки: сколько их у каждой стороны и кто из них кто.
+##   - батраки: сколько их у каждой стороны и кто из них кто;
+##   - нанятый отряд игрока: сколько мечников и сколько лучников.
 ##
 ## Что НЕ сохраняется намеренно: позиции персонажей, снаряды, трупы и кучи
 ## груза. Это состояние боя, а не прогресса; восстанавливать его значит
@@ -30,6 +31,7 @@ extends Node
 ##
 
 const FACTIONS := preload("res://scripts/factions.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 
 ## Куда кладём. Один файл на мир: имя мира хранится у хозяина и переживает
 ## перезапуск, поэтому «мир первого хоста» остаётся тем же самым миром.
@@ -189,6 +191,24 @@ func save_world() -> String:
 		# самый дорогой протез в игре недостижимым для всех, кто хоть раз вышел —
 		# то есть для всех.
 		cfg.set_value(key, "trophies", child.trophies)
+		# Отряд — нанятое за золото, а не «состояние боя». Сохраняем СОСТАВ:
+		# кто мечник, кто лучник. Позиции не сохраняем и здесь — отряд стоит у
+		# казармы, из которой его набирали.
+		#
+		# Отряд принадлежит ЧЕЛОВЕКУ, а не стороне, поэтому и лежит он в разделе
+		# профиля, а не мира: сетевой id при следующем входе будет другой, и
+		# восстанавливать бойцов надо в тот момент, когда новый id уже известен,
+		# то есть при спавне персонажа.
+		#
+		# Призванных волков не сохраняем НАМЕРЕННО: у них свой короткий срок
+		# жизни, они не переживают и одной сессии. Восстановленный волк был бы
+		# не возвращённым имуществом, а выдумкой.
+		var squad := PackedInt32Array()
+		for unit in world.units_of(int(child.peer_id)):
+			if not is_instance_valid(unit) or bool(unit.is_beast):
+				continue
+			squad.append(1 if bool(unit.is_archer) else 0)
+		cfg.set_value(key, "squad", squad)
 		cfg.set_value(key, "bandages", int(child.body.bandages))
 		cfg.set_value(key, "in_wheelchair", bool(child.body.in_wheelchair))
 
@@ -363,11 +383,44 @@ func restore_player(player: Node3D) -> bool:
 	player.body.bandages = int(cfg.get_value(key, "bandages", player.body.bandages))
 	player.body.in_wheelchair = bool(cfg.get_value(key, "in_wheelchair", false))
 
+	_restore_squad(player, cfg.get_value(key, "squad", PackedInt32Array()))
+
 	_restored[profile] = true
 	print("[сейв] восстановлен профиль %s (сторона %s)" % [
 		profile, FACTIONS.name_of(int(player.faction))
 	])
 	return true
+
+
+## Вернуть нанятый отряд человеку, который только что вошёл.
+##
+## Здесь, а не в `load_world`: отряд привязан к сетевому id, а тот выдаётся
+## заново при каждом подключении. В момент загрузки мира человека ещё нет и
+## владельца бойцам назначить не из чего; в момент спавна — есть.
+##
+## Ставим у казармы, как при найме, и тем же разводом по спирали: спавн всех в
+## одну точку вбивает капсулы друг в друга, и CharacterBody3D потом не может их
+## расцепить. Казармы нет (снесли) — ставим у самого человека.
+func _restore_squad(player: Node3D, kinds: PackedInt32Array) -> void:
+	if kinds.is_empty():
+		return
+	var world: Node = get_parent()
+	var peer := int(player.peer_id)
+	# Второй раз не набираем: у вошедшего отряд уже может быть, если сюда
+	# как-то дошли дважды, и удвоенное войско хуже потерянного.
+	if not world.units_of(peer).is_empty():
+		return
+	var base: Vector3 = player.global_position
+	var barracks: Node3D = world.barracks_of(int(player.faction), RES.Building.SWORD_BARRACKS)
+	if barracks != null:
+		base = barracks.global_position
+	var count: int = mini(kinds.size(), RES.SQUAD_LIMIT)
+	for i in count:
+		var angle: float = float(i) * 0.9
+		var radius: float = 3.0 + float(i) * 0.45
+		var spot: Vector3 = base + Vector3(cos(angle) * radius, 1.0, 9.0 + sin(angle) * radius)
+		world.spawn_unit(peer, i, spot, false, int(kinds[i]) == 1)
+	print("[сейв] отряду возвращено бойцов: %d" % count)
 
 
 ## Ключ прогресса: профиль и сторона. Разные стороны — разные слоты, и это

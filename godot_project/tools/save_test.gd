@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "сейв"
-	expected_host = 38
+	expected_host = 43
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -46,6 +46,7 @@ func _run() -> void:
 	# загрузка мира его очищает. Стоя раньше, эта проверка роняла ту.
 	await _test_buildings(me)
 	await _test_labourers(me)
+	await _test_squad(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -88,6 +89,53 @@ func _roles(side: int) -> Array:
 		roles.append(int(node.sync_role))
 	roles.sort()
 	return roles
+
+
+## Нанятый отряд переживает перезаход, а призванный волк — нет.
+##
+## Разница не придирка. Мечник куплен за золото и стоит в отряде, пока его не
+## убьют; волк призван заклинанием и живёт считанные минуты по своему таймеру.
+## Вернуть волка — значит выдумать его заново, и сделать это молча.
+##
+## Отряд лежит в разделе ПРОФИЛЯ, а не мира: сетевой id при следующем входе
+## другой, и владельца бойцам назначают в момент спавна персонажа. Поэтому и
+## проверяем через `restore_player`, а не через `load_world`.
+func _test_squad(me: Node3D) -> void:
+	var peer: int = int(me.peer_id)
+	for node in _world.units_of(peer):
+		node.free()
+	await get_tree().physics_frame
+
+	var at: Vector3 = me.global_position
+	_world.spawn_unit(peer, 0, at + Vector3(4.0, 1.0, 0.0), false, false)
+	_world.spawn_unit(peer, 1, at + Vector3(-4.0, 1.0, 0.0), false, false)
+	_world.spawn_unit(peer, 2, at + Vector3(0.0, 1.0, 4.0), false, true)
+	_world.spawn_unit(peer, 3, at + Vector3(0.0, 1.0, -4.0), true, false)
+	await get_tree().physics_frame
+	check(_world.units_of(peer).size() == 4, "отряд набран, и с ним волк",
+		"%d при хозяине" % _world.units_of(peer).size())
+
+	_save().save_world()
+	for node in _world.units_of(peer):
+		node.free()
+	await get_tree().physics_frame
+	check(_world.units_of(peer).is_empty(), "перед возвращением отряда нет",
+		"%d осталось" % _world.units_of(peer).size())
+
+	# Профиль в этой сессии уже восстановлен, и второй раз накатывать нельзя —
+	# это проверено отдельно выше. Здесь воспроизводится НОВЫЙ вход: список
+	# восстановленных чистится ровно так же, как его чистит загрузка мира.
+	_save()._restored.clear()
+	check(_save().restore_player(me), "прогресс накатан как при новом входе", "успех")
+	await get_tree().physics_frame
+
+	var back: Array = _world.units_of(peer)
+	check(back.size() == 3, "ОТРЯД вернулся, а волк нет", "%d бойцов" % back.size())
+	var archers := 0
+	for node in back:
+		if bool(node.is_archer):
+			archers += 1
+	check(archers == 1, "и лучник вернулся лучником", "%d из %d" % [archers, back.size()])
 
 
 ## Батраки переживают перезаход: каждый нанят за золото.
