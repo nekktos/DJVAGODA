@@ -89,6 +89,11 @@ func _run() -> void:
 	check(not _save().save_world().is_empty(), "и сохранено", _save().save_path())
 
 	# --- вышли в меню ---------------------------------------------------
+	# Меняем потолок склада ПОСЛЕ сохранения и больше не сохраняем сами. Если
+	# после возвращения вернётся 4321, значит выход в меню сохранился сам; если
+	# 1234 — значит человек, вышедший через минуту после стройки, теряет её.
+	wallet.stored.capacity = 4321
+	await get_tree().physics_frame
 	Net.leave()
 	await get_tree().create_timer(1.0).timeout
 	check(not Net.active, "вышли в меню: сессии нет", "сеть свёрнута")
@@ -120,8 +125,9 @@ func _run() -> void:
 		"%d было, %d стало" % [squad, _world.units_of(int(back.peer_id)).size()])
 
 	var purse: Node = _world.treasury.of(int(back.faction))
-	check(int(purse.stored.capacity) == 1234, "казна вернулась",
-		"потолок %d" % int(purse.stored.capacity))
+	check(int(purse.stored.capacity) == 4321,
+		"ВЫХОД В МЕНЮ сохранил нажитое после автосейва",
+		"потолок %d — 1234 значит потеряно" % int(purse.stored.capacity))
 	check(_at_landmark() != null, "приметный склад стоит там же, где стоял",
 		"(%.0f, %.0f)" % [LANDMARK.x, LANDMARK.z])
 	# А брошенное — НЕ вернулось. Его не было в файле, значит в загруженной

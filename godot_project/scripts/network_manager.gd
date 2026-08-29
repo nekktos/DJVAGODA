@@ -43,6 +43,15 @@ signal status_changed(text: String)
 signal session_started
 ## Сессия завершена (выход, разрыв, ошибка подключения).
 signal session_ended
+## Сессия ЕЩЁ жива, но сейчас закроется.
+##
+## Нужен тем, кому надо успеть прочитать её состояние. Сохранение читает
+## персонажей прямо из дерева и спрашивает `hosting()`, а к моменту
+## `session_ended` пир уже закрыт: персонажей ещё не убрали, но `hosting()`
+## возвращает false, и сохранение молча отказывается работать. Ровно это и
+## случилось — выход в меню «сохранялся», не сохраняя ничего, и заметила это
+## только автопроверка перезахода.
+signal session_ending
 
 var transport: Transport = Transport.ENET
 var is_host := false
@@ -172,6 +181,10 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> bool:
 ## Закрыть сессию и вернуться в оффлайн-состояние.
 func leave() -> void:
 	_connect_timeout_left = 0.0
+	# Предупреждаем ДО закрытия пира: после него состояние сессии уже не
+	# прочитать (см. `session_ending`).
+	if active:
+		session_ending.emit()
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null

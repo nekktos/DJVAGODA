@@ -139,7 +139,24 @@ func _ready() -> void:
 
 	_on_transport_selected(0)
 	_show_menu(true)
+	# Закрытие окна перехватываем сами: иначе крестик уносит с собой всё, что
+	# наиграно после последнего автосейва, а автосейв идёт раз в минуту.
+	get_tree().set_auto_accept_quit(false)
 	_apply_cmdline()
+
+
+## Крестик окна: сохраняемся и выходим.
+##
+## Сохраняет только хозяин — у клиента нет авторитетного состояния, и его файл
+## был бы копией чужой правды (см. `savegame.gd`). Выход не отменяем ни при
+## каких обстоятельствах: закрытие окна — не то место, где программа спорит с
+## человеком.
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_WM_CLOSE_REQUEST:
+		return
+	if Net.hosting():
+		_world.savegame.save_world()
+	get_tree().quit()
 
 
 func _process(delta: float) -> void:

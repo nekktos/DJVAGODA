@@ -111,6 +111,7 @@ func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
+	Net.session_ending.connect(_on_session_ending)
 
 	var builder := WORLD_BUILDER.new()
 	builder.build(_terrain)
@@ -336,6 +337,16 @@ func _spawn_guard_barracks() -> void:
 		if "faction" in node and int(node.faction) == FACTIONS.Kind.GUARD:
 			return
 	spawn_building(RES.Building.SWORD_BARRACKS, GUARD_BARRACKS_POS, 0, FACTIONS.Kind.GUARD, true)
+
+
+## Сессия закрывается — успеваем сохраниться.
+##
+## Именно здесь, а не в `_on_session_ended`: там пир уже закрыт, `Net.hosting()`
+## возвращает false, и сохранение отказывается работать молча. Автосейв идёт раз
+## в минуту, и без этой строки выход в меню стоил бы человеку до минуты игры —
+## за минуту успевают построить дом.
+func _on_session_ending() -> void:
+	savegame.save_world()
 
 
 func _on_session_ended() -> void:
