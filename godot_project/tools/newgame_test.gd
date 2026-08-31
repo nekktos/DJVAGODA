@@ -23,7 +23,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "новая игра"
-	expected_host = 35
+	expected_host = 41
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -52,6 +52,7 @@ func _run() -> void:
 	await _test_reset(me)
 	_test_world_id_guard()
 	_test_load_other_world()
+	_test_delete_world()
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -214,6 +215,55 @@ func _test_reset(me: Node3D) -> void:
 
 	# 5. Персонажа из тела при этом не выбросило.
 	check(_world.local_player() != null, "игрок остался в мире", "персонаж на месте")
+
+
+## Удаление партии — единственное необратимое действие в меню.
+##
+## Проверяем ТРИ вещи, и все три обязательны. Что первое нажатие переспрашивает,
+## а не стирает: без переспроса промах мышью стоит кампании. Что второе стирает
+## по-настоящему — и файла на диске нет, а не только строки в списке. И что мир
+## из ключа `--world=` не стирается вовсе: под набором проверок это выдернуло бы
+## файл, с которым он сам и работает.
+func _test_delete_world() -> void:
+	var main: Node = get_parent()
+	var mine: String = _world.savegame.world_id
+
+	# Заводим партию НА СНОС, а не сносим свою: своя нужна проверкам после.
+	_world.savegame._world_from_cmdline = false
+	var doomed := mine + "-doomed"
+	_world.savegame.adopt_world(doomed)
+	_world.savegame.save_world()
+	_world.savegame.adopt_world(mine)
+	main._show_menu(true)
+	check(_listed_ids(main).has(doomed), "партия на снос заведена и видна",
+		" ".join(_listed_ids(main)))
+
+	# Выбираем её в списке и жмём «Удалить» ОДИН раз.
+	var at: int = Array(_listed_ids(main)).find(doomed)
+	main._world_opt.select(at)
+	main._on_world_selected(at)
+	main._on_delete_pressed()
+	check(main._delete_confirm, "первое нажатие переспрашивает", main._delete_btn.text)
+	check(_world.savegame.list_saves().size() > 0
+			and _listed_ids(main).has(doomed),
+		"и ничего ещё не стёрло", " ".join(_listed_ids(main)))
+
+	# Второе — стирает.
+	main._on_delete_pressed()
+	check(not main._delete_confirm, "второе нажатие сняло переспрос", main._delete_btn.text)
+	check(not _listed_ids(main).has(doomed), "ПАРТИЯ стёрта из списка",
+		" ".join(_listed_ids(main)))
+	var gone := true
+	for entry in _world.savegame.list_saves():
+		if String(entry.get("world", "")) == doomed:
+			gone = false
+	check(gone, "и файла на диске больше нет", "проверено по списку файлов")
+
+	# А свой мир из ключа не стирается вовсе.
+	_world.savegame._world_from_cmdline = true
+	check(not _world.savegame.delete_world(mine), "мир из ключа --world= не стирается",
+		mine)
+	main._show_menu(false)
 
 
 ## Пока человек в меню, мир СТОИТ.

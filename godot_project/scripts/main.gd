@@ -68,6 +68,10 @@ const CARAVAN := preload("res://scripts/economy/caravan.gd")
 
 ## Кнопка «Новая игра» уже спросила подтверждение и ждёт второго нажатия.
 var _new_confirm := false
+## То же для «Удалить». Отдельный флаг, а не общий: два переспроса, сброшенные
+## одной переменной, гасили бы друг друга, и человек, передумавший удалять,
+## одним нажатием начинал бы новую партию.
+var _delete_confirm := false
 ## Сохранённые партии в том порядке, в каком они лежат в списке меню.
 var _saves: Array = []
 
@@ -82,6 +86,7 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _new_btn: Button = $UI/Menu/Panel/VBox/NewBtn
 @onready var _save_info: Label = $UI/Menu/Panel/VBox/SaveInfo
 @onready var _world_opt: OptionButton = $UI/Menu/Panel/VBox/WorldRow/WorldOpt
+@onready var _delete_btn: Button = $UI/Menu/Panel/VBox/WorldRow/DeleteBtn
 @onready var _join_btn: Button = $UI/Menu/Panel/VBox/JoinRow/JoinBtn
 @onready var _hud: Control = $UI/Hud
 @onready var _world: Node3D = $World
@@ -104,6 +109,7 @@ func _ready() -> void:
 	Net.session_ended.connect(_on_session_ended)
 	_continue_btn.pressed.connect(_on_continue_pressed)
 	_world_opt.item_selected.connect(_on_world_selected)
+	_delete_btn.pressed.connect(_on_delete_pressed)
 	_new_btn.pressed.connect(_on_new_pressed)
 	_join_btn.pressed.connect(_on_join_pressed)
 	_transport_opt.item_selected.connect(_on_transport_selected)
@@ -181,11 +187,17 @@ func _refresh_hud() -> void:
 		_hud.set_tech("Оффлайн   сборка: %s"
 			% ProjectSettings.get_setting("application/config/version", "?"))
 		_hud.vitals_panel.visible = false
+		_hud.set_crosshair(false)
 		_hud.set_right(PackedStringArray())
 		_hud.set_prompt("")
 		_hud.set_spells("")
 		return
 	_hud.vitals_panel.visible = true
+	# Прицел — только в бою и только у живого: сверху им не целятся, а мёртвому
+	# целиться нечем.
+	var alive_now: Node3D = _world.local_player()
+	_hud.set_crosshair(not _world.strategy_mode
+		and alive_now != null and alive_now.health.alive)
 
 	var role := "ХОСТ" if Net.is_host else "КЛИЕНТ"
 	var kind := "Steam" if Net.transport == Net.Transport.STEAM else "IP"
@@ -453,7 +465,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			who.ask_truce()
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed(&"interact") and Net.active:
+	# Взаимодействие — только из вида от первого лица. Сверху персонажа не видно
+	# вовсе, и «нажать E» там значит нажать вслепую: до этого из стратегического
+	# режима открывался верстак с протезами, хотя протез ставят себе, а сверху
+	# командуют другими. Вдобавок E в этом режиме занята поворотом камеры, и обе
+	# работы делались одним нажатием.
+	if event.is_action_pressed(&"interact") and Net.active and not _world.strategy_mode:
 		# Одна клавиша на всё, с чем можно что-то сделать. Порядок разбора — по
 		# близости к руке: груз под ногами важнее лавки за спиной, а лошадь —
 		# важнее верстака, до которого ещё идти.
@@ -575,6 +592,36 @@ func _on_new_pressed() -> void:
 	_begin_session("")
 
 
+## Стереть выбранную партию. Насовсем, и потому со вторым нажатием.
+##
+## Это единственное необратимое действие во всём меню. «Новая игра» и переход в
+## другую партию ничего не уничтожают — они меняют имя текущего мира, и всё
+## старое остаётся на диске. Здесь возврата нет, и потому переспрашиваем прямо,
+## называя партию, которая исчезнет.
+func _on_delete_pressed() -> void:
+	var world: String = _selected_world()
+	if world.is_empty():
+		return
+	if not _delete_confirm:
+		_delete_confirm = true
+		_delete_btn.text = "Точно?"
+		_status.text = "Партия «%s» будет стёрта с диска насовсем. Нажмите ещё раз." % world
+		return
+	_reset_delete_button()
+	if _world.savegame.delete_world(world):
+		_status.text = "Партия «%s» стёрта." % world
+	else:
+		_status.text = "Стереть «%s» не удалось." % world
+	_refresh_save_info()
+	_set_buttons_enabled(true)
+
+
+## Сбросить кнопку «Удалить» из состояния «переспрашиваю».
+func _reset_delete_button() -> void:
+	_delete_confirm = false
+	_delete_btn.text = "Удалить"
+
+
 ## Сбросить кнопку «Новая игра» из состояния «переспрашиваю».
 func _reset_new_button() -> void:
 	_new_confirm = false
@@ -615,6 +662,9 @@ func _refresh_save_info() -> void:
 
 ## Выбрали партию в списке: подписываем её и подставляем её сторону.
 func _on_world_selected(at: int) -> void:
+	# Переспрос снимаем: «Точно?» осталось бы висеть над уже ДРУГОЙ партией, и
+	# следующее нажатие стёрло бы не ту.
+	_reset_delete_button()
 	if at < 0 or at >= _saves.size():
 		return
 	var info: Dictionary = _saves[at]
@@ -685,6 +735,7 @@ func _show_menu(visible_now: bool) -> void:
 	# показе меню — список к тому моменту ещё пуст.
 	if visible_now:
 		_reset_new_button()
+		_reset_delete_button()
 		_refresh_save_info()
 	_set_buttons_enabled(true)
 
@@ -694,6 +745,8 @@ func _set_buttons_enabled(enabled: bool) -> void:
 	# не делает, хуже отсутствующей — по ней жмут и решают, что игра сломана.
 	_continue_btn.disabled = not enabled or _saves.is_empty()
 	_new_btn.disabled = not enabled
+	# Стирать нечего — и кнопка не притворяется, что есть.
+	_delete_btn.disabled = not enabled or _saves.is_empty()
 	_join_btn.disabled = not enabled
 
 
@@ -986,6 +1039,17 @@ func _update_blindness() -> void:
 func _toggle_bench() -> void:
 	if _bench.visible:
 		_close_bench()
+		return
+	# Сверху верстак не открывается НИКАК.
+	#
+	# Правило стоит здесь, а не только у клавиши. Сначала я поставил его в
+	# обработчике E — и проверка, зовущая `_toggle_bench()` напрямую, открыла
+	# панель как ни в чём не бывало. Клавиша не единственный путь сюда, и
+	# охранять надо дверь, а не одну из троп к ней.
+	#
+	# Почему вообще нельзя: протез ставят СЕБЕ, а сверху командуют другими —
+	# своего персонажа в этом режиме не видно вовсе.
+	if _world.strategy_mode:
 		return
 	var me: Node3D = _world.local_player()
 	if me == null:

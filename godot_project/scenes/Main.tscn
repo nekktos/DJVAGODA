@@ -272,6 +272,10 @@ custom_minimum_size = Vector2(0, 40)
 size_flags_horizontal = 3
 clip_text = true
 
+[node name="DeleteBtn" type="Button" parent="UI/Menu/Panel/VBox/WorldRow"]
+custom_minimum_size = Vector2(96, 40)
+text = "Удалить"
+
 [node name="FactionRow" type="HBoxContainer" parent="UI/Menu/Panel/VBox"]
 theme_override_constants/separation = 8
 

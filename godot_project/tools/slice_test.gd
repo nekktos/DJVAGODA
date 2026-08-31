@@ -21,7 +21,7 @@ var _heard: PackedStringArray = PackedStringArray()
 
 func start(world: Node3D) -> void:
 	tag = "срез"
-	expected_host = 10
+	expected_host = 12
 	expected_client = 6
 	_world = world
 	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
@@ -73,8 +73,25 @@ func _test_own_faction(me: Node3D) -> void:
 	check(_world.strategy_mode == should_have,
 		"переключение камеры уважает сторону",
 		"после Tab режим %s" % ("стратегия" if _world.strategy_mode else "экшен"))
+	# Сверху верстак не открывается.
+	#
+	# Протез ставят СЕБЕ, а сверху командуют другими: своего персонажа в этом
+	# режиме не видно вовсе, и «нажать E» там значит нажать вслепую. Вдобавок E
+	# сверху занята поворотом камеры, и обе работы делались одним нажатием.
 	if _world.strategy_mode:
+		var main: Node = _world.get_parent()
+		main._toggle_bench()
+		check(not main._bench.visible, "сверху верстак не открывается",
+			"открыт" if main._bench.visible else "закрыт")
+		if main._bench.visible:
+			main._close_bench()
 		_world.set_strategy_mode(false)
+		# А снизу — открывается: проверка выше без этой половины проходила бы и
+		# у верстака, сломанного насовсем.
+		main._toggle_bench()
+		check(main._bench.visible, "а из вида от первого лица — открывается",
+			"открыт" if main._bench.visible else "закрыт")
+		main._close_bench()
 
 
 func _players() -> Array:

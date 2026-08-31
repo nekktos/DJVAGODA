@@ -76,20 +76,22 @@ static func _build(holder: Node3D, kind: int, tier: int) -> void:
 	var glow: float = TIER_GLOW if tier >= TIER_METAL.size() - 1 else 0.0
 	match kind:
 		WEAPONS.Kind.BOW:
-			# Лук держат вертикально, поперёк направления взгляда.
-			# Металл здесь на тетиве: само древко деревянное на любом уровне.
-			_add_box(holder, Vector3(0.07, 1.30, 0.14), Vector3.ZERO, Color(0.52, 0.36, 0.20), 0.0)
-			_add_box(holder, Vector3(0.03, 1.24, 0.03), Vector3(0.0, 0.0, -0.10), metal, glow)
+			_bow(holder, metal, glow)
 		WEAPONS.Kind.SPELL:
 			# Посох с навершием.
 			_add_box(holder, Vector3(0.08, 0.08, 1.40), Vector3.ZERO, Color(0.35, 0.26, 0.18), 0.0)
 			_add_box(holder, Vector3(0.10, 0.10, 0.18), Vector3(0.0, 0.0, 0.55), metal, glow)
 			_add_glow(holder, 0.16, Vector3(0.0, 0.0, 0.72))
 		WEAPONS.Kind.CROSSBOW:
-			# Арбалет: короткое ложе поперёк и дуга на конце — силуэт должен
-			# читаться как «не лук», иначе стороны не отличить издали.
-			_add_box(holder, Vector3(0.10, 0.10, 0.80), Vector3(0.0, 0.0, 0.10), Color(0.40, 0.29, 0.17), 0.0)
-			_add_box(holder, Vector3(0.90, 0.06, 0.08), Vector3(0.0, 0.0, 0.42), metal, glow)
+			# Арбалет: ложе вдоль взгляда, дуга поперёк на конце, тетива поперёк
+			# ложа. Силуэт обязан читаться как «не лук» — иначе эльфа от
+			# стражника издали не отличить.
+			_add_box(holder, Vector3(0.10, 0.09, 0.85), Vector3(0.0, 0.0, 0.12), Color(0.40, 0.29, 0.17), 0.0)
+			_add_box(holder, Vector3(0.09, 0.16, 0.22), Vector3(0.0, -0.06, -0.24), Color(0.34, 0.24, 0.14), 0.0)
+			for side in [-1.0, 1.0]:
+				_add_tilted(holder, Vector3(0.36, 0.05, 0.07),
+					Vector3(side * 0.20, 0.0, 0.46), Vector3(0.0, 0.0, side * 0.25), metal, glow)
+			_add_box(holder, Vector3(0.76, 0.02, 0.02), Vector3(0.0, 0.0, 0.40), Color(0.86, 0.84, 0.78), 0.0)
 		WEAPONS.Kind.AXE:
 			# Топор: короткое древко и широкое лезвие сбоку.
 			_add_box(holder, Vector3(0.07, 0.07, 0.95), Vector3(0.0, 0.0, 0.05), Color(0.45, 0.32, 0.19), 0.0)
@@ -103,6 +105,47 @@ static func _build(holder: Node3D, kind: int, tier: int) -> void:
 			_add_box(holder, Vector3(0.09, 0.09, 1.25), Vector3(0.0, 0.0, 0.10), metal, glow)
 			_add_box(holder, Vector3(0.34, 0.09, 0.09), Vector3(0.0, 0.0, -0.46), metal * 0.7, 0.0)
 			_add_box(holder, Vector3(0.11, 0.11, 0.26), Vector3(0.0, 0.0, -0.62), Color(0.30, 0.22, 0.14), 0.0)
+
+
+## Лук: две гнутые дуги и прямая тетива между их концами.
+##
+## До этого лук был ОДНОЙ коробкой метр тридцать высотой — то есть палкой, и
+## выглядел ровно как палка. Дуга набирается из отрезков с нарастающим наклоном:
+## это дороже одной коробки на пять мешей, но силуэт лука узнаётся мгновенно, а
+## узнаваемость силуэта — единственное, ради чего эти заглушки вообще рисуются.
+##
+## Оси местные: +Y вверх по луку, +Z — куда смотрит персонаж. Пузо дуги смотрит
+## вперёд (+Z), тетива остаётся у стрелка (-Z) — как у настоящего лука, и по
+## этой асимметрии видно, куда он целится.
+static func _bow(holder: Node3D, metal: Color, glow: float) -> void:
+	var wood := Color(0.52, 0.36, 0.20)
+	# Рукоять: чуть толще плеч, по ней и держат.
+	_add_box(holder, Vector3(0.07, 0.26, 0.10), Vector3.ZERO, wood.darkened(0.15), 0.0)
+	# Плечи: по три отрезка вверх и вниз, каждый следующий отогнут сильнее.
+	var steps := [
+		[0.22, 0.10, 0.10],
+		[0.44, 0.06, 0.35],
+		[0.62, 0.00, 0.70],
+	]
+	for side in [-1.0, 1.0]:
+		for step in steps:
+			var y: float = side * float(step[0])
+			var z: float = float(step[1])
+			var tilt: float = side * float(step[2])
+			_add_tilted(holder, Vector3(0.05, 0.26, 0.07),
+				Vector3(0.0, y, z), Vector3(tilt, 0.0, 0.0), wood, 0.0)
+	# Тетива: прямая между концами плеч, у стрелка. Металл — на ней: древко
+	# деревянное на любом уровне снаряжения, а уровень видно по нити.
+	_add_box(holder, Vector3(0.02, 1.34, 0.02), Vector3(0.0, 0.0, -0.06), metal, glow)
+
+
+## Коробка с наклоном. Углы в радианах по осям X, Y, Z.
+static func _add_tilted(holder: Node3D, size: Vector3, offset: Vector3, tilt: Vector3,
+		color: Color, glow: float = 0.0) -> void:
+	var before: int = holder.get_child_count()
+	_add_box(holder, size, offset, color, glow)
+	var mesh: Node3D = holder.get_child(before)
+	mesh.rotation = tilt
 
 
 static func _add_box(holder: Node3D, size: Vector3, offset: Vector3, color: Color, glow: float = 0.0) -> void:

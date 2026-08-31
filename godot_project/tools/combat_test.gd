@@ -88,13 +88,28 @@ func _run_host(mine: Node3D, other: Node3D) -> void:
 	other.take_damage(999.0, 1, "torso", other.global_position, Vector3.FORWARD)
 	await get_tree().create_timer(1.0).timeout
 	var died: bool = not other.health.alive
-	await get_tree().create_timer(6.0).timeout
-	if not is_instance_valid(other):
-		fail("смерть и респавн: цель ушла из сессии")
-		return
-	var revived: bool = other.health.alive and other.health.current > 99.0
-	check(died and revived, "смерть и респавн",
-		"умер=%s, вернулся=%s" % [died, revived])
+
+	# Ловим МОМЕНТ возвращения, а не смотрим на здоровье через шесть секунд.
+	#
+	# Раненый истекает кровью — три очка в секунду, пока не перевяжется (см.
+	# `body.gd::BLEED_PER_SECOND`), и раны респавн не лечит, это правило GDD 4.1.
+	# Прежняя проверка ждала шесть секунд и требовала «больше 99»: она мерила не
+	# респавн, а кровотечение, и падала, стоило цели дожить до конца боя с
+	# распоротой рукой. Один раз так и вышло — и полчаса ушло на поиск поломки в
+	# респавне, который работал безупречно.
+	var revived := false
+	var restored := 0.0
+	for i in 20:
+		await get_tree().create_timer(0.5).timeout
+		if not is_instance_valid(other):
+			fail("смерть и респавн: цель ушла из сессии")
+			return
+		if other.health.alive:
+			revived = true
+			restored = other.health.current
+			break
+	check(died and revived and restored > 99.0, "смерть и респавн",
+		"умер=%s, вернулся=%s со здоровьем %.0f" % [died, revived, restored])
 
 
 ## Поставить себя на нужной дистанции от цели и повернуться к ней лицом.

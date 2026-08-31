@@ -53,6 +53,9 @@ const SPEED := 6.0
 ## десять с половиной: карта полтора километра в поперечнике, и дорога от форта
 ## злодея до дворца пешком занимает две минуты в одну сторону.
 const RUN_SCALE := 1.75
+## Насколько далеко бьёт луч прицеливания. Дальше стрелять всё равно не в кого:
+## снаряды живут меньше.
+const AIM_RANGE := 300.0
 const JUMP_VELOCITY := 5.5
 const MOUSE_SENS := 0.0025
 const PITCH_MIN := -1.2
@@ -200,7 +203,7 @@ var _skeleton: Skeleton3D
 ## залезает в туловище.
 var _zones := {}
 ## Узел на кости кисти, к которому крепится оружие.
-var _weapon_mount: BoneAttachment3D
+var _weapon_mount: Node3D
 ## Какая маска увечий уже показана на модели.
 var _shown_severed := -1
 ## Сколько выбитых глаз уже отмечено на лице.
@@ -560,9 +563,36 @@ func aim_origin() -> Vector3:
 	return global_position + Vector3.UP * EYE_HEIGHT
 
 
+## Куда летит снаряд: В ТОЧКУ ПОД ПРИЦЕЛОМ, а не «куда повёрнут корпус».
+##
+## Камера стоит из-за плеча, то есть в стороне от персонажа. Направление,
+## взятое от корпуса, и точка под прицелом при этом РАЗНЫЕ, и чем ближе цель,
+## тем сильнее они расходятся: целишься в стоящего в трёх шагах, а шар уходит
+## вбок на полметра. Именно поэтому «стрелять неудобно» — прицел не врал,
+## врало направление.
+##
+## Поэтому: пускаем луч из камеры вперёд, находим, во что упёрся взгляд, и
+## стреляем ИЗ РУКИ В ЭТУ ТОЧКУ. Не упёрся ни во что — берём точку на пределе
+## дальности, тогда направление совпадает со взглядом.
 func aim_direction() -> Vector3:
-	var b := Basis(Vector3.UP, rotation.y) * Basis(Vector3.RIGHT, _pitch)
-	return -b.z
+	var straight: Vector3 = -(Basis(Vector3.UP, rotation.y) * Basis(Vector3.RIGHT, _pitch)).z
+	if _camera == null or not is_inside_tree():
+		return straight
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return straight
+	var from: Vector3 = _camera.global_position
+	var to: Vector3 = from - _camera.global_transform.basis.z * AIM_RANGE
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	# Себя из луча исключаем: иначе с некоторых ракурсов взгляд «упирается» в
+	# собственное плечо и выстрел уходит под ноги.
+	query.exclude = [get_rid()]
+	var hit: Dictionary = space.intersect_ray(query)
+	var target: Vector3 = hit.get("position", to)
+	var dir: Vector3 = target - aim_origin()
+	if dir.length() < 0.5:
+		return straight
+	return dir.normalized()
 
 
 # --- способности поддержки (Этап 8) ---------------------------------------

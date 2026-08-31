@@ -138,7 +138,9 @@ static func build_zones(skeleton: Skeleton3D, multipliers: Dictionary, layer: in
 
 
 ## Точка хвата: узел, едущий за кистью. Оружие вешается сюда.
-static func weapon_mount(skeleton: Skeleton3D) -> BoneAttachment3D:
+## Возвращает УЗЕЛ ХВАТА, а не саму привязку к кости: разворот кости в нём уже
+## скомпенсирован, и вешать оружие надо именно сюда.
+static func weapon_mount(skeleton: Skeleton3D) -> Node3D:
 	if skeleton == null:
 		return null
 	var idx := bone(skeleton, WEAPON_BONE)
@@ -149,7 +151,24 @@ static func weapon_mount(skeleton: Skeleton3D) -> BoneAttachment3D:
 	mount.bone_name = skeleton.get_bone_name(idx)
 	mount.bone_idx = idx
 	skeleton.add_child(mount)
-	return mount
+
+	# ХВАТ разворачиваем обратно, компенсируя разворот кости.
+	#
+	# Кость `Weapon.R` у моделей Quaternius повёрнута почти на прямой угол к
+	# персонажу: измерено пробой (`tools/grip_probe.gd`), её Z смотрит в -X
+	# модели, а Y — вниз. Оружие же собирается в осях ПЕРСОНАЖА: «+Z — куда
+	# смотрит, +Y — вверх» (см. `weapon_visual.gd`). Повешенное прямо на кость,
+	# оно и торчало вбок от бедра, как палка, вставленная в пояс.
+	#
+	# Берём базис ПОКОЯ, а не текущей позы: обратный к покою разворот делает
+	# оружие правильным в стойке и оставляет ему разницу между позой и покоем —
+	# то есть меч продолжает ходить вместе с рукой по анимации, а не висит
+	# приклеенным к телу.
+	var grip := Node3D.new()
+	grip.name = "Grip"
+	grip.transform.basis = skeleton.get_bone_global_rest(idx).basis.orthonormalized().inverse()
+	mount.add_child(grip)
+	return grip
 
 
 ## Схлопнуть или вернуть конечность. `mask` — биты `body.gd::Limb`.

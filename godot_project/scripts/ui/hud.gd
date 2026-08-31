@@ -67,6 +67,9 @@ var health_text: Label
 var body_text: Label
 var right_box: VBoxContainer
 var prompt: Label
+## Прицел. Рисуется кодом, а не картинкой: четыре чёрточки и точка — это
+## четыре ColorRect, и менять их проще, чем искать файл.
+var crosshair: Control
 var spells: Label
 var help_panel: PanelContainer
 var help_text: RichTextLabel
@@ -76,9 +79,62 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_build()
+	_build_crosshair()
+	set_crosshair(false)
 
 
 # --- сборка ----------------------------------------------------------------
+
+## Прицел: точка в центре и четыре чёрточки вокруг неё.
+##
+## Зачем он вообще нужен. Камера смотрит из-за плеча, снаряд летит в точку под
+## прицелом — и без метки на экране игрок не знает, ГДЕ эта точка. До сих пор её
+## не было вовсе, и целиться приходилось по памяти о том, где середина экрана.
+##
+## Просвет в середине оставлен намеренно: сплошной крест закрывает собой то
+## самое место, в которое смотришь, и на мелкой цели мешает больше, чем помогает.
+func _build_crosshair() -> void:
+	crosshair = Control.new()
+	crosshair.name = "Crosshair"
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(crosshair)
+
+	var gap := 5.0
+	var arm := 7.0
+	var thick := 2.0
+	# Чёрточки: слева, справа, сверху, снизу. Смещения считаются от центра
+	# экрана — якорь по центру, позиция в пикселях от него.
+	var bars := [
+		[Vector2(-gap - arm, -thick * 0.5), Vector2(arm, thick)],
+		[Vector2(gap, -thick * 0.5), Vector2(arm, thick)],
+		[Vector2(-thick * 0.5, -gap - arm), Vector2(thick, arm)],
+		[Vector2(-thick * 0.5, gap), Vector2(thick, arm)],
+	]
+	for bar in bars:
+		_crosshair_piece(bar[0], bar[1], Color(1.0, 1.0, 1.0, 0.85))
+	# Точка в самом центре: по ней и целятся, чёрточки лишь помогают её найти.
+	_crosshair_piece(Vector2(-1.0, -1.0), Vector2(2.0, 2.0), Color(1.0, 0.85, 0.35, 0.95))
+
+
+func _crosshair_piece(at: Vector2, size: Vector2, color: Color) -> void:
+	var bar := ColorRect.new()
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.color = color
+	bar.set_anchors_preset(Control.PRESET_CENTER)
+	bar.offset_left = at.x
+	bar.offset_top = at.y
+	bar.offset_right = at.x + size.x
+	bar.offset_bottom = at.y + size.y
+	crosshair.add_child(bar)
+
+
+## Показывать ли прицел. Сверху он не нужен: там мышью отдают приказы, а не
+## целятся, и метка в центре экрана только сбивает с толку.
+func set_crosshair(on: bool) -> void:
+	if crosshair != null:
+		crosshair.visible = on
+
 
 func _build() -> void:
 	# Техническая строка. Мелко и тускло — она нужна, когда тестер пишет отчёт,
