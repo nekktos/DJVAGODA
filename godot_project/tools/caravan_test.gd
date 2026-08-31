@@ -10,6 +10,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const BUILDER := preload("res://scripts/world_builder.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 
 var _world: Node3D
@@ -17,7 +18,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 22
+	expected_host = 25
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -38,6 +39,7 @@ func _run() -> void:
 		finish()
 		return
 
+	_test_mine_is_fair_game()
 	await _test_needs_storage(me)
 	await _build_storage(me)
 	_test_route_goes_around(me)
@@ -48,6 +50,43 @@ func _run() -> void:
 	await _test_escort(me)
 
 	finish()
+
+
+## Шахта стоит там, где её караваны есть кому грабить.
+##
+## Это ПРАВИЛО КАРТЫ, а не вкусовщина: обозы злодея должны быть добычей для
+## эльфов и стражи (GDD раздел 2.3). Со старой шахтой в углу самого злодея обоз
+## ехал двести сорок метров по своей же земле — грабить его было негде и некому.
+##
+## Проверяем ровно два свойства, которыми место и задано: до злодея дальше, чем
+## до кого бы то ни было, и до эльфов со стражей одинаково. Число метров тут
+## менять можно, свойства — нельзя, и проверка сторожит именно их.
+func _test_mine_is_fair_game() -> void:
+	var mine := Vector2(BUILDER.MINE_POS.x, BUILDER.MINE_POS.z)
+	var villain := _flat(FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN])
+	var elves := _flat(FACTIONS.SPAWN[FACTIONS.Kind.ELVES])
+	var guard := _flat(FACTIONS.SPAWN[FACTIONS.Kind.GUARD])
+
+	var to_villain: float = mine.distance_to(villain)
+	var to_elves: float = mine.distance_to(elves)
+	var to_guard: float = mine.distance_to(guard)
+
+	check(to_villain > to_elves and to_villain > to_guard,
+		"шахта дальше всего от злодея — ему за ней и ехать",
+		"злодей %.0f, эльфы %.0f, стража %.0f" % [to_villain, to_elves, to_guard])
+	# Допуск метр: место задано построением, и округление координат до целых
+	# метров даёт расхождение меньше метра на четырёхстах.
+	check(absf(to_elves - to_guard) < 1.5,
+		"и ровно посередине между эльфами и стражей",
+		"разница %.2f м" % absf(to_elves - to_guard))
+	# И она за пределами карты не оказалась: край мира — шестьсот метров.
+	check(absf(mine.x) < BUILDER.WORLD_SIZE * 0.5 - 20.0
+			and absf(mine.y) < BUILDER.WORLD_SIZE * 0.5 - 20.0,
+		"и не за краем мира", "(%.0f, %.0f)" % [mine.x, mine.y])
+
+
+func _flat(at: Vector3) -> Vector2:
+	return Vector2(at.x, at.z)
 
 
 func _test_needs_storage(me: Node3D) -> void:
@@ -89,7 +128,11 @@ func _test_delivery(me: Node3D) -> void:
 	# Ждём полный цикл: туда, погрузка, обратно, разгрузка.
 	var caravan: Node3D = _caravans(me)[0]
 	var loaded := false
-	for i in 120:
+	# Круг стал длинным: шахта уехала на север, до неё девятьсот метров вместо
+	# двухсот сорока. Обоз идёт восемь метров в секунду, значит только дорога
+	# туда и обратно — почти четыре минуты. Ждём с запасом, иначе набор упадёт не
+	# на ошибке, а на секундомере.
+	for i in 700:
 		await get_tree().create_timer(0.5).timeout
 		if not is_instance_valid(caravan):
 			break
@@ -158,8 +201,9 @@ func _test_avoids_buildings(me: Node3D) -> void:
 	var along: Vector3 = (route[route.size() - 1] - route[0])
 	along.y = 0.0
 	var across: Vector3 = Vector3(-along.z, 0.0, along.x).normalized() * (size.x + 1.0)
+	var wall: Array = []
 	for step in [-1.0, 0.0, 1.0]:
-		_world.spawn_building(kind, spot + across * step, 0, int(me.faction), true)
+		wall.append(_world.spawn_building(kind, spot + across * step, 0, int(me.faction), true))
 
 	var nearest := 9999.0
 	var deepest := 9999.0
@@ -176,6 +220,24 @@ func _test_avoids_buildings(me: Node3D) -> void:
 		"подошёл на %.1f м" % nearest)
 	check(deepest > 0.0, "и НЕ въехал в неё",
 		"ближе всего был на %.1f м от стены" % deepest)
+
+	# Убираем за собой: стена из трёх казарм поперёк дороги и обоз, который её
+	# объезжает, — это декорация ЭТОЙ проверки. Оставленные, они достаются
+	# следующей: та отправляет свой обоз тем же коридором, он идёт в объезд
+	# дольше обычного, и проверка падает на секундомере в другом конце файла.
+	# Один раз так и вышло, и искал я это не там.
+	for node in wall:
+		if is_instance_valid(node):
+			node.free()
+	# Обоз убираем ВМЕСТЕ С ВОЗВРАТОМ ЛОШАДЕЙ. Просто снести ноду мало: лошади
+	# числятся уведёнными у стороны, а не у обоза, и снесённый обоз уносит их с
+	# собой навсегда. Следующая проверка тогда падает на «караван не отправился»
+	# — и выглядит это как поломка отправки, хотя сломана уборка.
+	for node in _caravans(me):
+		var team: int = int(node.horses) if "horses" in node else 0
+		node.free()
+		_world._on_caravan_home(team, int(me.faction))
+	await get_tree().physics_frame
 
 
 ## Ближайшая стена ЛЮБОЙ постройки. Отрицательное — внутри.
@@ -216,7 +278,8 @@ func _test_raid(me: Node3D) -> void:
 	var caravan: Node3D = _caravans(me)[0]
 
 	# Ждём, пока он загрузится и повезёт груз — грабить пустой смысла нет.
-	for i in 120:
+	# Долго: до шахты девятьсот метров, это две минуты хода в одну сторону.
+	for i in 400:
 		await get_tree().create_timer(0.5).timeout
 		if not is_instance_valid(caravan):
 			break
