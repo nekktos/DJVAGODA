@@ -18,10 +18,21 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "отряд-тест"
-	expected_host = 26
+	expected_host = 28
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
+
+## Поставить персонажа вплотную к постройке. Нанимают у постройки, и проверка
+## обязана ходить туда же, куда ходит человек.
+func _stand_at(me: Node3D, building: Node3D) -> void:
+	if me == null or building == null:
+		return
+	var size: Vector3 = RES.BUILDING_SIZE[int(building.kind)]
+	me.global_position = building.global_position + Vector3(0.0, 2.0, size.z * 0.5 + 3.0)
+	me.sync_position = me.global_position
+	me.velocity = Vector3.ZERO
+
 
 func _units(me: Node3D) -> Array:
 	return _world.units_of(me.peer_id)
@@ -58,6 +69,12 @@ func _test_hiring(me: Node3D) -> void:
 	me.request_build(RES.Building.SWORD_BARRACKS, Vector3(-60.0, 0.0, 90.0))
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.SWORD_BARRACKS] + 1.5).timeout
 	check(_world.barracks_of(int(me.faction)) != null, "казарма достроена", "казарма есть")
+
+	# К казарме надо ПОДОЙТИ: нанимают там, а не откуда угодно на карте.
+	# Проверка, нанимавшая через полкарты, охраняла порядок, которого больше нет.
+	_stand_at(me, _world.barracks_of(int(me.faction)))
+	check(me.building_at_hand(RES.Building.SWORD_BARRACKS) != null,
+		"персонаж стоит у казармы", "рядом")
 
 	var gold_before: int = me.stock.get_amount(RES.Kind.GOLD)
 	for i in 8:
@@ -215,6 +232,7 @@ func _test_archers(me: Node3D) -> void:
 
 	# Казарма мечников уже стоит, а лучников — нет: наём обязан отказать.
 	var before: int = _world.units_of(me.peer_id).size()
+	_stand_at(me, _world.barracks_of(int(me.faction)))
 	me.ask_train_unit(true)
 	await get_tree().create_timer(0.4).timeout
 	check(_world.units_of(me.peer_id).size() == before,
@@ -222,9 +240,37 @@ func _test_archers(me: Node3D) -> void:
 
 	me.request_build(RES.Building.ARCHER_BARRACKS, Vector3(-90.0, 0.0, 90.0))
 	await get_tree().create_timer(RES.BUILD_TIME[RES.Building.ARCHER_BARRACKS] + 2.0).timeout
-	check(_world.barracks_of(int(me.faction), RES.Building.ARCHER_BARRACKS) != null,
-		"казарма лучников достроена", "есть")
+	var archer_barracks: Node3D = _world.barracks_of(int(me.faction), RES.Building.ARCHER_BARRACKS)
+	check(archer_barracks != null, "казарма лучников достроена", "есть")
 
+	# ЛЕЧИМ И ПОПОЛНЯЕМ перед проверкой найма, и это не поблажка.
+	#
+	# Проверка теперь подводит персонажа к казарме — то есть ровно туда, куда
+	# в это же время идёт набег ИИ сносить эту казарму. Персонаж там гибнет и
+	# роняет всё нажитое, а мёртвый не нанимает никого: заявка отвергается на
+	# первой же строке, молча и без объяснения. Один раз я на это и попался,
+	# решив, что сломан наём.
+	#
+	# Проверяем МЕСТО найма, а не живучесть под обстрелом — живучесть проверяют
+	# бой-тест и набег.
+	me.health.revive()
+	me.stock.grant([999, 999, 999, 999])
+	await get_tree().physics_frame
+
+	# Вдали от казармы лучника не нанять, даже когда она построена: не «есть ли
+	# казарма на карте», а «стоишь ли ты у неё». Отходим намеренно далеко —
+	# опираться на вторую постройку нельзя, её могут снести набегом.
+	var was: int = _world.units_of(me.peer_id).size()
+	me.global_position = archer_barracks.global_position + Vector3(0.0, 2.0, 120.0)
+	me.sync_position = me.global_position
+	me.ask_train_unit(true)
+	await get_tree().create_timer(0.4).timeout
+	check(_world.units_of(me.peer_id).size() == was,
+		"вдали от казармы лучника не нанять",
+		"отряд %d" % _world.units_of(me.peer_id).size())
+
+	_stand_at(me, archer_barracks)
+	me.health.revive()
 	me.ask_train_unit(true)
 	await get_tree().create_timer(0.5).timeout
 	var archer: Node3D = null

@@ -1254,6 +1254,40 @@ func own_collision_rids() -> Array[RID]:
 	return rids
 
 
+## Своя достроенная постройка, у которой стоит персонаж. null — рядом ничего.
+##
+## `kind` -1 — любая; иначе только заданного вида. Второе нужно там, где место
+## решает: лучников нанимают у казармы ЛУЧНИКОВ, и стоять для этого у конюшни
+## нельзя, даже если конюшня своя и рядом.
+##
+## Читают это и клиент, и хост: клиент — чтобы показать панель, хост — чтобы
+## решить, законна ли заявка. Одна функция на оба ответа не случайно: две
+## разошлись бы, и на экране была бы кнопка, которую хост молча отвергает.
+func building_at_hand(kind: int = -1) -> Node3D:
+	var best: Node3D = null
+	var best_gap := INF
+	for node in get_tree().get_nodes_in_group("building"):
+		var building := node as Node3D
+		if building == null or not is_instance_valid(building):
+			continue
+		if int(building.faction) != int(faction):
+			continue
+		if float(building.progress) < 1.0:
+			continue
+		if kind >= 0 and int(building.kind) != kind:
+			continue
+		var size: Vector3 = RES.BUILDING_SIZE[int(building.kind)]
+		var dx: float = maxf(absf(global_position.x - building.global_position.x) - size.x * 0.5, 0.0)
+		var dz: float = maxf(absf(global_position.z - building.global_position.z) - size.z * 0.5, 0.0)
+		var gap: float = Vector2(dx, dz).length()
+		if gap > BUILDING_REACH:
+			continue
+		if gap < best_gap:
+			best_gap = gap
+			best = building
+	return best
+
+
 # --- верстак: протезы и коляска -------------------------------------------
 
 ## Стоит ли персонаж у верстака. Клиент по этому решает, показывать ли панель,
@@ -1751,6 +1785,11 @@ func caravan_to_rob() -> Node3D:
 
 ## Дальше этого лошадей не выпрягают.
 const ROB_RANGE := 6.0
+## На сколько метров от СТЕНЫ постройки с ней можно иметь дело.
+##
+## От стены, а не от центра: постройки по десять-четырнадцать метров в
+## поперечнике, и «в шести метрах от центра» значило бы «внутри дома».
+const BUILDING_REACH := 8.0
 
 
 ## Увести лошадей у стоящего чужого обоза.
@@ -2063,9 +2102,14 @@ func request_hire_horse() -> void:
 	if not Net.hosting() or not _sender_is_owner() or not health.alive:
 		return
 	var world := get_parent().get_parent()
-	if world.stable_of(int(faction)) == null:
-		_refuse("лошадей брать негде: сначала построй конюшню (клавиша %d)"
-			% (RES.Building.STABLE + 1))
+	# Лошадей берут В КОНЮШНЕ — по той же причине, по которой бойцов нанимают у
+	# казармы: место должно быть на карте, а не в списке горячих клавиш.
+	if building_at_hand(RES.Building.STABLE) == null:
+		if world.stable_of(int(faction)) == null:
+			_refuse("лошадей брать негде: сначала построй конюшню (клавиша %d)"
+				% (RES.Building.STABLE + 1))
+		else:
+			_refuse("подойди к конюшне — лошадей берут там")
 		return
 	var wallet: Node = world.treasury.of(int(faction))
 	if wallet == null:
@@ -2141,10 +2185,17 @@ func request_train_unit(archer: bool = false) -> void:
 		return
 	var world := get_parent().get_parent()
 	var kind: int = RES.Building.ARCHER_BARRACKS if archer else RES.Building.SWORD_BARRACKS
-	var barracks: Node3D = world.barracks_of(int(faction), kind)
+	# Нанимают У КАЗАРМЫ, а не откуда угодно на карте. Наём — это дело, которое
+	# делают в конкретном месте, и место должно быть видно на карте: иначе
+	# казарма превращается в галочку «построено», а не в здание, к которому
+	# ходят. Проверяет ХОСТ, потому что клиент может соврать.
+	var barracks: Node3D = building_at_hand(kind)
 	if barracks == null:
-		_refuse("нанимать негде: сначала построй %s (клавиша %d)"
-			% [RES.BUILDING_NAMES[kind], kind + 1])
+		if world.barracks_of(int(faction), kind) == null:
+			_refuse("нанимать негде: сначала построй %s (клавиша %d)"
+				% [RES.BUILDING_NAMES[kind], kind + 1])
+		else:
+			_refuse("подойди к постройке «%s» — нанимают там" % RES.BUILDING_NAMES[kind])
 		return
 	var squad: Array = world.units_of(peer_id)
 	if squad.size() >= RES.SQUAD_LIMIT:

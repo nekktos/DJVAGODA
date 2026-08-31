@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="90_hud"]
+[ext_resource type="Script" path="res://scripts/ui/building_panel.gd" id="91_building"]
 [ext_resource type="PackedScene" path="res://scenes/World.tscn" id="2_world"]
 
 [node name="Main" type="Node"]
@@ -73,6 +74,9 @@ text = "Консоль. help — список команд."
 [node name="Input" type="LineEdit" parent="UI/Console/Panel/VBox"]
 custom_minimum_size = Vector2(0, 36)
 placeholder_text = "команда, Enter — выполнить"
+
+[node name="Building" type="Control" parent="UI"]
+script = ExtResource("91_building")
 
 [node name="Bench" type="Control" parent="UI"]
 anchors_preset = 15

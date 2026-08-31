@@ -92,6 +92,7 @@ const ANNOUNCE_SECONDS := 7.0
 @onready var _world: Node3D = $World
 @onready var _blind_left: ColorRect = $UI/Blind/Left
 @onready var _blind_right: ColorRect = $UI/Blind/Right
+@onready var _building_ui: Control = $UI/Building
 @onready var _bench: Control = $UI/Bench
 @onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
 @onready var _trader: Control = $UI/Trader
@@ -119,6 +120,8 @@ func _ready() -> void:
 	_faction_opt.item_selected.connect(func(index: int) -> void: Net.chosen_faction = index)
 	Net.chosen_faction = _faction_opt.selected
 	_console_in.text_submitted.connect(_on_console_submitted)
+
+	_building_ui.route_requested.connect(func() -> void: _world.set_route_mode(true))
 
 	var bench := $UI/Bench/Panel/VBox
 	bench.get_node("Wooden").pressed.connect(_on_bench_prosthetic.bind(1))
@@ -337,11 +340,13 @@ func _help_text() -> String:
 			"WASD — движение, Space — прыжок, ЛКМ — удар   |   ", "оружие: "))
 		if FACTIONS.has_abilities(me.faction):
 			lines.append("заклинания: 4 / 5 / 6")
-	lines.append("E — взаимодействие: груз, лавка, командир, верстак, лошадь · Y — перемирие")
+	lines.append("E — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь")
+	lines.append("у постройки: наём у казарм, лошади в конюшне, обоз у склада · Y — перемирие")
 	lines.append("Tab — вид сверху · F10 — в меню · тильда — консоль")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
+	lines.append("наём, лошади и обоз — у самих построек: подойди и нажми E")
 	lines.append("1 / 2 / 3 / 4 — строить склад / казарму мечников / казарму лучников / конюшню")
 	lines.append("B — нанять батрака · 5 / 6 / 7 / 8 — лесоруб / шахтёр / ополченец / строитель")
 	lines.append("T / Y — нанять мечника / лучника · N — купить лошадь · F1-F4 — строй")
@@ -391,21 +396,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Роли батраков переехали с 4-7 на 5-8: четвёрка теперь строит конюшню.
 		# Держать номер постройки и номер роли на одной клавише нельзя — человек
 		# и так путается, что значат цифры в двух режимах.
-		if key == KEY_N:
-			var chief_n: Node3D = _world.local_player()
-			if chief_n != null:
-				chief_n.ask_hire_horse()
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_K:
-			var chief_k: Node3D = _world.local_player()
-			if chief_k != null:
-				var next: int = chief_k.harness_size + 1
-				if next > CARAVAN.HORSES_MAX:
-					next = CARAVAN.HORSES_MIN
-				chief_k.ask_set_harness(next)
-			get_viewport().set_input_as_handled()
-			return
 		if key == KEY_C:
 			_world.set_route_mode(not _world.route_controller.active)
 			get_viewport().set_input_as_handled()
@@ -424,15 +414,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			var chief_h: Node3D = _world.local_player()
 			if chief_h != null:
 				chief_h.ask_escort_caravan()
-			get_viewport().set_input_as_handled()
-			return
-		# T — мечник, Y — лучник: каждому свой род войск и своя казарма.
-		if key == KEY_T:
-			_squad_order("train", 0)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_Y:
-			_squad_order("train", 1)
 			get_viewport().set_input_as_handled()
 			return
 		if key == KEY_B:
@@ -485,6 +466,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_trader()
 		elif me != null and (me.at_commander() or _commander_ui.visible):
 			_toggle_commander()
+		elif _building_ui.is_open():
+			_building_ui.close_panel()
+		elif me != null and me.building_at_hand() != null:
+			# Постройка РАНЬШЕ верстака: верстак открывается где угодно, а до
+			# постройки надо было дойти. Проигрывать своё место тому, что
+			# доступно отовсюду, она не должна.
+			_open_building_panel(me)
 		else:
 			_toggle_bench()
 		get_viewport().set_input_as_handled()
@@ -1034,6 +1022,27 @@ func _update_blindness() -> void:
 	_blind_left.visible = lost >= 2
 
 
+## Открыть панель постройки, у которой стоит персонаж.
+func _open_building_panel(me: Node3D) -> void:
+	var building: Node3D = me.building_at_hand()
+	if building == null:
+		return
+	_close_others()
+	_building_ui.open_for(_world, me, building)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+## Закрыть всё, что могло остаться открытым: два окна поверх друг друга — это
+## два набора кнопок, из которых работает верхний, а жмут в нижний.
+func _close_others() -> void:
+	if _bench.visible:
+		_close_bench()
+	if _trader.visible:
+		_toggle_trader()
+	if _commander_ui.visible:
+		_toggle_commander()
+
+
 # --- верстак: протезы и коляска -------------------------------------------
 
 func _toggle_bench() -> void:
@@ -1177,7 +1186,7 @@ func _crew_hint() -> String:
 	# строка про ноль лошадей у того, кто про них не знает, — это шум.
 	var wallet: Node = _world.treasury.of(int(me.faction))
 	if wallet != null and (wallet.horses > 0 or _world.stable_of(int(me.faction)) != null):
-		line += "\nлошади: %d свободно из %d   в упряжку: %d (K)" % [
+		line += "\nлошади: %d свободно из %d   в упряжку: %d" % [
 			wallet.horses_free(), wallet.horses, int(me.harness_size)
 		]
 	return line
@@ -1228,11 +1237,12 @@ func _squad_hint() -> String:
 			bows += 1
 		else:
 			swords += 1
+	# Про наём здесь больше ни слова: нанимают у казарм, а не с этой панели, и
+	# подсказка о клавише, которой нет, хуже отсутствия подсказки.
 	return "отряд: %d/%d (мечников %d, лучников %d), %s, %s
-F1-F4 строй, G следовать, ПКМ идти в точку   |   T мечник (%s)   Y лучник (%s)" % [
+F1-F4 строй, G следовать, ПКМ идти в точку" % [
 		squad.size(), RES.SQUAD_LIMIT, swords, bows, stance,
-		FORMATIONS.describe(me.squad_formation),
-		RES.format_cost(RES.UNIT_COST), RES.format_cost(RES.ARCHER_COST)
+		FORMATIONS.describe(me.squad_formation)
 	]
 
 
