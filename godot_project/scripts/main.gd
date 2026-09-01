@@ -66,6 +66,14 @@ const LABOURER := preload("res://scripts/units/labourer.gd")
 const ORDERS := preload("res://scripts/orders.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
 
+## Человек ВЫБРАЛ сторону сам, а не получил её подстановкой из сейва.
+##
+## Подстановка — подсказка, а не приказ. Без этого флага список партий молча
+## перебивал выбор: выбрал «Охрану дворца», тронул список — и начал новую игру
+## злодеем, оказавшись в его форте. Выбор, который игра отменяет за спиной, хуже
+## отсутствия выбора.
+var _faction_chosen := false
+
 ## Кнопка «Новая игра» уже спросила подтверждение и ждёт второго нажатия.
 var _new_confirm := false
 ## То же для «Удалить». Отдельный флаг, а не общий: два переспроса, сброшенные
@@ -117,11 +125,12 @@ func _ready() -> void:
 	_ip_edit.text_submitted.connect(func(_t: String) -> void: _on_join_pressed())
 	_world.camera_mode_changed.connect(_on_camera_mode_changed)
 	_world.objective.announced.connect(_on_announced)
-	_faction_opt.item_selected.connect(func(index: int) -> void: Net.chosen_faction = index)
+	_faction_opt.item_selected.connect(_on_faction_chosen)
 	Net.chosen_faction = _faction_opt.selected
 	_console_in.text_submitted.connect(_on_console_submitted)
 
 	_building_ui.route_requested.connect(func() -> void: _world.set_route_mode(true))
+	_building_ui.closed.connect(_on_building_panel_closed)
 
 	var bench := $UI/Bench/Panel/VBox
 	bench.get_node("Wooden").pressed.connect(_on_bench_prosthetic.bind(1))
@@ -605,6 +614,12 @@ func _on_delete_pressed() -> void:
 
 
 ## Сбросить кнопку «Удалить» из состояния «переспрашиваю».
+## Выбор стороны человеком. С этого мгновения подстановка из сейва молчит.
+func _on_faction_chosen(index: int) -> void:
+	_faction_chosen = true
+	Net.chosen_faction = index
+
+
 func _reset_delete_button() -> void:
 	_delete_confirm = false
 	_delete_btn.text = "Удалить"
@@ -667,7 +682,8 @@ func _on_world_selected(at: int) -> void:
 	# Насильно нельзя: ровно так выбор стороны однажды и перестал работать.
 	# Прогресс лежит отдельно по каждой стороне (см. `_player_key`), поэтому
 	# продолжить за другую — законно, просто это будет её прогресс.
-	if side >= 0:
+	# Подставляем сторону из сейва, ТОЛЬКО пока человек не выбрал сам.
+	if side >= 0 and not _faction_chosen:
 		_faction_opt.select(clampi(side, 0, FACTIONS.COUNT - 1))
 		Net.chosen_faction = _faction_opt.selected
 	var here := " — сейчас открыта" if String(info.get("world", "")) == _world.savegame.world_id else ""
@@ -724,6 +740,8 @@ func _show_menu(visible_now: bool) -> void:
 	if visible_now:
 		_reset_new_button()
 		_reset_delete_button()
+		# Новый показ меню — новый разговор: подсказка про сторону снова уместна.
+		_faction_chosen = false
 		_refresh_save_info()
 	_set_buttons_enabled(true)
 
@@ -1030,6 +1048,15 @@ func _open_building_panel(me: Node3D) -> void:
 	_close_others()
 	_building_ui.open_for(_world, me, building)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+## Панель постройки закрылась — забираем курсор обратно.
+##
+## Тем же условием, что у верстака: в стратегическом режиме курсор нужен
+## свободным, там им отдают приказы.
+func _on_building_panel_closed() -> void:
+	if Net.active and not _world.strategy_mode:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 ## Закрыть всё, что могло остаться открытым: два окна поверх друг друга — это

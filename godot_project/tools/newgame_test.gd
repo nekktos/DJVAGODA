@@ -23,7 +23,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "новая игра"
-	expected_host = 41
+	expected_host = 45
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -53,6 +53,8 @@ func _run() -> void:
 	_test_world_id_guard()
 	_test_load_other_world()
 	_test_delete_world()
+	_test_choice_survives()
+	_test_panel_returns_cursor(me)
 
 	if not multiplayer.get_peers().is_empty():
 		await get_tree().create_timer(6.0).timeout
@@ -264,6 +266,73 @@ func _test_delete_world() -> void:
 	check(not _world.savegame.delete_world(mine), "мир из ключа --world= не стирается",
 		mine)
 	main._show_menu(false)
+
+
+## ВЫБОР СТОРОНЫ ПЕРЕЖИВАЕТ возню со списком партий.
+##
+## Живой отчёт: «при начале новой игры за стражу или эльфов появляешься в форте
+## злодея». Причина — подстановка стороны из сейва: она задумывалась подсказкой
+## и молча перебивала выбор, стоило тронуть список партий после выбора стороны.
+## Человек жал «Охрану дворца», начинал новую игру и оказывался злодеем.
+##
+## Выбор, который игра отменяет за спиной, хуже отсутствия выбора.
+func _test_choice_survives() -> void:
+	var main: Node = get_parent()
+	main._show_menu(true)
+	# Выбираем сторону ЧЕЛОВЕКОМ — тем же путём, что и мышью по списку.
+	#
+	# Мышь делает ДВА дела: переставляет сам список и шлёт сигнал. Позвав только
+	# обработчик, я проверил бы половину и получил бы провал на собственной
+	# небрежности — так и вышло с первого раза.
+	var want: int = (int(_world.local_player().faction) + 1) % FACTIONS.COUNT
+	main._faction_opt.select(want)
+	main._on_faction_chosen(want)
+	check(int(Net.chosen_faction) == want, "сторона выбрана человеком",
+		FACTIONS.name_of(int(Net.chosen_faction)))
+
+	# А теперь трогаем список партий — то самое действие, которое всё ломало.
+	main._on_world_selected(0)
+	check(int(Net.chosen_faction) == want,
+		"ВЫБОР СТОРОНЫ пережил возню со списком партий",
+		"хотели «%s», осталось «%s»" % [
+			FACTIONS.name_of(want), FACTIONS.name_of(int(Net.chosen_faction))])
+	check(main._faction_opt.selected == want, "и в самом списке сторон он же",
+		FACTIONS.name_of(main._faction_opt.selected))
+
+	# Новый показ меню — новый разговор: подсказка снова уместна.
+	main._show_menu(true)
+	check(not main._faction_chosen, "возврат в меню снимает пометку «выбрано»",
+		"пометка снята")
+	main._show_menu(false)
+
+
+## Панель постройки ВОЗВРАЩАЕТ курсор, когда закрывается.
+##
+## Живой отчёт: «не работает управление». Панель отпускала курсор при открытии и
+## не забирала при закрытии, а `_gather_input` при свободном курсоре возвращает
+## ноль движения — управление умирало насовсем, до первого другого окна.
+##
+## Проверяем ПРОВОДКУ, а не сам курсор: headless режим мыши не держит вовсе, и
+## проверка по `Input.mouse_mode` была бы зелёной при любой поломке.
+func _test_panel_returns_cursor(me: Node3D) -> void:
+	var main: Node = get_parent()
+	check(main._building_ui.closed.is_connected(main._on_building_panel_closed),
+		"закрытие панели постройки кому-то сообщается",
+		"подписан главный узел")
+
+	var told := [false]
+	var probe := func() -> void: told[0] = true
+	main._building_ui.closed.connect(probe)
+	var house: Node3D = _world.spawn_building(
+		RES.Building.STABLE, me.global_position + Vector3(0.0, 0.0, 9.0),
+		int(me.peer_id), int(me.faction), true)
+	main._building_ui.open_for(_world, me, house)
+	main._building_ui.close_panel()
+	main._building_ui.closed.disconnect(probe)
+	check(told[0], "и оно ДЕЙСТВИТЕЛЬНО сообщается при закрытии",
+		"сигнал пришёл" if told[0] else "сигнала нет")
+	if is_instance_valid(house):
+		house.free()
 
 
 ## Пока человек в меню, мир СТОИТ.

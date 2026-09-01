@@ -26,6 +26,13 @@ const CARAVAN := preload("res://scripts/economy/caravan.gd")
 const REFRESH_INTERVAL := 0.25
 
 signal route_requested
+## Панель закрылась — любым из трёх способов: кнопкой, клавишей или тем, что
+## человек отошёл от постройки. Слушателю это нужно, чтобы вернуть захват мыши:
+## закрывать курсор обязан тот же, кто его отпускал, иначе один из трёх путей
+## однажды забудут. Ровно это и случилось: панель отпускала курсор при открытии
+## и не забирала при закрытии, а `_gather_input` при свободном курсоре
+## возвращает ноль движения — управление умирало насовсем.
+signal closed
 
 var _world: Node3D
 var _player: Node3D
@@ -111,9 +118,12 @@ func open_for(world: Node3D, player: Node3D, building: Node3D) -> bool:
 
 
 func close_panel() -> void:
+	var was_open := visible
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_building = null
+	if was_open:
+		closed.emit()
 
 
 func is_open() -> bool:

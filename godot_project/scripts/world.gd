@@ -404,9 +404,14 @@ func _spawn_player(id: int, wanted_faction: int = 0, profile: String = "") -> vo
 		push_warning("Свободных сторон не осталось, игроку %d места нет." % id)
 		return
 	if faction != asked:
-		Net.status_changed.emit("Сторона «%s» занята, игрок %d играет за «%s»." % [
-			FACTIONS.name_of(asked), id, FACTIONS.name_of(faction)
-		])
+		var told := "Сторона «%s» занята — вы играете за «%s»." % [
+			FACTIONS.name_of(asked), FACTIONS.name_of(faction)]
+		Net.status_changed.emit(told)
+		# И ГРОМКО, на экран. Строка состояния живёт в МЕНЮ, а к этому мгновению
+		# меню уже закрыто: человек оказывался на чужой базе, не получив ни
+		# слова о том, почему. Живой отчёт «появляешься в форте злодея» пришёл
+		# именно так — без единой подсказки, что сторона подменена.
+		objective.announce(told)
 
 	print("[world] спавню игрока %d, сторона %s, слот %d" % [id, FACTIONS.name_of(faction), slot])
 	var node := _spawner.spawn({"id": id, "slot": slot, "faction": faction, "profile": profile})
