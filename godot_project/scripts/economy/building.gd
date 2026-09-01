@@ -38,6 +38,9 @@ var _mesh: MeshInstance3D
 ## Дом из модулей. Пока стройка идёт, его нет вовсе: растёт котлован-коробка.
 var _look: Node3D
 var _done := false
+## Опора под домом уже поставлена. Считается один раз: земля под постройкой не
+## меняется, а лучи стоят дорого.
+var _footed := false
 
 
 ## Вызывается спавнером на всех пирах с одинаковыми данными.
@@ -86,6 +89,132 @@ func _ready() -> void:
 	add_child(_look)
 	_build_hit_zone(size)
 	_apply_progress()
+	# Опору ставим НА СЛЕДУЮЩЕМ кадре физики, а не сейчас: лучи вниз ищут землю,
+	# а физическое пространство в момент `_ready` ещё не знает ни о нас, ни, при
+	# старте партии, о самой земле.
+	_apply_footing.call_deferred()
+
+
+## СВАИ И ПОДМОСТКИ: как дом стоит на склоне.
+##
+## Правило простое: пол ложится на САМУЮ ВЫСОКУЮ точку земли под основанием.
+## Не на среднюю и не на точку клика — на высокую. Иначе угол дома уходит в
+## холм по окна, и починить это уже нечем: землю под ним не срыть.
+##
+## Из этого следует всё остальное. Под низкими углами между полом и землёй
+## остаётся зазор — туда встают СВАИ, столбы от земли до пола. А ко входу
+## приставляется ПАНДУС: дом, приподнятый на полтора метра, без пандуса
+## недоступен, и построить его значит построить сарай, в который не войти.
+## Пандус — с коллизией, по нему действительно поднимаются.
+##
+## Считаем лучами по земле, а не по функции рельефа: под домом может оказаться
+## не только холм, но и плато дворца, и стена форта, и мост. Луч знает про всё,
+## формула — только про холмы.
+func _apply_footing() -> void:
+	if _footed or not is_inside_tree():
+		return
+	_footed = true
+	var size: Vector3 = RES.BUILDING_SIZE[kind]
+	var half_x: float = size.x * 0.5
+	var half_z: float = size.z * 0.5
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return
+
+	# Пять точек: четыре угла и середина. Середина нужна на гребне холма, где
+	# все четыре угла ниже центра и дом иначе повис бы на бугре.
+	var probes := [
+		Vector2(-half_x, -half_z), Vector2(half_x, -half_z),
+		Vector2(half_x, half_z), Vector2(-half_x, half_z), Vector2.ZERO,
+	]
+	var ground := {}
+	var top := -INF
+	for probe in probes:
+		var at: Vector2 = probe
+		var from := global_position + Vector3(at.x, 60.0, at.y)
+		var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 120.0)
+		query.collision_mask = 1
+		# Себя из луча исключаем: собственная коробка стоит ровно тут же, и без
+		# этого дом «нашёл бы землю» на собственной крыше.
+		query.exclude = [_body_rid()]
+		var hit: Dictionary = space.intersect_ray(query)
+		if hit.is_empty():
+			continue
+		var y: float = hit["position"].y
+		ground[at] = y
+		top = maxf(top, y)
+	if ground.is_empty() or top == -INF:
+		return
+
+	# Поднимаем дом до самой высокой точки. Опускать не даём: постройка, севшая
+	# ниже точки, где её поставили, выглядит провалившейся.
+	var lift: float = top - global_position.y
+	if lift > 0.01:
+		position.y += lift
+
+	var footing := Node3D.new()
+	footing.name = "Footing"
+	add_child(footing)
+	var deepest := 0.0
+	for key in ground.keys():
+		var at: Vector2 = key
+		var drop: float = top - float(ground[key])
+		deepest = maxf(deepest, drop)
+		if drop < 0.25:
+			continue
+		_pile(footing, at, drop)
+	if deepest >= 0.35:
+		_ramp(footing, size, deepest)
+
+
+## Свая: столб от земли до пола. Чуть глубже земли, чтобы не висел над травой.
+func _pile(parent: Node3D, at: Vector2, drop: float) -> void:
+	var post := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.9, drop + 0.5, 0.9)
+	post.mesh = box
+	post.material_override = TEXTURES.of("wood")
+	# Сваи стоят чуть ВНУТРИ основания: поставленные точно по углу, они торчат
+	# из-под стен наружу и читаются как строительные леса, а не как опора.
+	post.position = Vector3(at.x * 0.86, -drop * 0.5 - 0.25, at.y * 0.86)
+	parent.add_child(post)
+
+
+## Подмостки: пандус от земли до порога, со стороны фасада (+Z).
+##
+## И коллизия к нему обязательна. Пандус, по которому нельзя подняться, — это
+## не подмостки, а нарисованная доска: дом на сваях остался бы недоступен, и
+## заметил бы это только тот, кто попробовал войти.
+func _ramp(parent: Node3D, size: Vector3, drop: float) -> void:
+	var run: float = maxf(drop * 2.4, 2.5)
+	var width: float = minf(size.x * 0.5, 6.0)
+	var angle: float = atan2(drop, run)
+	var at := Vector3(0.0, -drop * 0.5, size.z * 0.5 + run * 0.5)
+
+	var deck := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(width, 0.35, sqrt(run * run + drop * drop))
+	deck.mesh = box
+	deck.material_override = TEXTURES.of("wood")
+	deck.transform = Transform3D(Basis(Vector3.RIGHT, angle), at)
+	parent.add_child(deck)
+
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var slab := BoxShape3D.new()
+	slab.size = box.size
+	shape.shape = slab
+	shape.transform = Transform3D(Basis(Vector3.RIGHT, angle), at)
+	body.add_child(shape)
+	parent.add_child(body)
+
+
+## RID собственного тела: нужен, чтобы исключать себя из лучей.
+func _body_rid() -> RID:
+	for child in get_children():
+		if child is StaticBody3D:
+			return (child as StaticBody3D).get_rid()
+	return RID()
 
 
 ## Зона попадания на всю коробку: по постройке бьют мечом, стрелой и шаром так

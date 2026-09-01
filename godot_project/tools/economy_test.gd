@@ -13,7 +13,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "эконом"
-	expected_host = 19
+	expected_host = 21
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -148,6 +148,18 @@ func _give(me: Node3D, wood: int, stone: int, gold: int, iron: int) -> void:
 	await get_tree().process_frame
 
 
+## Ближайшая постройка к точке. Нужна, чтобы посмотреть, что под ней выросло.
+func _nearest_building(at: Vector3) -> Node3D:
+	var best: Node3D = null
+	var best_gap := INF
+	for node in _buildings():
+		var gap: float = node.global_position.distance_to(at)
+		if gap < best_gap:
+			best_gap = gap
+			best = node
+	return best if best_gap < 40.0 else null
+
+
 func _buildings() -> Array:
 	return get_tree().get_nodes_in_group("building")
 
@@ -180,15 +192,37 @@ func _test_build(me: Node3D) -> void:
 	check(_buildings().size() == packed, "вплотную к соседнему зданию не ставится",
 		"построек %d" % _buildings().size())
 
-	# На перепаде высот нельзя. Берём край плато императора: он ровно на
-	# границе, половина основания на высоте 6 м, половина на нуле. Горы у
-	# злодея расставлены случайным сидом, на них полагаться нельзя.
+	# НА ПЕРЕПАДЕ ВЫСОТ СТРОИТЬ МОЖНО — и это новое правило, отменившее
+	# прежнее. Здесь стояла обратная проверка: «на неровном месте не ставится».
+	# Она была верна, пока карта была плоской и ровного места хватало; с
+	# рельефом она запретила стройку почти везде.
+	#
+	# Теперь дом садится на самую высокую точку под собой, под низкими углами
+	# встают сваи, ко входу приставляется пандус. Проверяем ровно это: что дом
+	# ПОСТРОИЛСЯ и что опора под ним появилась.
 	var slope := Vector3(480.0, 0.0, -300.0)
 	var on_slope: int = _buildings().size()
 	me.request_build(RES.Building.SWORD_BARRACKS, slope)
-	await get_tree().create_timer(0.4).timeout
-	check(_buildings().size() == on_slope, "на неровном месте не ставится",
-		"построек %d" % _buildings().size())
+	await get_tree().create_timer(0.6).timeout
+	check(_buildings().size() == on_slope + 1, "на перепаде высот дом СТАВИТСЯ",
+		"построек %d было, %d стало" % [on_slope, _buildings().size()])
+
+	var on_hill: Node3D = _nearest_building(slope)
+	if on_hill != null:
+		var footing: Node = on_hill.get_node_or_null("Footing")
+		var posts := 0
+		var ramps := 0
+		if footing != null:
+			for child in footing.get_children():
+				if child is StaticBody3D:
+					ramps += 1
+				else:
+					posts += 1
+		check(posts > 0, "под ним выросли сваи", "столбов %d" % posts)
+		# Пандус — с коллизией: без неё дом на сваях недоступен, и заметит это
+		# только тот, кто попробует войти.
+		check(ramps > 0, "и подмостки, по которым можно войти",
+			"тел с коллизией %d" % ramps)
 
 	# Достроенный склад поднимает потолок.
 	var cap_before: int = me.stock.capacity

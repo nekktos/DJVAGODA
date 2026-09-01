@@ -18,7 +18,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 25
+	expected_host = 28
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -46,6 +46,7 @@ func _run() -> void:
 	await _test_enter_key(me)
 	await _test_delivery(me)
 	await _test_avoids_buildings(me)
+	await _test_rides_smoothly(me)
 	await _test_raid(me)
 	await _test_escort(me)
 
@@ -128,6 +129,13 @@ func _test_delivery(me: Node3D) -> void:
 	# Ждём полный цикл: туда, погрузка, обратно, разгрузка.
 	var caravan: Node3D = _caravans(me)[0]
 	var loaded := false
+	# Запас шахты запоминаем В МОМЕНТ ПОГРУЗКИ, а не в конце круга.
+	#
+	# Шахта копит сама, полтора железа в секунду, а круг после её переезда на
+	# север длится минуты четыре. Проверка «в конце осталось меньше, чем было»
+	# мерила не отдачу, а накопление — и упала, показав 278 при исходных 200,
+	# хотя обоз честно увёз сто двадцать.
+	var mined_at_load := -1
 	# Круг стал длинным: шахта уехала на север, до неё девятьсот метров вместо
 	# двухсот сорока. Обоз идёт восемь метров в секунду, значит только дорога
 	# туда и обратно — почти четыре минуты. Ждём с запасом, иначе набор упадёт не
@@ -137,6 +145,8 @@ func _test_delivery(me: Node3D) -> void:
 		if not is_instance_valid(caravan):
 			break
 		if caravan.state == caravan.State.TO_HOME:
+			if not loaded:
+				mined_at_load = _world.mine.stored[RES.Kind.IRON]
 			loaded = true
 		if me.stock.get_amount(RES.Kind.IRON) > iron_before:
 			break
@@ -144,8 +154,64 @@ func _test_delivery(me: Node3D) -> void:
 	check(loaded, "караван погрузился на шахте", "гружёным вышел обратно")
 	check(me.stock.get_amount(RES.Kind.IRON) > iron_before,
 		"груз доставлен на склад", "железо %d -> %d" % [iron_before, me.stock.get_amount(RES.Kind.IRON)])
-	check(_world.mine.stored[RES.Kind.IRON] < 200,
-		"шахта отдала накопленное", "осталось железа %d" % _world.mine.stored[RES.Kind.IRON])
+	check(mined_at_load >= 0 and mined_at_load < 200,
+		"шахта отдала накопленное",
+		"в миг погрузки осталось железа %d из 200" % mined_at_load)
+
+
+## Обоз ЕДЕТ, а не трясётся.
+##
+## Живой тестер описал это тремя словами: «трясёт, дрожит, прыгает». Прыжки шли
+## от того, что высота тянулась к высоте следующей ТОЧКИ МАРШРУТА: точки идут
+## через десяток метров, каждая на своей высоте, и цель менялась ступенькой.
+## Дрожь — от объезда построек: направление меняется рывками, а разворот
+## выставлялся мгновенно.
+##
+## Проверяем ЗАМЕРОМ ПО КАДРАМ, а не на глаз: копим наибольший скачок высоты и
+## разворота между соседними кадрами физики. Глазами тряску видно, но не
+## измерить, а значит нельзя и сказать, стало ли лучше.
+func _test_rides_smoothly(me: Node3D) -> void:
+	for i in 60:
+		if _caravans(me).is_empty():
+			break
+		await get_tree().create_timer(0.5).timeout
+	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
+	await get_tree().create_timer(0.5).timeout
+	var list: Array = _caravans(me)
+	if list.is_empty():
+		fail("обоз для замера тряски не отправлен")
+		return
+	var cart: Node3D = list[0]
+
+	# Даём отъехать от склада: первые метры он трогается с места, и разворот
+	# там меняется по делу, а не от тряски.
+	await get_tree().create_timer(2.0).timeout
+
+	var worst_step := 0.0
+	var worst_turn := 0.0
+	var last_y: float = cart.position.y
+	var last_yaw: float = cart.rotation.y
+	var frames := 0
+	for i in 400:
+		await get_tree().physics_frame
+		if not is_instance_valid(cart):
+			break
+		frames += 1
+		worst_step = maxf(worst_step, absf(cart.position.y - last_y))
+		worst_turn = maxf(worst_turn, absf(angle_difference(cart.rotation.y, last_yaw)))
+		last_y = cart.position.y
+		last_yaw = cart.rotation.y
+
+	check(frames > 200, "обоз ехал достаточно долго для замера", "%d кадров" % frames)
+	# Обоз идёт восемь метров в секунду, кадр — шестидесятая доля: за кадр он
+	# проезжает тринадцать сантиметров. Скачок высоты больше четверти метра за
+	# кадр — это не склон, это прыжок.
+	check(worst_step < 0.25, "высота меняется плавно, без прыжков",
+		"наибольший скачок за кадр %.3f м" % worst_step)
+	# Разворот: восемь градусов за кадр — это уже рывок руля, а не поворот.
+	check(worst_turn < deg_to_rad(8.0), "разворот плавный, без дрожи",
+		"наибольший доворот за кадр %.1f°" % rad_to_deg(worst_turn))
 
 
 ## Обоз объезжает постройки, а не проходит сквозь них.

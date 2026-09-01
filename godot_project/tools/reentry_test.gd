@@ -161,8 +161,15 @@ func _houses() -> int:
 	return get_tree().get_nodes_in_group("building").size()
 
 
+## Место постройки — это X и Z, а не три координаты.
+##
+## Высоту дом выбирает САМ: он садится полом на самую высокую точку земли под
+## собой и встаёт на сваи (см. `building.gd::_apply_footing`). Сравнение в трёх
+## измерениях проверяло бы заодно и рельеф под складом, а он к сохранению
+## отношения не имеет — обе проверки упали в тот же день, когда появились сваи.
 func _at_landmark() -> Node:
 	for node in get_tree().get_nodes_in_group("building"):
-		if node.position.distance_to(LANDMARK) < 0.5:
+		var gap := Vector2(node.position.x - LANDMARK.x, node.position.z - LANDMARK.z)
+		if gap.length() < 0.5:
 			return node
 	return null

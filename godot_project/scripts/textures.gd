@@ -36,6 +36,7 @@ const WORLD_SCALE := {
 	"rock": 11.0,
 	"roof": 2.2,
 	"plaster": 4.0,
+	"grass": 14.0,
 }
 
 static var _cache := {}
@@ -79,6 +80,10 @@ static func _draw(key: String) -> ImageTexture:
 			_tiles(img, Color(0.78, 0.29, 0.24), Color(0.52, 0.18, 0.15))
 		"plaster":
 			_speckle(img, Color(0.88, 0.84, 0.77), Color(0.78, 0.74, 0.68))
+		"grass":
+			# Трава крупным пятном: холм в четыреста метров, покрашенный ровным
+			# зелёным, читается как пластмасса, а не как поле.
+			_speckle(img, Color(0.44, 0.52, 0.31), Color(0.27, 0.36, 0.22))
 		_:
 			img.fill(Color(0.6, 0.6, 0.6))
 	# Мипмапы обязательны. Без них рисунок вдали превращается в мельтешащую

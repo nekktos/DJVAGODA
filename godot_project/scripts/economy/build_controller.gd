@@ -12,8 +12,16 @@ extends Node3D
 
 const RES := preload("res://scripts/economy/resources.gd")
 
-## Максимальный перепад высот под основанием, метры.
-const MAX_SLOPE := 1.5
+## ПЕРЕПАД ВЫСОТ БОЛЬШЕ НЕ ЗАПРЕЩЁН.
+##
+## Здесь стоял предел в полтора метра, и на плоской карте он ничего не стоил:
+## ровного места было сколько угодно. С появлением рельефа он запретил стройку
+## почти везде — склад не вставал даже там, где земля кажется ровной.
+##
+## Решение владельца проекта: строить можно на любой поверхности, а разницу
+## высот закрывают СВАИ и ПОДМОСТКИ. Дом садится полом на самую высокую точку
+## под собой, под низкими углами вырастают опоры, а ко входу приставляется
+## пандус, по которому можно войти. Смотри `building.gd::_apply_footing`.
 ## Насколько далеко от камеры ищем землю.
 const PICK_DISTANCE := 900.0
 ## Минимальный зазор между постройками, метры.
@@ -106,24 +114,18 @@ static func is_spot_buildable(context: Node3D, point: Vector3, building_kind: in
 	var half_z := size.z * 0.5
 	var space := context.get_world_3d().direct_space_state
 
-	# Перепад высот под четырьмя углами основания.
-	var lowest := INF
-	var highest := -INF
+	# Земля под каждым углом обязана БЫТЬ. Перепад между углами больше не
+	# проверяем (см. шапку про сваи), но повиснуть в пустоте дом не должен:
+	# луч, не нашедший опоры, — это край карты или дыра, а не склон.
 	for dx in [-half_x, half_x]:
 		for dz in [-half_z, half_z]:
 			var probe := point + Vector3(dx, 0.0, dz)
 			var query := PhysicsRayQueryParameters3D.create(
-				probe + Vector3.UP * 30.0, probe + Vector3.DOWN * 30.0
+				probe + Vector3.UP * 60.0, probe + Vector3.DOWN * 60.0
 			)
 			query.collision_mask = 1
-			var hit := space.intersect_ray(query)
-			if hit.is_empty():
+			if space.intersect_ray(query).is_empty():
 				return false
-			var y: float = hit["position"].y
-			lowest = minf(lowest, y)
-			highest = maxf(highest, y)
-	if highest - lowest > MAX_SLOPE:
-		return false
 
 	# Не залезаем на уже построенное.
 	for node in context.get_tree().get_nodes_in_group("building"):

@@ -194,9 +194,16 @@ func _test_buildings(me: Node3D) -> void:
 	await get_tree().physics_frame
 	check(_buildings().size() == before, "ПОСТРОЙКИ вернулись",
 		"%d из %d" % [_buildings().size(), before])
+## Место постройки — это X и Z, а не три координаты.
+##
+## Высоту дом выбирает САМ: он садится полом на самую высокую точку земли под
+## собой и встаёт на сваи (см. `building.gd::_apply_footing`). Сравнение в трёх
+## измерениях проверяло бы заодно и рельеф под складом, а он к сохранению
+## отношения не имеет — обе проверки упали в тот же день, когда появились сваи.
 	var found := false
 	for node in _buildings():
-		if node.position.distance_to(spot) < 0.5 and int(node.kind) == RES.Building.STORAGE:
+		var gap := Vector2(node.position.x - spot.x, node.position.z - spot.z)
+		if gap.length() < 0.5 and int(node.kind) == RES.Building.STORAGE:
 			found = true
 	check(found, "склад вернулся на своё место", "(%.0f, %.0f)" % [spot.x, spot.z])
 

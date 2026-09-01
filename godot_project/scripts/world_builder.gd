@@ -13,6 +13,8 @@ extends RefCounted
 ## Карта занимает от -600 до +600 по X и Z. Зона — четверть, 600x600 м.
 const RES := preload("res://scripts/economy/resources.gd")
 const TEXTURES := preload("res://scripts/textures.gd")
+const RELIEF := preload("res://scripts/relief.gd")
+const ROCKS := preload("res://scripts/rocks.gd")
 
 const WORLD_SIZE := 1200.0
 const ZONE_SIZE := 600.0
@@ -61,6 +63,9 @@ const ZONE_NAMES := {
 }
 
 var _materials := {}
+## Рельеф. Наружу торчит намеренно: по нему кладут всё, что стоит на земле, и
+## спрашивать высоту обязаны у него, а не считать заново.
+var relief: RefCounted
 ## Какую модель дерева ставить следующей. Не случайно: карта строится
 ## одинаково на всех пирах, и случайность здесь развела бы миры.
 var _tree_pick := 0
@@ -70,6 +75,14 @@ var _root: Node3D
 func build(root: Node3D) -> void:
 	_root = root
 	_make_materials()
+	# Рельеф заводим ПЕРВЫМ: по нему потом кладут траву, камни и деревья, и
+	# высота у всех должна быть одна и та же.
+	relief = RELIEF.new(WORLD_SIZE, ZONE_CENTERS.values(), [
+		Vector2(MINE_POS.x, MINE_POS.z),
+		Vector2(TRADER_POS.x, TRADER_POS.z),
+		Vector2(WORKBENCH_POS.x, WORKBENCH_POS.z),
+		Vector2.ZERO,
+	])
 	_build_ground()
 	_build_roads()
 	_build_elves(ZONE_CENTERS[Zone.ELVES])
@@ -78,10 +91,19 @@ func build(root: Node3D) -> void:
 	_build_humans(ZONE_CENTERS[Zone.HUMANS])
 	_build_mine()
 	_build_crossroads()
+	_build_hamlets()
+	_build_scatter()
 
 
 func _make_materials() -> void:
-	_add_material("ground", Color(0.36, 0.40, 0.32))
+	# Земля и рельеф — ОДНИМ материалом, и это не украшательство.
+	#
+	# Рельеф лежит поверх плоской подложки и во многих местах поднимается на
+	# считанные сантиметры. Разными материалами эти места читались тёмными
+	# многоугольными кляксами по всему полю — не холмами, а грязью на текстуре.
+	# Одинаковый материал делает низкий рельеф незаметным, а высокий — холмом,
+	# то есть ровно тем, чем он и должен быть.
+	_materials["ground"] = TEXTURES.of("grass")
 	_add_material("road", Color(0.46, 0.42, 0.35))
 	_add_material("foliage", Color(0.24, 0.44, 0.24))
 	_add_material("trunk", Color(0.33, 0.25, 0.17))
@@ -120,6 +142,18 @@ func _box(parent: Node3D, pos: Vector3, size: Vector3, mat: String, yaw: float =
 	col.shape = shape
 	body.add_child(col)
 
+	parent.add_child(body)
+	return body
+
+
+## Камень настоящей формы. pos — точка НА ЗЕМЛЕ, камень встаёт на неё низом.
+##
+## Низом, а не центром: у коробки высоту делили пополам и считали от центра, а
+## у булыжника низ неровный, и «половина высоты» промахивается то в землю, то в
+## воздух. Проще класть его на землю и не думать.
+func _rock(parent: Node3D, pos: Vector3, size: Vector3, yaw: float, seed_value: int) -> StaticBody3D:
+	var body := ROCKS.build(size, yaw, seed_value, _materials["rock"])
+	body.position = Vector3(pos.x, pos.y + size.y * 0.42, pos.z)
 	parent.add_child(body)
 	return body
 
@@ -201,7 +235,15 @@ func _group(group_name: String) -> Node3D:
 
 func _build_ground() -> void:
 	var g := _group("Ground")
-	_box(g, Vector3(0, -1.0, 0), Vector3(WORLD_SIZE, 2.0, WORLD_SIZE), "ground")
+	# Подложку опускаем на пять сантиметров ПОД полотно рельефа.
+	#
+	# Рельеф теперь сплошной и накрывает карту целиком, а две совпадающие
+	# плоскости на одной высоте дают мерцание по всему полю. Пять сантиметров
+	# ничего не решают для игры и решают всё для картинки.
+	_box(g, Vector3(0, -1.05, 0), Vector3(WORLD_SIZE, 2.0, WORLD_SIZE), "ground")
+	# Холмы поверх плоской подложки. Подложка остаётся: на ней стоит вся игра
+	# (см. шапку `relief.gd`), а холмы — добавка там, где ничего не построено.
+	g.add_child(relief.build(TEXTURES.of("grass")))
 
 	# Стены по краю карты, чтобы нельзя было уйти в пустоту.
 	var h := WORLD_SIZE * 0.5
@@ -324,7 +366,11 @@ func _build_villain(c: Vector2) -> void:
 		var p := c + Vector2(cos(a), sin(a)) * r
 		var mh := rng.randf_range(24.0, 70.0)
 		var mw := rng.randf_range(30.0, 70.0)
-		_harvestable(_box(g, Vector3(p.x, mh * 0.5, p.y), Vector3(mw, mh, mw), "rock", rng.randf() * PI), RES.Kind.STONE, 10)
+		# Скала, а не куб. Форма читается раньше цвета: коробку в семьдесят
+		# метров никакая каменная текстура камнем не сделает.
+		_harvestable(_rock(g, Vector3(p.x, 0.0, p.y),
+			Vector3(mw, mh, mw * rng.randf_range(0.7, 1.2)),
+			rng.randf() * TAU, rng.randi()), RES.Kind.STONE, 10)
 
 	# Форт: стены, донжон, казарма, склад.
 	var f := c + Vector2(0.0, -40.0)
@@ -376,6 +422,196 @@ func _build_mine() -> void:
 	_harvestable(_box(g, Vector3(m.x, 10.0, m.y), Vector3(50.0, 20.0, 50.0), "rock"),
 		RES.Kind.IRON, 40)
 	_box(g, Vector3(m.x, 4.0, m.y + 26.0), Vector3(14.0, 8.0, 6.0), "dark_stone")  # вход
+
+
+## Модели, которые раскладываются по холмам пачками. Камни набора Kenney —
+## плоские плитки в четверть метра высотой, и на валуны они не годятся вовсе
+## (обмерено), зато как галька под ногами они ровно то, что нужно.
+const SCATTER_ROCKS := [
+	preload("res://assets/nature/rock_largeA.glb"),
+	preload("res://assets/nature/rock_smallA.glb"),
+]
+const SCATTER_STUMP := preload("res://assets/nature/stump_old.glb")
+
+## Хутора: по одному в каждой четверти карты, на полпути от центра к зоне.
+## Мир из четырёх крепостей и пустоты между ними выглядит декорацией; хутор
+## говорит, что тут живут, и даёт глазу за что зацепиться по дороге.
+const HAMLETS := [
+	Vector2(-150.0, 150.0),
+	Vector2(155.0, 140.0),
+	Vector2(150.0, -160.0),
+	Vector2(-160.0, -140.0),
+]
+
+
+## Мелочь на холмах: трава, кусты, галька, пни и деревья.
+##
+## Всё через MultiMesh: пять тысяч кустиков отдельными узлами положили бы игру,
+## а одной пачкой они рисуются за один вызов и не стоят почти ничего.
+##
+## КЛАДЁМ ТОЛЬКО НА ХОЛМЫ — там, где рельеф поднялся хоть немного. Это и есть
+## места, где ничего не построено: маска рельефа уже отогнала холмы от дорог,
+## зон, шахты и перекрёстка, и повторять тот же список здесь не нужно.
+func _build_scatter() -> void:
+	var g := _group("Scatter")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 90210
+
+	_scatter(g, rng, _tuft_mesh(Color(0.36, 0.47, 0.26)), 5200, 0.4, 0.8, 1.2, null)
+	_scatter(g, rng, _bush_mesh(Color(0.25, 0.38, 0.22)), 1100, 0.9, 1.6, 1.2, null)
+	# Камням и пням материал задаём ЯВНО.
+	#
+	# Меш, вынутый из модели набора, приходит без него: материал у Kenney висит
+	# на узле, а не на меше, и MultiMesh о нём не знает. На снимке это выглядело
+	# как розовые и голубые крапинки по всему полю — «материала нет» в чистом
+	# виде, и принять их можно за что угодно, только не за камни.
+	# Галька — те же булыжники, только мелкие: плитки из набора Kenney на камни
+	# не похожи вовсе, они плоские в четверть метра.
+	for shape_seed in [3, 7, 11]:
+		_scatter(g, rng, ROCKS.mesh(shape_seed), 340, 0.5, 1.6, 0.6, TEXTURES.of("rock"))
+	_scatter(g, rng, _first_mesh(SCATTER_STUMP), 130, 1.6, 2.6, 1.0, TEXTURES.of("wood"))
+	# Деревья на склонах — с коллизией, иначе сквозь рощу можно пройти насквозь,
+	# и лес перестаёт быть препятствием. Их немного и они НЕ добываются: рубка
+	# леса — это зона эльфов и роща у спавна, а не вся карта.
+	_hill_trees(g, rng)
+
+
+## Одна пачка одинаковых мелочей, разбросанная по холмам.
+func _scatter(parent: Node3D, rng: RandomNumberGenerator, mesh: Mesh, count: int,
+		low: float, high: float, min_height: float, material: Material) -> void:
+	if mesh == null:
+		return
+	var spots: Array = []
+	# Пробуем вчетверо больше точек, чем нужно: холмы занимают меньше половины
+	# карты, и слепой разброс без отбора дал бы вчетверо меньше видимого добра.
+	for i in count * 4:
+		if spots.size() >= count:
+			break
+		var x: float = rng.randf_range(-WORLD_SIZE * 0.5, WORLD_SIZE * 0.5)
+		var z: float = rng.randf_range(-WORLD_SIZE * 0.5, WORLD_SIZE * 0.5)
+		var y: float = relief.height(x, z)
+		if y < min_height:
+			continue
+		spots.append(Vector3(x, y, z))
+	if spots.is_empty():
+		return
+
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = mesh
+	multi.instance_count = spots.size()
+	for i in spots.size():
+		var scale_to: float = rng.randf_range(low, high)
+		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * scale_to)
+		multi.set_instance_transform(i, Transform3D(basis, spots[i]))
+	var node := MultiMeshInstance3D.new()
+	node.multimesh = multi
+	if material != null:
+		node.material_override = material
+	# Мелочь теней не отбрасывает: пять тысяч кустиков в карте теней стоят
+	# дороже, чем видно глазу.
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(node)
+
+
+## Деревья на склонах: ствол с коллизией и крона от модели.
+func _hill_trees(parent: Node3D, rng: RandomNumberGenerator) -> void:
+	var placed := 0
+	for i in 900:
+		if placed >= 170:
+			break
+		var x: float = rng.randf_range(-WORLD_SIZE * 0.5, WORLD_SIZE * 0.5)
+		var z: float = rng.randf_range(-WORLD_SIZE * 0.5, WORLD_SIZE * 0.5)
+		var y: float = relief.height(x, z)
+		if y < 3.0:
+			continue
+		placed += 1
+		var trunk := _tree(parent, Vector2(x, z), rng.randf_range(8.0, 13.0))
+		trunk.position.y = y
+
+
+static func _first_mesh(packed: PackedScene) -> Mesh:
+	var node: Node3D = packed.instantiate()
+	for child in node.get_children():
+		if child is MeshInstance3D:
+			return (child as MeshInstance3D).mesh
+	return null
+
+
+## Пучок травы: два скрещённых прямоугольника. Дешевле любой модели и с любой
+## стороны выглядит одинаково.
+static func _tuft_mesh(color: Color) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for turn in [0.0, PI * 0.5]:
+		var dir := Vector3(cos(turn), 0.0, sin(turn)) * 0.5
+		var up := Vector3.UP * 0.9
+		st.add_vertex(-dir)
+		st.add_vertex(dir)
+		st.add_vertex(dir + up)
+		st.add_vertex(-dir)
+		st.add_vertex(dir + up)
+		st.add_vertex(-dir + up)
+	st.generate_normals()
+	var mesh := st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.roughness = 1.0
+	mesh.surface_set_material(0, mat)
+	return mesh
+
+
+static func _bush_mesh(color: Color) -> Mesh:
+	var ball := SphereMesh.new()
+	ball.radius = 0.9
+	ball.height = 1.4
+	ball.radial_segments = 6
+	ball.rings = 3
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 1.0
+	ball.surface_set_material(0, mat)
+	return ball
+
+
+## Хутор: несколько дворов у дороги. Домики маленькие и без коллизии внутри —
+## это декорация, а не постройки: воевать за них нельзя и жить в них некому.
+func _build_hamlets() -> void:
+	var g := _group("Hamlets")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4477
+	for spot in HAMLETS:
+		var center: Vector2 = spot
+		for i in 5:
+			var angle: float = TAU * float(i) / 5.0 + rng.randf_range(-0.3, 0.3)
+			var radius: float = rng.randf_range(14.0, 26.0)
+			var at: Vector2 = center + Vector2(cos(angle), sin(angle)) * radius
+			_cottage(g, at, rng.randf() * TAU, rng.randf_range(0.85, 1.25))
+		# Колодец посреди двора: по нему хутор и узнают.
+		_cylinder(g, Vector3(center.x, 0.6, center.y), 1.6, 1.2, "stone")
+		_box(g, Vector3(center.x, 2.4, center.y), Vector3(3.2, 0.3, 3.2), "wood")
+
+
+## Один двор: сруб под двускатной крышей.
+func _cottage(parent: Node3D, at: Vector2, yaw: float, size: float) -> void:
+	var w: float = 6.0 * size
+	var d: float = 5.0 * size
+	var h: float = 3.4 * size
+	_box(parent, Vector3(at.x, h * 0.5, at.y), Vector3(w, h, d), "wood", yaw)
+	# Крыша: два ската навстречу друг другу.
+	var slope: float = 0.55
+	for side in [-1.0, 1.0]:
+		var panel := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(w * 1.15, 0.3, d * 0.75)
+		panel.mesh = box
+		panel.material_override = TEXTURES.of("roof")
+		var offset := Vector3(0.0, h + 0.9 * size, side * d * 0.28)
+		panel.transform = Transform3D(
+			Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, slope * side),
+			Vector3(at.x, 0.0, at.y) + Basis(Vector3.UP, yaw) * offset)
+		parent.add_child(panel)
 
 
 func _build_humans(c: Vector2) -> void:
@@ -521,4 +757,6 @@ func _build_starting_resources(g: Node3D) -> void:
 		var r := rng.randf_range(30.0, 65.0)
 		var p := Vector2(cos(a), sin(a)) * r + Vector2(-35.0, 5.0)
 		var s := rng.randf_range(3.0, 5.5)
-		_harvestable(_box(g, Vector3(p.x, s * 0.4, p.y), Vector3(s, s * 0.8, s), "rock", rng.randf() * PI), RES.Kind.STONE)
+		_harvestable(_rock(g, Vector3(p.x, 0.0, p.y),
+			Vector3(s, s * 0.75, s * rng.randf_range(0.75, 1.15)),
+			rng.randf() * TAU, rng.randi()), RES.Kind.STONE)
