@@ -35,7 +35,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "герой"
-	expected_host = 25
+	expected_host = 28
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -59,6 +59,7 @@ func _run() -> void:
 		finish()
 		return
 
+	_test_camera_belongs_to_human(hero)
 	_test_exists_and_is_leader(hero)
 	_test_side_stays_free(hero)
 	await _test_moves(hero)
@@ -71,6 +72,34 @@ func _run() -> void:
 
 
 ## Он есть, он вожак, и считает его хост.
+## КАМЕРА У ЧЕЛОВЕКА, а не у героя ИИ.
+##
+## Герой свободной стороны — тот же персонаж, что у живого игрока, и авторитет
+## над ним у ХОСТА: его симулирует хозяин сессии, и это правильно. Но
+## `is_multiplayer_authority()` у него на хосте тоже истинно, и он включал свою
+## камеру, перехватывая вид у человека. Побеждал последний заспавненный.
+##
+## Снаружи это выглядело как «начал за стражу, а стою в чужом форте, и
+## управление не работает»: свой персонаж честно шёл по приказам, только за
+## кадром. Три отчёта подряд, и на всех снимках одно место при разных сторонах
+## в углу экрана — разные стороны, один вид, вот и ответ.
+func _test_camera_belongs_to_human(hero: Node3D) -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		fail("камера: своего персонажа нет")
+		return
+	check(me._camera.current, "камера включена у ЖИВОГО игрока",
+		"своя камера активна")
+	check(not hero._camera.current, "и НЕ у героя ИИ",
+		"камера героя выключена" if not hero._camera.current else "герой перехватил вид")
+	# И ввод герой не слушает: две пары рук на одной клавиатуре — это тот же
+	# перехват, только незаметнее.
+	# Подпись говорит, что ВЫШЛО, а не что задумано: постоянная строка «ввод
+	# отключён» врала бы при провале ровно теми же словами, что при успехе.
+	check(not hero.is_processing_unhandled_input(), "герой ИИ не слушает клавиатуру",
+		"слушает" if hero.is_processing_unhandled_input() else "не слушает")
+
+
 func _test_exists_and_is_leader(hero: Node3D) -> void:
 	check(hero.ai_led, "герой заведён и помечен как ведомый ИИ", "ai_led=true")
 	check(hero.is_leader, "герой — вожак, как и живой злодей", "is_leader=true")
