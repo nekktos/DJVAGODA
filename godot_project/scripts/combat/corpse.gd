@@ -16,12 +16,12 @@ const RIG := preload("res://scripts/combat/rig.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 
 const MODELS := [
-	"res://assets/people/Wizard.gltf",
-	"res://assets/people/Ranger.gltf",
-	"res://assets/people/Warrior.gltf",
-	"res://assets/people/Monk.gltf",
-	"res://assets/people/Rogue.gltf",
-	"res://assets/people/Cleric.gltf",
+	"res://assets/people/Villain.glb",
+	"res://assets/people/Elf.glb",
+	"res://assets/people/Guard.glb",
+	"res://assets/people/Swordsman.glb",
+	"res://assets/people/Archer.glb",
+	"res://assets/people/Peasant.glb",
 ]
 const MODEL_SCALE := 0.63
 

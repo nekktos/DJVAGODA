@@ -10,22 +10,29 @@ extends SceneTree
 ##
 ## Запуск:
 ##   godot --headless --path godot_project --script res://tools/rig_probe.gd
-##   godot --headless --path godot_project --script res://tools/rig_probe.gd -- Ranger
+##   godot --headless --path godot_project --script res://tools/rig_probe.gd -- Guard
 ##
 
 const DIR := "res://assets/people/"
 
 
 func _initialize() -> void:
-	var who := "Warrior"
+	var who := "Elf"
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		who = args[0]
 
-	var path := DIR + who + ".gltf"
-	var packed: PackedScene = load(path)
+	# Свои модели из кузницы приезжают одним файлом `.glb`, покупные паки —
+	# `.gltf` рядом с текстурами. Пробник обязан читать оба: иначе проверить
+	# сделанное своими руками нечем.
+	var path := ""
+	for ext in [".gltf", ".glb"]:
+		if ResourceLoader.exists(DIR + who + ext):
+			path = DIR + who + ext
+			break
+	var packed: PackedScene = load(path) if path != "" else null
 	if packed == null:
-		print("не загрузилось: ", path)
+		print("не загрузилось: ", DIR + who + " (.gltf/.glb)")
 		quit(1)
 		return
 

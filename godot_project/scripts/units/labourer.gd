@@ -31,10 +31,10 @@ const ROLE_NAMES := ["лесоруб", "шахтёр", "ополченец", "с
 ## десяток, и все они делают разное: не различив их глазом, хозяин отдаёт
 ## приказы вслепую — а «поставь двоих на стройку» это ровно про глаз.
 const ROLE_MODELS := [
-	"res://assets/people/Monk.gltf",
-	"res://assets/people/Rogue.gltf",
-	"res://assets/people/Warrior.gltf",
-	"res://assets/people/Cleric.gltf",
+	"res://assets/people/Peasant.glb",
+	"res://assets/people/Miner.glb",
+	"res://assets/people/Woodcutter.glb",
+	"res://assets/people/Mason.glb",
 ]
 ## Топор лесорубу, молот шахтёру и строителю, меч ополченцу. Инструмент в руке
 ## говорит о роли столько же, сколько цвет рубахи, и виден с большего расстояния.

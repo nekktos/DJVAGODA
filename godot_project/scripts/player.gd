@@ -28,14 +28,24 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const RIG := preload("res://scripts/combat/rig.gd")
 
 ## Своя модель на сторону. Порядок — как в `factions.gd::Kind`: злодей,
-## эльфы, стража. Классы подобраны по роли, а не по красоте: маг колдует,
-## следопыт стреляет из лука, воин держит строй.
+## эльфы, стража.
+##
+## СВОИ, А НЕ ПОКУПНЫЕ (решение владельца от 19.09.2026). Кованы
+## `tools/asset_forge/character.py`: модель, скелет и анимации целиком из кода,
+## по одному пресету на сторону. Отличаются не файлом, а числами — ростом,
+## шириной плеч, цветом, плащом, наплечниками, длиной ушей.
+##
+## Ради чего меняли: у покупного Ranger нет ни одной анимации замаха оружием и
+## нет позы сидя — эльф махал невидимо, а безногий «полз» по стойке смирно.
+## Своя модель правится там, где не устраивает, а не ищется в чужом паке.
 const MODELS := [
-	"res://assets/people/Wizard.gltf",
-	"res://assets/people/Ranger.gltf",
-	"res://assets/people/Warrior.gltf",
+	"res://assets/people/Villain.glb",
+	"res://assets/people/Elf.glb",
+	"res://assets/people/Guard.glb",
 ]
 ## Модель ростом 2.9 «единиц Blender» — приводим к человеческим 1.84 м.
+## Кузница держит тот же рост НАМЕРЕННО: иначе пришлось бы заводить свой
+## масштаб на каждую модель, а вместе с ним и своё расхождение.
 const MODEL_SCALE := 0.63
 
 const ZONE_MULTIPLIERS := {
@@ -174,6 +184,10 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 
 var _cooldown_left := 0.0
 var _server_cooldown := 0.0
 var _swing_left := 0.0
+## Сколько ещё вздрагивать от попадания. Живёт отдельно от замаха: свой удар
+## важнее чужого, и сбивать собственную атаку чужой стрелой нельзя — иначе
+## двое стрелков держат мечника в вечном вздрагивании.
+var _flinch_left := 0.0
 var _bandage_progress := 0.0
 
 ## ВИД ОТ ПЕРВОГО И ОТ ТРЕТЬЕГО ЛИЦА — решение владельца от 19.09.2026.
@@ -195,6 +209,10 @@ const VIEW_FIRST_PIVOT := Vector3(0.0, 1.36, -0.12)
 const VIEW_FIRST_ARM := 0.0
 ## Насколько глаза выше центра кости головы.
 const EYE_ABOVE_HEAD_BONE := 0.05
+
+## Сколько длится вздрагивание от попадания. Короткое намеренно: длинное
+## означало бы, что под обстрелом персонаж не управляется вовсе.
+const FLINCH_TIME := 0.32
 
 ## Смотрим из глаз. ЛОКАЛЬНОЕ и нереплицируемое: чужим всё равно, каким видом
 ## играет сосед, а тело прячется только от своей камеры.
@@ -361,6 +379,7 @@ func _physics_process(delta: float) -> void:
 		_tick_abilities(delta)
 
 	_swing_left = maxf(0.0, _swing_left - delta)
+	_flinch_left = maxf(0.0, _flinch_left - delta)
 	_refresh_weapon_visual()
 	# Следим за МАСКОЙ, а не только за сигналом об отрыве. Сигнал приходит один
 	# раз и только когда бит ЗАЖИГАЕТСЯ: он не расскажет ни про снятие увечий
@@ -515,6 +534,8 @@ func _update_animation() -> void:
 		_play("die")
 		return
 	if _swing_left > 0.0:
+		return
+	if _flinch_left > 0.0:
 		return
 	var moving := sync_moving if not is_multiplayer_authority() else (
 		Vector2(velocity.x, velocity.z).length() > 0.4
@@ -1171,6 +1192,12 @@ func show_hit(point: Vector3, dir: Vector3, amount: float, zone: String) -> void
 	if not _sender_is_host():
 		return
 	EFFECTS.blood(_effects_root(), point, dir, amount)
+	# Вздрогнуть. Раньше попадание было видно только по крови и цифре здоровья:
+	# в бою на пятерых понять, что бьют ИМЕННО ТЕБЯ, можно было лишь по полоске.
+	# Свой замах при этом не перебиваем — он важнее.
+	if health.alive and _swing_left <= 0.0:
+		_flinch_left = FLINCH_TIME
+		_play("hit", true)
 
 
 ## Вызов пришёл от хоста? Локальный вызов даёт 0, удалённый от хоста — 1.

@@ -154,7 +154,7 @@ const CART_SCALE := 2.6
 ## Лошади в упряжке — та же модель, что и верховая (Quaternius, CC0). Одна
 ## лошадь на всю игру: разные модели у тягловой и верховой означали бы, что
 ## уведённая из обоза лошадь превращается в другое животное.
-const HORSE_MODEL := preload("res://assets/animals/Horse.gltf")
+const HORSE_MODEL := preload("res://assets/animals/Horse.glb")
 const HORSE_MODEL_SCALE := 0.45
 
 

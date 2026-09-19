@@ -22,7 +22,7 @@ extends CharacterBody3D
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
-const MODEL := preload("res://assets/animals/Horse.gltf")
+const MODEL := preload("res://assets/animals/Horse.glb")
 ## Модель сделана «в единицах Blender»: высота 4.8, длина 5.3. Приводим к
 ## росту около двух метров в холке.
 const MODEL_SCALE := 0.45

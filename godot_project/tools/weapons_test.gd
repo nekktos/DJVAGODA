@@ -22,9 +22,9 @@ const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 
 ## Модели сторон — те же три, что в `player.gd::MODELS`, в том же порядке.
 const SIDE_MODELS := [
-	"res://assets/people/Wizard.gltf",
-	"res://assets/people/Ranger.gltf",
-	"res://assets/people/Warrior.gltf",
+	"res://assets/people/Villain.glb",
+	"res://assets/people/Elf.glb",
+	"res://assets/people/Guard.glb",
 ]
 
 var _world: Node3D

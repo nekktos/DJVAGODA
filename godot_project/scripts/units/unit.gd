@@ -33,12 +33,15 @@ const EFFECTS := preload("res://scripts/combat/effects.gd")
 ## ополченца, а лучника от мечника — отдать приказ «поставь двоих на стройку»
 ## значило гадать. Роль читается с первого взгляда, номер в отряде — нет, и
 ## смотреть надо именно на неё.
-const MODEL_SWORD := "res://assets/people/Warrior.gltf"
-const MODEL_ARCHER := "res://assets/people/Ranger.gltf"
-const MODEL_CHAMPION := "res://assets/people/Cleric.gltf"
+## Свои модели из кузницы (решение владельца от 19.09.2026). Пешку видно
+## ТОЛПОЙ, и различать её надо издали, — отсюда разные силуэты и цвета у
+## мечника, лучника и распорядителя.
+const MODEL_SWORD := "res://assets/people/Swordsman.glb"
+const MODEL_ARCHER := "res://assets/people/Archer.glb"
+const MODEL_CHAMPION := "res://assets/people/Champion.glb"
 ## Волк — настоящая модель со скелетом и анимациями (Quaternius, CC0). До этого
 ## он собирался из коробок: узнаваемо, но неподвижно, и в бою это было видно.
-const MODEL_BEAST := "res://assets/animals/Wolf.gltf"
+const MODEL_BEAST := "res://assets/animals/Wolf.glb"
 ## Модель волка сделана в натуральную величину «в единицах Blender»: длина 5.5,
 ## высота 2.7. Приводим к полутора метрам в холке — крупнее настоящего волка,
 ## но призванный зверь и должен читаться как угроза, а не как собака.
