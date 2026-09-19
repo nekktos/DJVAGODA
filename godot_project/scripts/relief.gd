@@ -111,7 +111,14 @@ func _mask(x: float, z: float) -> float:
 	for spot in _zone_spots:
 		m = minf(m, _ramp(Vector2(x, z).distance_to(spot), ZONE_FLAT, ZONE_FADE))
 	for spot in _flat_spots:
-		m = minf(m, _ramp(Vector2(x, z).distance_to(spot), SPOT_FLAT, SPOT_FADE))
+		# Пятно — либо точка с обычным радиусом, либо [точка, плоско, растушёвка].
+		# Свой радиус нужен плато императора: оно 360 метров в поперечнике, и
+		# обычных семидесяти ему мало — холмы перекрывали его собственную кромку.
+		if spot is Array:
+			m = minf(m, _ramp(Vector2(x, z).distance_to(spot[0]),
+				float(spot[1]), float(spot[2])))
+		else:
+			m = minf(m, _ramp(Vector2(x, z).distance_to(spot), SPOT_FLAT, SPOT_FADE))
 	# Край карты: там стоят стены мира, и холм под ними оставил бы щель.
 	var edge: float = _half - maxf(absf(x), absf(z))
 	m = minf(m, _ramp(edge, 0.0, EDGE_FLAT))

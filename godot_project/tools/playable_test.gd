@@ -84,6 +84,9 @@ func _run() -> void:
 func _test_victory_reachable(me: Node3D) -> void:
 	var from: Vector3 = me.global_position
 	var palace: Vector3 = OBJECTIVE.PALACE
+	# Порог берём У ИГРЫ: захват засчитывается в радиусе RADIUS от центра
+	# дворца, и дойти ровно в точку не нужно — внутрь стен достаточно. Свой
+	# порог в шесть метров был строже самой игры и ругался бы на исправное.
 	var gap: float = _walk_gap(from, palace)
 	_trace("спавн -> дворец", from, palace)
 	_trace("спавн -> форт злодея", from, FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN])
@@ -102,9 +105,13 @@ func _test_victory_reachable(me: Node3D) -> void:
 	# только «не дошёл», и искать можно долго.
 	_trace("эльф -> точка перед воротами", from, Vector3(300.0, 6.0, -265.0))
 	_trace("эльф -> плато у кромки", from, Vector3(300.0, 6.0, -130.0))
+	# А не в самом ли спавне дело? Деревня эльфов стоит на сваях, и если
+	# персонаж привязан к настилу, поиск пути начнётся с отдельного островка.
+	for z in [-150.0, -170.0, -200.0, -240.0, -280.0]:
+		_trace("эльф -> за стену z=%.0f" % z, from, Vector3(300.0, 6.0, z))
 	_trace("середина -> дворец", Vector3(0.0, 0.0, -200.0), palace)
-	check(gap >= 0.0 and gap < ARRIVED,
-		"до дворца можно дойти ногами",
+	check(gap >= 0.0 and gap < OBJECTIVE.RADIUS,
+		"до дворца можно дойти ногами и встать на точку захвата",
 		"не дошёл %.1f м" % gap if gap >= 0.0 else "пути нет вовсе")
 
 	# И обратно: если человек погиб, он возвращается на базу и идёт снова.

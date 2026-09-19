@@ -87,6 +87,21 @@ func build(root: Node3D) -> void:
 		Vector2(TRADER_POS.x, TRADER_POS.z),
 		Vector2(WORKBENCH_POS.x, WORKBENCH_POS.z),
 		Vector2.ZERO,
+		# ПЛАТО ИМПЕРАТОРА ЦЕЛИКОМ, А НЕ ТОЛЬКО ЕГО ЦЕНТР.
+		#
+		# Зона приглаживается на 120 метров (`relief.gd::ZONE_FLAT`), а плато —
+		# 360 в поперечнике: его кромка лежит в 180 метрах от центра, то есть
+		# уже за приглаживанием. Холмы там поднимались до девяти метров и
+		# ПЕРЕКРЫВАЛИ шестиметровое плато, вставая выше него.
+		#
+		# Следствий было два, и оба скверные. Пандус оказался ЗАКОПАН в холм у
+		# подножия и не работал вовсе — наверх лазали прямо по склонам, хотя
+		# сетка обязана знать, что въезд один (см. набор «навигация»). А эльф
+		# при этом до дворца не доходил: на ступеньке между холмом и плато
+		# сетка не сшивалась, и путь обрывался за 137 метров до цели.
+		#
+		# Радиус берём с запасом на угол квадрата: 180 * sqrt(2) ≈ 255.
+		[ZONE_CENTERS[Zone.EMPEROR], 262.0, 320.0],
 	])
 	_build_ground()
 	_build_roads()
@@ -147,6 +162,19 @@ func _box(parent: Node3D, pos: Vector3, size: Vector3, mat: String, yaw: float =
 	col.shape = shape
 	body.add_child(col)
 
+	parent.add_child(body)
+	return body
+
+
+## Гора. pos — точка на земле, гора встаёт на неё подножием.
+##
+## Отдельно от `_rock`, потому что у горы своя форма: конус со сколами, а не
+## растянутый шар (см. `rocks.gd::peak`). И низ у неё ровно на нуле — сдвигать,
+## как булыжник, не надо.
+func _peak(parent: Node3D, pos: Vector3, size: Vector3, yaw: float,
+		seed_value: int) -> StaticBody3D:
+	var body := ROCKS.build_peak(size, yaw, seed_value, _materials["rock"])
+	body.position = pos
 	parent.add_child(body)
 	return body
 
@@ -365,17 +393,7 @@ func _build_villain(c: Vector2) -> void:
 	rng.seed = 2989
 
 	# Горы по краю зоны.
-	for i in 40:
-		var a := rng.randf() * TAU
-		var r := 150.0 + rng.randf() * (ZONE_HALF - 170.0)
-		var p := c + Vector2(cos(a), sin(a)) * r
-		var mh := rng.randf_range(24.0, 70.0)
-		var mw := rng.randf_range(30.0, 70.0)
-		# Скала, а не куб. Форма читается раньше цвета: коробку в семьдесят
-		# метров никакая каменная текстура камнем не сделает.
-		_harvestable(_rock(g, Vector3(p.x, 0.0, p.y),
-			Vector3(mw, mh, mw * rng.randf_range(0.7, 1.2)),
-			rng.randf() * TAU, rng.randi()), RES.Kind.STONE, 10)
+	_build_ridge(g, c, rng)
 
 	# Форт: стены, донжон, казарма, склад.
 	var f := c + Vector2(0.0, -40.0)
@@ -413,6 +431,60 @@ func _build_villain(c: Vector2) -> void:
 		var h := grove.randf_range(9.0, 15.0)
 		_harvestable(_tree(g, p, h), RES.Kind.WOOD)
 
+
+
+## Горная гряда за спиной у злодея.
+##
+## БЫЛО: сорок отдельных камней шириной 30-70 м, разбросанных по кругу вокруг
+## форта случайно. Задумывались горами, а читались как исполинские булыжники,
+## которые кто-то уронил на газон: стоят поодиночке на плоской траве, без
+## подножий и без хребта, и масштаб рядом с фортом выглядит нелепо.
+##
+## И это была не только некрасивость. Сорок глыб по всей зоне режут сетку
+## навигации: радиус агента три метра, и между близко стоящими камнями проход
+## просто исчезает. Зона превращалась в лабиринт из тупиков, а не в поле с
+## горами по краю.
+##
+## СТАЛО: гряда по ВНЕШНЕЙ дуге зоны, спиной к краю карты. Нутро зоны свободно
+## — там форт, там ходят, — а горы стоят стеной там, откуда никто не приходит.
+## Гряда читается грядой по трём признакам: вершины ПЕРЕКРЫВАЮТСЯ (между ними
+## нет просветов), высота идёт горбом (в середине выше, к концам сходит на
+## нет) и у подножия лежит осыпь из камней помельче. Без осыпи гора выглядит
+## воткнутой в землю.
+func _build_ridge(g: Node3D, c: Vector2, rng: RandomNumberGenerator) -> void:
+	# Дуга смотрит НАРУЖУ карты: направление от центра мира к центру зоны.
+	var outward := c.normalized()
+	var mid := atan2(outward.y, outward.x)
+	var span := PI * 1.05                      # чуть больше половины круга
+	var radius := ZONE_HALF - 60.0
+	var peaks := 15
+
+	for i in peaks:
+		var t: float = float(i) / float(peaks - 1)        # 0..1 вдоль дуги
+		var a: float = mid + (t - 0.5) * span
+		# Горб: в середине дуги вершины выше, к концам сходят на нет.
+		var crest: float = sin(t * PI)
+		var height: float = 16.0 + crest * 52.0 + rng.randf_range(-5.0, 5.0)
+		var width: float = 52.0 + crest * 30.0 + rng.randf_range(-6.0, 6.0)
+		# Вершины стоят ЧАЩЕ, чем они широки: иначе между ними просветы, и
+		# гряда рассыпается на отдельные камни.
+		var jitter := Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(-14.0, 14.0))
+		var p: Vector2 = c + Vector2(cos(a), sin(a)) * radius + jitter
+		_harvestable(_peak(g, Vector3(p.x, 0.0, p.y),
+			Vector3(width, height, width * rng.randf_range(0.8, 1.15)),
+			rng.randf() * TAU, rng.randi()), RES.Kind.STONE, 10)
+
+	# Осыпь у подножия: мелкие камни с внутренней стороны, вразброс.
+	for i in 22:
+		var t: float = rng.randf()
+		var a: float = mid + (t - 0.5) * span
+		var crest: float = sin(t * PI)
+		var back: float = radius - rng.randf_range(34.0, 62.0)
+		var p: Vector2 = c + Vector2(cos(a), sin(a)) * back
+		var s: float = 7.0 + crest * 9.0 + rng.randf_range(-2.0, 3.0)
+		_harvestable(_rock(g, Vector3(p.x, 0.0, p.y),
+			Vector3(s, s * rng.randf_range(0.5, 0.8), s * rng.randf_range(0.7, 1.2)),
+			rng.randf() * TAU, rng.randi()), RES.Kind.STONE)
 
 
 ## Шахта. СВОЯ группа, а не часть зоны злодея.
