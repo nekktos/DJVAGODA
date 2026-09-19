@@ -95,6 +95,13 @@ func _test_victory_reachable(me: Node3D) -> void:
 	# возьмётся чинить.
 	var yard: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
 	_trace("двор стражи -> дворец", yard, palace)
+	_trace("двор стражи -> спавн эльфа", yard, from)
+	# ВЫСОТА В ТРАССЕ НЕ ДЛЯ КРАСОТЫ. Именно она показала, что эльф выходит на
+	# плато по поверхности y = 9.1, а двор и дворец лежат на y = 6.9: сетка
+	# рвётся на ступеньке в 2.2 м при пределе подъёма 0.5. Без высоты видно
+	# только «не дошёл», и искать можно долго.
+	_trace("эльф -> точка перед воротами", from, Vector3(300.0, 6.0, -265.0))
+	_trace("эльф -> плато у кромки", from, Vector3(300.0, 6.0, -130.0))
 	_trace("середина -> дворец", Vector3(0.0, 0.0, -200.0), palace)
 	check(gap >= 0.0 and gap < ARRIVED,
 		"до дворца можно дойти ногами",
@@ -190,6 +197,18 @@ func _mine_iron(mine: Node3D) -> int:
 	return int(mine.stored[RES.Kind.IRON])
 
 
+## Где именно рвётся дорога: идём лучом к цели и смотрим, докуда достаём.
+func _scan(from: Vector3, to: Vector3) -> void:
+	print("[скан] от (%.0f, %.0f) к (%.0f, %.0f)" % [from.x, from.z, to.x, to.z])
+	for i in range(1, 11):
+		var t: float = float(i) / 10.0
+		var point := from.lerp(to, t)
+		var gap: float = _walk_gap(from, point)
+		var back: float = _walk_gap(to, point)
+		print("  %3d%%  (%5.0f,%5.0f)  туда %6.1f   обратно %6.1f"
+			% [t * 100.0, point.x, point.z, gap, back])
+
+
 ## Печать пути для разбора: куда дошёл и сколько точек.
 func _trace(label: String, from: Vector3, to: Vector3) -> void:
 	var nav: Node = _world.navigation
@@ -200,8 +219,8 @@ func _trace(label: String, from: Vector3, to: Vector3) -> void:
 		print("[путь] %-24s ПУТИ НЕТ" % label)
 		return
 	var end: Vector3 = path[path.size() - 1]
-	print("[путь] %-24s точек %2d, конец (%.0f, %.0f), недошёл %.1f м" % [
-		label, path.size(), end.x, end.z,
+	print("[путь] %-24s точек %2d, конец (%.0f, %.1f, %.0f), недошёл %.1f м" % [
+		label, path.size(), end.x, end.y, end.z,
 		Vector2(end.x, end.z).distance_to(Vector2(to.x, to.z))])
 
 
