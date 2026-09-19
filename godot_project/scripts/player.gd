@@ -25,8 +25,8 @@ const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
-const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 const RIG := preload("res://scripts/combat/rig.gd")
+const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 
 ## Своя модель на сторону. Порядок — как в `factions.gd::Kind`: злодей,
 ## эльфы, стража. Классы подобраны по роли, а не по красоте: маг колдует,
@@ -840,7 +840,7 @@ func _server_cast_curse(kind: int) -> bool:
 			# У бойца системы ранений нет: увядание для него — чистый урон
 			# вместо кровотечения, чтобы заклинание не было по нему пустым.
 			target.take_damage(ABILITIES.WITHER_DURATION * 3.0, peer_id, "torso",
-				target.global_position, Vector3.UP)
+				target.global_position, Vector3.UP, false, WEAPONS.Kind.SPELL)
 		return true
 	if target.has_method("apply_blind"):
 		target.apply_blind(ABILITIES.BLIND_DURATION)
@@ -1066,7 +1066,7 @@ func _server_swing_melee(aim: Vector3, kind: int) -> void:
 		var zone: Area3D = best[target]
 		var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier
 			* WEAPONS.gear_damage(gear_tier) * curse_damage_scale())
-		target.take_damage(damage, peer_id, zone.zone, zone.global_position, aim)
+		target.take_damage(damage, peer_id, zone.zone, zone.global_position, aim, false, kind)
 		_apply_melee_effect(kind, target)
 
 
@@ -1087,7 +1087,10 @@ func _apply_melee_effect(kind: int, target: Node3D) -> void:
 
 
 ## Принять урон. Вызывается ТОЛЬКО на хосте (из оружия или снаряда).
-func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
+## `weapon` — чем ударили (`WEAPONS.Kind`). Нужен ТЕЛУ, а не здоровью: от вида
+## оружия зависит, оторвёт конечность или перебьёт (GDD раздел 4). `-1` —
+## неизвестно чем, и тогда не отрывает.
+func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3, _aoe := false, weapon := -1) -> void:
 	if not Net.hosting():
 		return
 	var dealt: float = health.apply_damage(amount, attacker_id)
@@ -1107,7 +1110,7 @@ func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, 
 	# удара: выросла маска — значит этим ударом что-то и оторвало.
 	var mask_before: int = body.severed_mask
 	var eyes_before: int = body.eyes_lost
-	body.register_hit(zone, dealt)
+	body.register_hit(zone, dealt, weapon)
 	_award_trophies(attacker_id, mask_before, eyes_before)
 	show_hit.rpc(point, dir, dealt, zone)
 

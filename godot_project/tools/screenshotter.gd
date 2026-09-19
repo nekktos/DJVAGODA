@@ -9,6 +9,8 @@ extends Node
 ## список ракурсов и сохраняет по кадру на каждый. В конце процесс завершается.
 ##
 
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
+
 ## Пауза перед первым кадром: миру нужно построиться, персонажу — приземлиться.
 const WARMUP_SECONDS := 1.5
 
@@ -308,7 +310,8 @@ func _stage_wounds(take_eye: bool, legs: bool = false) -> void:
 	var zones := ["arm_l", "leg_r"] if legs else ["arm_l"]
 	for zone in zones:
 		for i in 6:
-			me.body.register_hit(zone, 12.0)
+			# Мечом: кадр «расчленение» требует именно ОТРЫВА.
+			me.body.register_hit(zone, 12.0, WEAPONS.Kind.SWORD)
 			me.health.revive()
 	if take_eye:
 		me.body.register_hit("head", 40.0)

@@ -13,6 +13,7 @@ extends "res://tools/test_base.gd"
 
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 
 var _world: Node3D
 
@@ -108,7 +109,7 @@ func _test_death_drops(me: Node3D) -> void:
 ## и умереть было дешевле, чем идти за протезом.
 func _test_wounds_survive_respawn(me: Node3D) -> void:
 	me.body.severed_mask = 0
-	me.body.register_hit("leg_l", 999.0)
+	me.body.register_hit("leg_l", 999.0, WEAPONS.Kind.SWORD)
 	await get_tree().physics_frame
 	var lost_before: int = me.body.severed_mask
 	check(lost_before != 0, "конечность оторвана до смерти", "маска %d" % lost_before)

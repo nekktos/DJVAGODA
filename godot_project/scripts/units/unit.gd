@@ -15,12 +15,12 @@ const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const BODY := preload("res://scripts/combat/body.gd")
 const RIG := preload("res://scripts/combat/rig.gd")
+const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 ## Виды трофеев — те же цифры, что в `player.gd::Trophy`. Держим их числами, а
 ## не ссылкой на скрипт игрока: боец о игроке знать не должен.
 const TROPHY_ARMS := 0
 const TROPHY_LEGS := 1
 const TROPHY_EYES := 2
-const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
@@ -846,7 +846,7 @@ func _strike(target: Node3D) -> void:
 	if is_archer:
 		_shoot(dir)
 		return
-	target.take_damage(_strike_damage(), owner_id, "torso", point, dir)
+	target.take_damage(_strike_damage(), owner_id, "torso", point, dir, false, _hand_weapon())
 
 
 ## Выстрел лучника. Стреляем НАСТОЯЩИМ снарядом, тем же, что у игрока: стрела
@@ -871,13 +871,14 @@ func defensive_scale(aoe: bool = false) -> float:
 
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон
 ## (DESIGN_ANSWERS.md, пункт 16).
-func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3, aoe := false) -> void:
+func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
+		aoe := false, weapon := -1) -> void:
 	if not Net.hosting() or not _alive:
 		return
 	var scaled: float = amount * FORMATIONS.damage_scale(_formation(), aoe)
 	health = maxf(0.0, health - scaled)
 	show_hit.rpc(point, dir, scaled)
-	_note_zone_damage(_zone, scaled, point, dir, attacker_id)
+	_note_zone_damage(_zone, scaled, point, dir, attacker_id, weapon)
 	if health > 0.0:
 		return
 	_alive = false
@@ -907,7 +908,8 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 ## одинаково и человеку, и бойцу. Своя таблица здесь означала бы, что игрок
 ## расчленяет пешек легче или тяжелее, чем игроков, и никто не смог бы сказать,
 ## почему.
-func _note_zone_damage(zone: String, amount: float, point: Vector3, dir: Vector3, attacker_id := 0) -> void:
+func _note_zone_damage(zone: String, amount: float, point: Vector3, dir: Vector3,
+		attacker_id := 0, weapon := -1) -> void:
 	if not Net.hosting() or zone == "" or zone == "torso":
 		return
 	if zone == "head":
@@ -927,6 +929,12 @@ func _note_zone_damage(zone: String, amount: float, point: Vector3, dir: Vector3
 		return
 	_zone_damage[zone] = float(_zone_damage.get(zone, 0.0)) + amount
 	if float(_zone_damage[zone]) < BODY.LIMB_DURABILITY:
+		return
+	# Стрела не отрубает руку и пешке тоже. Состояния «перебита» у бойца нет —
+	# у него нет `body.gd` вовсе, — поэтому он просто не теряет конечность.
+	# Заводить пешке полноценную систему ранений ради этого не стали: вопрос
+	# открыт, и решать его дизайну, а не коду.
+	if not WEAPONS.severs(weapon):
 		return
 	severed |= (1 << limb)
 	tear_off.rpc(limb, point, dir)

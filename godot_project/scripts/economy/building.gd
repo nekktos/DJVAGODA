@@ -240,7 +240,8 @@ func _build_hit_zone(size: Vector3) -> void:
 ## Принять урон. Только на хосте — как и весь остальной урон в игре.
 ##
 ## Недостроенное здание бьётся так же: это и есть способ сорвать стройку.
-func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3, _aoe := false) -> void:
+func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
+		_aoe := false, _weapon := -1) -> void:
 	if not Net.hosting() or health <= 0.0:
 		return
 	health = maxf(0.0, health - amount)

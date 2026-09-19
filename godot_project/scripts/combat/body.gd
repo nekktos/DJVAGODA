@@ -13,6 +13,8 @@ extends Node
 ##   протезы разного качества, топовые ЛУЧШЕ живых конечностей
 ##
 
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
+
 enum Limb { ARM_L, ARM_R, LEG_L, LEG_R }
 
 const LIMB_KEYS := ["arm_l", "arm_r", "leg_l", "leg_r"]
@@ -68,6 +70,8 @@ const NECROTIC_PRICE := 10
 
 ## Конечность оторвана (на любом пире, после репликации).
 signal limb_severed(limb: int)
+## Конечность цела, но выведена из строя.
+signal limb_crippled(limb: int)
 ## Протез поставлен или снят.
 signal prosthetic_changed(limb: int, tier: int)
 ## Состояние изменилось настолько, что игроку надо пересчитать движение и позу.
@@ -75,6 +79,15 @@ signal state_changed
 
 ## --- реплицируемое состояние (авторитет — хост) ---
 @export var severed_mask: int = 0
+## Конечность на месте, но не работает: пробита стрелой, сломана молотом,
+## иссушена проклятием.
+##
+## ОТДЕЛЬНАЯ МАСКА, А НЕ УРОВЕНЬ ПРОТЕЗА 0. Протез ставят ВМЕСТО оторванной
+## конечности, а здесь конечность своя и никуда не делась — протезу некуда
+## встать. Поэтому и лечится это иначе: не мастерской, а целителем, магией или
+## лекарством (GDD, решение от 19.09.2026), и бинт тут ни при чём — бинт
+## останавливает кровь, а не чинит перебитую руку.
+@export var crippled_mask: int = 0
 @export var prosthetics: PackedByteArray = PackedByteArray([0, 0, 0, 0])
 @export var eyes_lost: int = 0
 ## Сколько выбитых глаз заменено чужими. Живой глаз не отрастает, а деревянного
@@ -135,6 +148,20 @@ func is_severed(limb: int) -> bool:
 	return (severed_mask & (1 << limb)) != 0
 
 
+## Цела, но не работает.
+func is_crippled(limb: int) -> bool:
+	return (crippled_mask & (1 << limb)) != 0
+
+
+## Не работает по любой причине — оторвана или покалечена.
+##
+## Почти весь код про движение и бой спрашивает именно это, а не «оторвана»:
+## разница между «нет руки» и «рука висит плетью» важна для ЛЕЧЕНИЯ, а не для
+## того, можно ли ею ударить.
+func is_disabled(limb: int) -> bool:
+	return is_severed(limb) or is_crippled(limb)
+
+
 func tier(limb: int) -> int:
 	if limb < 0 or limb >= prosthetics.size():
 		return 0
@@ -142,10 +169,16 @@ func tier(limb: int) -> int:
 
 
 ## Живая конечность или протез: 1.0 — здоровая, иначе множитель по качеству.
+##
+## Покалеченная даёт ноль и протезом не исправляется: она на месте, ставить
+## нечего. Проверяем её ПЕРВОЙ — конечность может быть покалечена и потом
+## отрублена, и тогда решает протез.
 func _limb_factor(limb: int, table: Array) -> float:
-	if not is_severed(limb):
-		return 1.0
-	return table[clampi(tier(limb), 0, table.size() - 1)]
+	if is_severed(limb):
+		return table[clampi(tier(limb), 0, table.size() - 1)]
+	if is_crippled(limb):
+		return 0.0
+	return 1.0
 
 
 # --- что состояние тела разрешает и запрещает ------------------------------
@@ -194,6 +227,9 @@ func can_attack_ranged() -> bool:
 
 
 func _arm_usable(limb: int, min_tier: int) -> bool:
+	# Покалеченной рукой не бьют и не стреляют, и протез её не выручает.
+	if is_crippled(limb) and not is_severed(limb):
+		return false
 	if not is_severed(limb):
 		return true
 	return tier(limb) >= min_tier
@@ -229,13 +265,15 @@ func grant_eye() -> bool:
 
 ## Человекочитаемая сводка для HUD.
 func summary() -> String:
-	if severed_mask == 0 and eyes_lost == 0 and not in_wheelchair:
+	if severed_mask == 0 and crippled_mask == 0 and eyes_lost == 0 and not in_wheelchair:
 		return "цел"
 	var parts := PackedStringArray()
 	for i in LIMB_KEYS.size():
 		if is_severed(i):
 			var t := tier(i)
 			parts.append("%s: %s" % [LIMB_NAMES[i], TIER_NAMES[t] if t > 0 else "оторвана"])
+		elif is_crippled(i):
+			parts.append("%s: перебита" % LIMB_NAMES[i])
 	if eyes_missing() > 0:
 		parts.append("глаз потеряно: %d" % eyes_missing())
 	if eye_implants > 0:
@@ -251,7 +289,12 @@ func summary() -> String:
 
 ## Учесть попадание в зону. Вызывается ТОЛЬКО на хосте, из player.take_damage.
 ## Здоровье снимается отдельно: здесь считается только судьба конечности.
-func register_hit(zone: String, amount: float) -> void:
+##
+## `weapon` — вид оружия (`WEAPONS.Kind`), и от него зависит ИСХОД, а не урон:
+## рубящее отрывает, всё остальное калечит (GDD раздел 4, решение от
+## 19.09.2026). `-1` означает «неизвестно чем» — тогда калечит: отрыв требует
+## явного рубящего оружия, и это безопасная сторона ошибки.
+func register_hit(zone: String, amount: float, weapon: int = -1) -> void:
 	if not Net.hosting() or amount <= 0.0:
 		return
 
@@ -271,12 +314,57 @@ func register_hit(zone: String, amount: float) -> void:
 	if float(_limb_damage[zone]) < LIMB_DURABILITY:
 		return
 
+	if not WEAPONS.severs(weapon):
+		# Стрела, болт, молот, магия. Конечность остаётся на месте, но выходит
+		# из строя. Кровотечения нет: кровит ОТОРВАННАЯ, а пробитая — рана, и
+		# её счёт идёт по общему здоровью, которое уже снято выше.
+		if is_crippled(limb):
+			# Уже покалечена — добивать нечем. Счётчик держим у порога, чтобы
+			# первый же рубящий удар снял конечность сразу: покалеченная рука
+			# на один удар от того, чтобы её лишиться.
+			_limb_damage[zone] = LIMB_DURABILITY
+			return
+		crippled_mask |= (1 << limb)
+		_limb_damage[zone] = LIMB_DURABILITY
+		limb_crippled.emit(limb)
+		state_changed.emit()
+		return
+
 	# Конечность отрывает. Протез при этом слетает вместе с ней.
 	severed_mask |= (1 << limb)
 	_set_tier(limb, 0)
 	bleeding = true
 	limb_severed.emit(limb)
 	state_changed.emit()
+
+
+## Вылечить перебитую конечность. Только на хосте.
+##
+## Единственная дверь для всех будущих способов лечения (GDD, решение от
+## 19.09.2026): NPC-целитель за деньги, исцеляющее заклинание, приготовленное
+## лекарство. Способы разные, следствие одно, и считаться оно обязано в одном
+## месте — иначе три системы разойдутся в том, что считать вылеченным.
+##
+## ОТОРВАННОЕ НЕ ЛЕЧИТ НИЧТО. Отрастить конечность нельзя ни за деньги, ни
+## магией: на то и протезы, и на том стоит весь раздел 4 GDD.
+func heal_limb(limb: int) -> bool:
+	if not Net.hosting() or limb < 0 or limb >= LIMB_KEYS.size():
+		return false
+	if not is_crippled(limb) or is_severed(limb):
+		return false
+	crippled_mask &= ~(1 << limb)
+	_limb_damage[LIMB_KEYS[limb]] = 0.0
+	state_changed.emit()
+	return true
+
+
+## Сколько перебитых конечностей ждут лечения.
+func crippled_count() -> int:
+	var found := 0
+	for i in LIMB_KEYS.size():
+		if is_crippled(i) and not is_severed(i):
+			found += 1
+	return found
 
 
 ## Открыть кровотечение без потери конечности. Нужно топору (GDD 3.1) и
@@ -369,6 +457,7 @@ func reset() -> void:
 	if not Net.hosting():
 		return
 	severed_mask = 0
+	crippled_mask = 0
 	prosthetics = PackedByteArray([0, 0, 0, 0])
 	eyes_lost = 0
 	eye_implants = 0

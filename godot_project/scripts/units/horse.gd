@@ -154,7 +154,7 @@ func dismount(at: Vector3) -> void:
 
 
 func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3,
-		dir: Vector3, _aoe := false) -> void:
+		dir: Vector3, _aoe := false, _weapon := -1) -> void:
 	if not Net.hosting() or not _alive:
 		return
 	health = maxf(0.0, health - amount)

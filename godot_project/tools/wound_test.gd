@@ -12,6 +12,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const BODY := preload("res://scripts/combat/body.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const UNIT_MAX_HEALTH := 90.0
 
 var _world: Node3D
@@ -80,7 +81,8 @@ func _sever(body: Node, health: Node, zone: String) -> void:
 		if body.is_severed(BODY.LIMB_KEYS.find(zone)):
 			return
 		health.revive()
-		body.register_hit(zone, 12.0)
+		# Мечом: отрывает только рубящее, и набор обязан сказать это вслух.
+		body.register_hit(zone, 12.0, WEAPONS.Kind.SWORD)
 		await get_tree().process_frame
 
 
@@ -266,7 +268,8 @@ func _test_trophies(me: Node3D, body: Node, health: Node) -> void:
 	var hits := 0
 	while victim.severed == 0 and hits < 30:
 		victim.health = UNIT_MAX_HEALTH
-		victim.take_damage(10.0, int(me.peer_id), "arm_r", victim.global_position, Vector3.FORWARD)
+		victim.take_damage(10.0, int(me.peer_id), "arm_r", victim.global_position,
+			Vector3.FORWARD, false, WEAPONS.Kind.SWORD)
 		hits += 1
 		await get_tree().process_frame
 	check(victim.severed != 0, "пешке отрывает руку тем же порогом, что и человеку",

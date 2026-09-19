@@ -179,6 +179,7 @@ func save_world() -> String:
 		cfg.set_value(key, "final_threshold", int(child.final_threshold))
 		cfg.set_value(key, "alive", bool(child.health.alive))
 		cfg.set_value(key, "severed_mask", int(child.body.severed_mask))
+		cfg.set_value(key, "crippled_mask", int(child.body.crippled_mask))
 		cfg.set_value(key, "prosthetics", child.body.prosthetics)
 		cfg.set_value(key, "eyes_lost", int(child.body.eyes_lost))
 		# Вставленные глаза — отдельно от выбитых. Без этого вернувшийся игрок
@@ -376,6 +377,8 @@ func restore_player(player: Node3D) -> bool:
 	player.orders_done = int(cfg.get_value(key, "orders_done", 0))
 	player.final_threshold = int(cfg.get_value(key, "final_threshold", player.final_threshold))
 	player.body.severed_mask = int(cfg.get_value(key, "severed_mask", 0))
+	# Старые сейвы перебитых конечностей не знают — там ноль, и это верно.
+	player.body.crippled_mask = int(cfg.get_value(key, "crippled_mask", 0))
 	player.body.prosthetics = cfg.get_value(key, "prosthetics", player.body.prosthetics)
 	player.body.eyes_lost = int(cfg.get_value(key, "eyes_lost", 0))
 	player.body.eye_implants = int(cfg.get_value(key, "eye_implants", 0))

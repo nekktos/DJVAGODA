@@ -32,7 +32,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "оружие"
-	expected_host = 27
+	expected_host = 34
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -58,7 +58,67 @@ func _run() -> void:
 	await _test_harvest_tools(me)
 	_test_weapon_sits_in_hand()
 	_test_swing_is_animated()
+	_test_arrow_cripples_not_severs(me)
 	finish()
+
+
+## Стрела не отрубает конечность, а выводит её из строя (GDD раздел 4).
+##
+## Проверяем ИСХОД, а не то, что «вид оружия передали»: передать можно и не
+## туда. Поэтому каждая проверка смотрит на состояние тела после серии ударов,
+## а последняя гонит урон через `take_damage` целиком — ровно тем путём, каким
+## он идёт в бою, потому что именно проводка тут и могла отвалиться.
+func _test_arrow_cripples_not_severs(me: Node3D) -> void:
+	var body: Node = me.body
+	var arm_r := 1
+	var leg_l := 2
+	var leg_r := 3
+
+	body.reset()
+	for i in 8:
+		body.register_hit("arm_r", 12.0, WEAPONS.Kind.BOW)
+	check(body.is_crippled(arm_r) and not body.is_severed(arm_r),
+		"стрела калечит руку, но не отрывает", body.summary())
+
+	body.reset()
+	for i in 8:
+		body.register_hit("arm_r", 12.0, WEAPONS.Kind.SWORD)
+	check(body.is_severed(arm_r), "меч руку отрывает", body.summary())
+
+	# Перебитая рука не работает, и протез ей не поможет: она на месте.
+	body.reset()
+	for i in 8:
+		body.register_hit("arm_r", 12.0, WEAPONS.Kind.CROSSBOW)
+		body.register_hit("arm_l", 12.0, WEAPONS.Kind.SPELL)
+	check(not body.can_attack_melee() and not body.can_attack_ranged(),
+		"перебитыми руками не бьют и не стреляют", body.summary())
+
+	check(body.heal_limb(arm_r) and not body.is_crippled(arm_r)
+			and body.can_attack_melee(),
+		"перебитая рука лечится и снова работает", body.summary())
+
+	# Покалеченная — в одном рубящем ударе от того, чтобы её лишиться.
+	body.reset()
+	for i in 8:
+		body.register_hit("leg_l", 12.0, WEAPONS.Kind.HAMMER)
+	var was_crippled: bool = body.is_crippled(leg_l)
+	body.register_hit("leg_l", 12.0, WEAPONS.Kind.AXE)
+	check(was_crippled and body.is_severed(leg_l),
+		"перебитую ногу топор сносит с одного удара", body.summary())
+	check(not body.heal_limb(leg_l), "оторванное не лечится ничем", body.summary())
+
+	# Та же дорога, что в бою: от удара до тела вид оружия обязан доехать.
+	body.reset()
+	for i in 8:
+		me.health.revive()
+		me.take_damage(12.0, int(me.peer_id), "leg_r", me.global_position,
+			Vector3.FORWARD, false, WEAPONS.Kind.BOW)
+	me.health.revive()
+	check(body.is_crippled(leg_r) and not body.is_severed(leg_r),
+		"вид оружия доходит от удара до тела", body.summary())
+
+	body.reset()
+	me.health.revive()
 
 
 ## Оружие держат ЗА РУКОЯТЬ, а не за середину клинка.

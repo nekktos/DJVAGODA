@@ -101,6 +101,9 @@ properties/24/replication_mode = 1
 properties/25/path = NodePath(".:sync_running")
 properties/25/spawn = true
 properties/25/replication_mode = 1
+properties/26/path = NodePath("Body:crippled_mask")
+properties/26/spawn = true
+properties/26/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

@@ -150,7 +150,8 @@ func _resolve_hit(hit: Dictionary) -> void:
 				var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier
 					* WEAPONS.gear_damage(gear_tier))
 				damage *= _pierce_scale(target, false)
-				target.take_damage(damage, shooter_id, zone.zone, point, _velocity.normalized())
+				target.take_damage(damage, shooter_id, zone.zone, point, _velocity.normalized(),
+					false, kind)
 		else:
 			# Воткнулась в землю или стену — просто показать.
 			_show_impact.rpc(point, false)
@@ -190,7 +191,7 @@ func _explode(point: Vector3) -> void:
 		if damage > 0.5:
 			var dir: Vector3 = (target.global_position - point).normalized()
 			# Флаг «по площади»: рассыпной строй именно его и гасит.
-			target.take_damage(damage, shooter_id, zone.zone, zone.global_position, dir, true)
+			target.take_damage(damage, shooter_id, zone.zone, zone.global_position, dir, true, kind)
 
 	_show_impact.rpc(point, true)
 

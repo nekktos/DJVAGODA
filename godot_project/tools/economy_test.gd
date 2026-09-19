@@ -7,6 +7,7 @@ extends "res://tools/test_base.gd"
 
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 
 var _world: Node3D
 
@@ -236,7 +237,7 @@ func _test_prosthetic_cost(me: Node3D) -> void:
 	me.body.reset()
 	me.health.revive()
 	for i in 6:
-		me.body.register_hit("arm_r", 12.0)
+		me.body.register_hit("arm_r", 12.0, WEAPONS.Kind.SWORD)
 		me.health.revive()
 	me.body.bleeding = false
 	me.global_position = _world.workbench_position() + Vector3(0.0, 2.0, 2.0)

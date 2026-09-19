@@ -14,6 +14,7 @@ extends RefCounted
 const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 
 const HELP := """Команды (выполняет хост):
   res <дер> <кам> <зол> <жел>   выдать ресурсы
@@ -149,13 +150,31 @@ static func _army(world: Node3D, player: Node3D, args: Array) -> String:
 	]
 
 
+## Третьим аргументом — ЧЕМ бить: от этого зависит, оторвёт конечность или
+## перебьёт (GDD раздел 4). По умолчанию меч, то есть рубящее: до появления
+## перебитых конечностей `hurt` всегда отрывал, и привычка проверять отрыв этой
+## командой не должна сломаться молча.
 static func _hurt(player: Node3D, args: Array) -> String:
 	if args.size() < 1:
-		return "нужно: hurt <зона> [урон]"
+		return "нужно: hurt <зона> [урон] [меч|топор|лук|арбалет|магия|молот]"
 	var zone := String(args[0]).to_lower()
 	var amount: float = float(args[1]) if args.size() > 1 else 20.0
-	player.take_damage(amount, int(player.peer_id), zone, player.global_position + Vector3.UP, Vector3.FORWARD)
-	return "нанесено %.0f по зоне %s, HP %d" % [amount, zone, int(player.health.current)]
+	var weapon: int = _weapon_by_name(String(args[2]) if args.size() > 2 else "меч")
+	player.take_damage(amount, int(player.peer_id), zone, player.global_position + Vector3.UP,
+		Vector3.FORWARD, false, weapon)
+	return "нанесено %.0f по зоне %s (%s), HP %d" % [
+		amount, zone, WEAPONS.NAMES.get(weapon, "?"), int(player.health.current)
+	]
+
+
+static func _weapon_by_name(word: String) -> int:
+	match word.to_lower():
+		"топор", "axe": return WEAPONS.Kind.AXE
+		"лук", "bow": return WEAPONS.Kind.BOW
+		"арбалет", "crossbow": return WEAPONS.Kind.CROSSBOW
+		"магия", "spell": return WEAPONS.Kind.SPELL
+		"молот", "hammer": return WEAPONS.Kind.HAMMER
+		_: return WEAPONS.Kind.SWORD
 
 
 static func _limb(player: Node3D, args: Array) -> String:
@@ -164,7 +183,7 @@ static func _limb(player: Node3D, args: Array) -> String:
 	var zone := String(args[0]).to_lower()
 	for i in 12:
 		player.health.revive()
-		player.body.register_hit(zone, 12.0)
+		player.body.register_hit(zone, 12.0, WEAPONS.Kind.SWORD)
 	player.health.revive()
 	return "состояние тела: %s" % player.body.summary()
 
