@@ -41,6 +41,8 @@ enum Kind {
 	MAGIC,          ## магия поддержки эльфов
 	NOTICE,         ## объявление в интерфейсе
 	STEP,           ## шаг
+	HOOF,           ## копыто
+	CART,           ## скрип и грохот обоза, петля
 }
 
 const MIX_RATE := 22050
@@ -58,6 +60,8 @@ const FILES := {
 	Kind.MAGIC: "res://assets/audio/handleCoins.ogg",
 	Kind.NOTICE: "res://assets/audio/metalClick.ogg",
 	Kind.STEP: "res://assets/audio/footstep_grass_000.ogg",
+	# Копыта и обоз — СИНТЕЗ, файла нет намеренно: чужих ассетов в проекте
+	# больше не держим, а стук и скрип синтезируются легче удара.
 }
 
 ## Шаги берём по кругу из нескольких файлов: один и тот же шаг подряд слышен как
@@ -145,6 +149,19 @@ func flat(kind: int, volume_db: float = -6.0) -> void:
 	_flat.play()
 
 
+## Копыто в точке мира. Отдельно от шага: у лошади удар ниже, глуше и тяжелее,
+## и слышен дальше человеческого.
+func hoof(point: Vector3) -> void:
+	at(Kind.HOOF, point, -14.0)
+
+
+## Поток для непрерывного звука — его вешают на саму повозку и крутят, пока
+## она едет. Возвращаем сам поток, а не проигрыватель: где ему звучать, решает
+## тот, кто едет.
+func stream_of(kind: int) -> AudioStream:
+	return _samples.get(kind, null)
+
+
 # --- синтез ----------------------------------------------------------------
 
 ## Собрать звуки: сперва файлы, синтез — только там, где файла нет.
@@ -160,11 +177,17 @@ func _build_samples() -> void:
 			var step: AudioStream = load(path)
 			if step != null:
 				_steps.append(step)
+	_build_synth_only()
 	_build_fallback()
 
 
 ## Синтез. Остаётся запасным путём и заполняет только то, чего не нашлось
 ## файлом: молчащая игра хуже некрасиво звучащей.
+func _build_synth_only() -> void:
+	_samples[Kind.HOOF] = _hoof_sample()
+	_samples[Kind.CART] = _cart_loop()
+
+
 func _build_fallback() -> void:
 	# Удар по живому: короткий шумовой всплеск с быстрым спадом. Мясисто и
 	# коротко — в бою таких звуков десятки в секунду.
@@ -200,6 +223,55 @@ func _build_fallback() -> void:
 
 
 ## Шумовой всплеск. `bright` поднимает высоту: 1.0 — белый шум, меньше — глуше.
+## Копыто: глухой низкий удар с коротким цоканьем сверху.
+##
+## Один шум звучит шлепком, один тон — деревяшкой. Копыто это и то и другое:
+## удар копыта о землю и щелчок ободка, и слышны они как один звук только
+## вместе.
+func _hoof_sample() -> AudioStreamWAV:
+	var seconds := 0.20
+	var count := int(MIX_RATE * seconds)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 6161
+	var phase := 0.0
+	for i in count:
+		var t: float = float(i) / float(count)
+		var thump: float = exp(-t * 26.0)
+		phase += TAU * lerpf(150.0, 60.0, t) / float(MIX_RATE)
+		var click: float = rng.randf_range(-1.0, 1.0) * exp(-t * 120.0)
+		_put(data, i, sin(phase) * thump * 0.7 + click * 0.35)
+	return _wav(data)
+
+
+## Обоз: непрерывный низкий грохот колёс со скрипом оси поверх.
+##
+## Петля намеренно НЕ круглая по длине скрипа: если скрип попадает в такт петле,
+## слышно, что это петля. Берём период скрипа, не укладывающийся в неё нацело.
+func _cart_loop() -> AudioStreamWAV:
+	var seconds := 3.0
+	var count := int(MIX_RATE * seconds)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 313131
+	var low := 0.0
+	var phase := 0.0
+	for i in count:
+		var t: float = float(i) / float(count)
+		# Колёса: низкий шум, качающийся от неровностей.
+		low = lerpf(low, rng.randf_range(-1.0, 1.0), 0.09)
+		var roll: float = low * (0.55 + 0.45 * sin(t * TAU * 3.0))
+		# Ось: скрип на 430 Гц, гуляющий по высоте, с периодом 0.7 от петли.
+		var creak_hz: float = 430.0 + 90.0 * sin(t * TAU * 1.43)
+		phase += TAU * creak_hz / float(MIX_RATE)
+		var creak: float = sin(phase) * maxf(0.0, sin(t * TAU * 1.43)) * 0.18
+		var seam: float = minf(1.0, minf(t, 1.0 - t) * 30.0)
+		_put(data, i, (roll * 0.5 + creak) * seam)
+	return _wav(data, true)
+
+
 func _noise(seconds: float, level: float, bright: float) -> AudioStreamWAV:
 	var count := int(MIX_RATE * seconds)
 	var rng := RandomNumberGenerator.new()
@@ -253,12 +325,18 @@ func _put(data: PackedByteArray, index: int, value: float) -> void:
 	data.encode_s16(index * 2, sample)
 
 
-func _wav(data: PackedByteArray) -> AudioStreamWAV:
+func _wav(data: PackedByteArray, looping: bool = false) -> AudioStreamWAV:
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
 	wav.mix_rate = MIX_RATE
 	wav.stereo = false
 	wav.data = data
+	# Петля нужна непрерывным звукам — обозу. Без неё скрип играет три секунды
+	# и замолкает, а повозка едет дальше.
+	if looping:
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		wav.loop_begin = 0
+		wav.loop_end = data.size() / 2
 	return wav
 
 

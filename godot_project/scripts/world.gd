@@ -162,6 +162,8 @@ func _ready() -> void:
 ## стоит. Сигналы тоже доходят — иначе `_on_session_started` не разбудил бы его.
 func _set_running(on: bool) -> void:
 	process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+	# Живой фон — часть партии, а не программы: в меню лесу шуметь незачем.
+	Ambience.set_running(on)
 
 
 func _process(delta: float) -> void:

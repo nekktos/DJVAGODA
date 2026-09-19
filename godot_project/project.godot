@@ -16,6 +16,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 Net="*res://scripts/network_manager.gd"
 Sfx="*res://scripts/audio/sfx.gd"
+Ambience="*res://scripts/audio/ambience.gd"
 
 [display]
 

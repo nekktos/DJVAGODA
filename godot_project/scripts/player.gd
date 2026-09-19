@@ -443,7 +443,13 @@ func _tick_steps(delta: float) -> void:
 ## слышно — это и есть смысл звука шагов.
 @rpc("authority", "call_local", "unreliable")
 func step_heard(point: Vector3) -> void:
-	Sfx.step(point)
+	# Верхом слышно КОПЫТО, а не сапог. Звучит один и тот же тик шага, но
+	# всадник, который шуршит травой, слышится пешеходом — и по слуху нельзя
+	# понять, кто приближается.
+	if riding():
+		Sfx.hoof(point)
+	else:
+		Sfx.step(point)
 
 
 ## Снимок ввода за кадр. Отдельный слой специально: когда авторитет над
@@ -1351,13 +1357,21 @@ func _eye_pivot() -> Vector3:
 	return eye
 
 
+## Своя ли это камера: живой игрок, а не герой под ИИ и не чужой персонаж.
+func mine_view() -> bool:
+	return is_multiplayer_authority() and not ai_led
+
+
 func _apply_view() -> void:
 	if _pivot == null or _arm == null:
 		return
+	# Фон поёт вокруг СЛУШАТЕЛЯ, и слушатель — свой персонаж. Ставим здесь же,
+	# где решается, чья камера: это ровно то же «мой это персонаж или чужой».
+	if mine_view():
+		Ambience.listener = self
 	_pivot.position = _eye_pivot() if _first_person else VIEW_THIRD_PIVOT
 	_arm.spring_length = VIEW_FIRST_ARM if _first_person else VIEW_THIRD_ARM
-	var mine: bool = is_multiplayer_authority() and not ai_led
-	var hide_body: bool = _first_person and mine
+	var hide_body: bool = _first_person and mine_view()
 	for mesh in RIG.body_meshes(_skeleton):
 		mesh.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 			if hide_body else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)

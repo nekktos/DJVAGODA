@@ -82,6 +82,9 @@ const DOCK_RANGE := 14.0
 ## Поводок охраны вокруг повозки.
 const GUARD_LEASH := 16.0
 
+## Проигрыватель скрипа колёс. Пусто — обоз ещё ни разу не тронулся.
+var _wheels: AudioStreamPlayer3D = null
+
 signal destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: int)
 ## Обоз доехал целым: столько лошадей вернулось в конюшню.
 ##
@@ -272,12 +275,36 @@ func _physics_process(delta: float) -> void:
 
 ## Проехать очередной отрезок маршрута. true — маршрут пройден до конца.
 ## backwards: обратный путь идёт по тем же точкам в обратном порядке.
+## Скрип и грохот обоза, пока он катится. Заводим ЛЕНИВО, при первом движении:
+## обозов на карте бывает по одному на сторону, и держать проигрыватель у
+## каждого стоящего — платить за тишину.
+func _rolling(on: bool) -> void:
+	if on and _wheels == null:
+		var stream: AudioStream = Sfx.stream_of(Sfx.Kind.CART)
+		if stream == null:
+			return
+		_wheels = AudioStreamPlayer3D.new()
+		_wheels.stream = stream
+		_wheels.max_distance = 70.0
+		_wheels.unit_size = 5.0
+		_wheels.volume_db = -20.0
+		add_child(_wheels)
+	if _wheels == null:
+		return
+	if on and not _wheels.playing:
+		_wheels.play()
+	elif not on and _wheels.playing:
+		_wheels.stop()
+
+
 func _advance(delta: float, backwards: bool) -> bool:
 	if route.size() < 2:
 		return true
 	# Стоящий обоз никуда не едет и точку маршрута не проходит.
 	if halted:
+		_rolling(false)
 		return false
+	_rolling(true)
 	var index: int = (route.size() - 1 - _leg) if backwards else _leg
 	index = clampi(index, 0, route.size() - 1)
 	var target: Vector3 = route[index]

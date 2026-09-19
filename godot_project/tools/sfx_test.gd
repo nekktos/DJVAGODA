@@ -17,13 +17,14 @@ extends "res://tools/test_base.gd"
 
 const SFX := preload("res://scripts/audio/sfx.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
+const AMBIENCE := preload("res://scripts/audio/ambience.gd")
 
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "звук"
-	expected_host = 10
+	expected_host = 14
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -38,6 +39,8 @@ func _run() -> void:
 	_test_samples_built()
 	_test_safe_when_silent()
 	await _test_hooks()
+	_test_living_world()
+
 	finish()
 
 
@@ -137,3 +140,56 @@ func _peak(wav: AudioStreamWAV) -> float:
 		peak = maxf(peak, absf(float(data.decode_s16(i * 2)) / 32768.0))
 		i += step
 	return peak
+
+
+## Живой фон: ветер, птицы, обоз, копыта.
+##
+## Живой отчёт: «игра ощущается пустынной». Пустынной её делало не отсутствие
+## ударов, а отсутствие фона — между событиями стояла полная тишина.
+##
+## Проверяем ДАННЫЕ, как и весь этот набор: headless звука не слышит. Но данные
+## тут говорят о многом — синтез легко вырождается в тишину или в постоянный
+## отсчёт, и тогда «звук есть» означает ровный писк или ничего.
+func _test_living_world() -> void:
+	# Берём ОТДЕЛЬНЫЙ экземпляр и строим сэмплы руками: у автозагрузки в
+	# прогоне без окна звук выключен целиком и сэмплов нет вовсе — спрашивать
+	# у неё значит проверять, что звук выключен.
+	var box := SFX.new()
+	box._build_samples()
+	var cart: AudioStream = box._samples.get(SFX.Kind.CART, null)
+	var hoof: AudioStream = box._samples.get(SFX.Kind.HOOF, null)
+	check(cart != null and hoof != null, "обоз и копыта синтезированы",
+		"обоз %s, копыто %s" % [cart != null, hoof != null])
+
+	# Обоз ЕДЕТ долго, а сэмпл короткий: без петли он смолкнет на полдороге.
+	var looping: bool = (cart is AudioStreamWAV
+		and (cart as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD)
+	check(looping, "скрип обоза зациклен", "петля: %s" % looping)
+
+	# Ветер — то, что убирает тишину. Он обязан быть длинным и зациклённым:
+	# короткая петля слышна как повторяющийся шорох и раздражает сильнее тишины.
+	var air := AMBIENCE.new()
+	var wind: AudioStreamWAV = air._wind_loop()
+	var seconds: float = float(wind.data.size() / 2) / float(air.MIX_RATE)
+	check(wind.loop_mode == AudioStreamWAV.LOOP_FORWARD and seconds > 5.0,
+		"ветер длинный и зациклен", "%.1f с, петля %s" % [
+			seconds, wind.loop_mode == AudioStreamWAV.LOOP_FORWARD])
+
+	# И он не должен быть тишиной. Синтез, ушедший в ноль, — самая обидная
+	# поломка звука: всё «есть», а не слышно ничего.
+	var bird: AudioStreamWAV = air._bird_call(1)
+	check(_loudest(wind) > 0.05 and _loudest(bird) > 0.1,
+		"ветер и щебет звучат, а не молчат",
+		"ветер %.2f, щебет %.2f" % [_loudest(wind), _loudest(bird)])
+	air.free()
+	box.free()
+
+
+## Самый громкий отсчёт в сэмпле, от 0 до 1.
+func _loudest(wav: AudioStreamWAV) -> float:
+	var top := 0
+	var count: int = wav.data.size() / 2
+	var step: int = maxi(1, count / 2000)
+	for i in range(0, count, step):
+		top = maxi(top, absi(wav.data.decode_s16(i * 2)))
+	return float(top) / 32767.0
