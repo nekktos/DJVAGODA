@@ -17,13 +17,22 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
+const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
+const MODEL_ANIM := preload("res://scripts/model_anim.gd")
+
+## Модели сторон — те же три, что в `player.gd::MODELS`, в том же порядке.
+const SIDE_MODELS := [
+	"res://assets/people/Wizard.gltf",
+	"res://assets/people/Ranger.gltf",
+	"res://assets/people/Warrior.gltf",
+]
 
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "оружие"
-	expected_host = 23
+	expected_host = 27
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -47,7 +56,114 @@ func _run() -> void:
 	_test_crossbow_pierces_formation()
 	_test_archer_stands_behind()
 	await _test_harvest_tools(me)
+	_test_weapon_sits_in_hand()
+	_test_swing_is_animated()
 	finish()
+
+
+## Оружие держат ЗА РУКОЯТЬ, а не за середину клинка.
+##
+## Живой отчёт: «эльф держит меч за остриё». Проверяем результат, а не сдвиг:
+## берём самый дальний назад кусок модели — это и есть рукоять, `_build` кладёт
+## её позади всего остального, — и смотрим, что после подвеса он пришёлся НА
+## кость, а не в полуметре от неё. Числа `GRIP_Z` при этом не поминаем: проверка
+## обязана падать и тогда, когда число поправили, а рукоять всё равно мимо.
+func _test_weapon_sits_in_hand() -> void:
+	var mount := Node3D.new()
+	add_child(mount)
+	var worst_kind := -1
+	var worst_share := 0.0
+	for kind in WEAPONS.NAMES.size():
+		var holder: Node3D = WEAPON_VISUAL.attach_at(mount, kind, null, 0)
+		if holder == null:
+			continue
+		# Протяжённость оружия вдоль его оси, вместе с наклонёнными кусками.
+		var bounds := AABB()
+		var first := true
+		for child in holder.get_children():
+			var mesh := child as MeshInstance3D
+			if mesh == null:
+				continue
+			var box: AABB = mesh.transform * mesh.get_aabb()
+			bounds = box if first else bounds.merge(box)
+			first = false
+		if first:
+			continue
+		var span: Vector3 = bounds.size
+		var back: float = bounds.position.z
+		var front: float = bounds.end.z
+		var length: float = front - back
+		if length <= 0.0:
+			continue
+		# Лук — исключение, и законное: он лежит вдоль СВОЕЙ длинной оси Y, а
+		# держат его ровно посередине. Правило «за задний конец» — про древко и
+		# клинок, то есть про оружие, вытянутое вдоль Z. Меряем его только там,
+		# где Z и есть длинная ось; иначе проверка требовала бы держать лук за
+		# нижнее плечо.
+		if length < maxf(span.x, span.y):
+			continue
+		# Где на оружии оказалась кисть: 0 — у самого торца, 1 — у острия.
+		# Отдельной рукояти у древкового оружия нет, руку кладут на само
+		# древко, — поэтому меряем ДОЛЮ, а не расстояние до куска.
+		var share: float = (-holder.position.z - back) / length
+		if share > worst_share:
+			worst_share = share
+			worst_kind = kind
+		holder.queue_free()
+	mount.queue_free()
+	check(worst_share < 0.40, "оружие держат за задний конец, а не за середину",
+		"худший — %s, кисть на %.0f%% длины от торца" % [
+			WEAPONS.NAMES[worst_kind] if worst_kind >= 0 else "нет", worst_share * 100.0
+		])
+
+
+## Удар ВИДЕН: у каждой стороны имя удара разрешается в реальную анимацию.
+##
+## Точка вызова говорит кенниевскими словами, а модели приехали от Quaternius —
+## после переезда `resolve` возвращал пустую строку, и удар не рисовался вовсе.
+## Проверяем именно перевод: он и есть то место, где паки расходятся.
+func _test_swing_is_animated() -> void:
+	var melee_missing: Array[String] = []
+	var ranged_missing: Array[String] = []
+	for path in SIDE_MODELS:
+		var packed: PackedScene = load(path)
+		if packed == null:
+			continue
+		var root: Node = packed.instantiate()
+		var anim := _find_anim(root)
+		if anim == null:
+			melee_missing.append(path.get_file())
+			ranged_missing.append(path.get_file())
+			root.queue_free()
+			continue
+		if MODEL_ANIM.resolve(anim, "attack-melee-right") == "":
+			melee_missing.append(path.get_file())
+		if MODEL_ANIM.resolve(anim, "holding-right-shoot") == "":
+			ranged_missing.append(path.get_file())
+		root.queue_free()
+	check(melee_missing.is_empty(), "удар в ближнем бою есть у каждой стороны",
+		"без удара: %s" % ", ".join(melee_missing) if not melee_missing.is_empty() else "все три")
+	check(ranged_missing.is_empty(), "выстрел и каст есть у каждой стороны",
+		"без выстрела: %s" % ", ".join(ranged_missing) if not ranged_missing.is_empty() else "все три")
+
+	# Удар — разовый, стойка — цикл. Зациклённый `Sword_Attack` махал бы мечом
+	# не переставая, и слово «attack» в его имени стоит НЕ в начале.
+	check(MODEL_ANIM.is_one_shot("Sword_Attack")
+			and MODEL_ANIM.is_one_shot("Staff_Attack")
+			and MODEL_ANIM.is_one_shot("Bow_Shoot")
+			and not MODEL_ANIM.is_one_shot("Idle_Attacking")
+			and not MODEL_ANIM.is_one_shot("Idle_Weapon"),
+		"удар разовый, а боевая стойка зациклена", "и то и другое верно")
+
+
+func _find_anim(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_anim(child)
+		if found != null:
+			return found
+	return null
 
 
 ## У каждой стороны свой набор, и эксклюзивы не пересекаются.
