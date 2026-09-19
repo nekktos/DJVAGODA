@@ -764,6 +764,53 @@ func _set_buttons_enabled(enabled: bool) -> void:
 	_join_btn.disabled = not enabled
 
 
+## Ключи проверок: ключ → [скрипт инструмента, нужна ли живая сессия].
+##
+## ТАБЛИЦА, А НЕ ТРИДЦАТЬ ДВА ОДИНАКОВЫХ БЛОКА. Каждый набор добавлялся своей
+## пятистрочной копией, и к последнему разбор ключей занимал 239 строк, в
+## которых уже ничего нельзя было разглядеть.
+##
+## И главное: инструмент грузится ПО ИМЕНИ, а не через `preload`. В сборке для
+## игроков папки `res://tools/` нет вовсе — её исключает `export_presets.cfg`, —
+## а `preload` разрешается при КОМПИЛЯЦИИ: с ним экспортированный скрипт просто
+## не собрался бы, потому что файла нет. `load` по отсутствующему пути возвращает
+## пусто, ключ молча не срабатывает, и это верно: игроку он не нужен.
+const TEST_FLAGS := {
+	"--perftest": ["res://tools/perf_test.gd", true],
+	"--playerprobe": ["res://tools/player_probe.gd", true],
+	"--magictest": ["res://tools/magic_test.gd", true],
+	"--weapontest": ["res://tools/weapons_test.gd", true],
+	"--sfxtest": ["res://tools/sfx_test.gd", true],
+	"--stewardtest": ["res://tools/steward_test.gd", true],
+	"--labtest": ["res://tools/labourer_test.gd", true],
+	"--navtest": ["res://tools/nav_test.gd", true],
+	"--soaktest": ["res://tools/soak_test.gd", true],
+	"--netsoaktest": ["res://tools/netsoak_test.gd", true],
+	"--herotest": ["res://tools/hero_test.gd", true],
+	"--horsetest": ["res://tools/horse_test.gd", true],
+	"--warbandtest": ["res://tools/warband_test.gd", true],
+	"--garrisontest": ["res://tools/garrison_test.gd", true],
+	"--reentrytest": ["res://tools/reentry_test.gd", true],
+	"--newgametest": ["res://tools/newgame_test.gd", true],
+	"--savetest": ["res://tools/save_test.gd", true],
+	"--diptest": ["res://tools/diplomacy_test.gd", true],
+	"--victorytest": ["res://tools/victory_test.gd", true],
+	"--deathtest": ["res://tools/death_test.gd", true],
+	"--guardtest": ["res://tools/guard_test.gd", true],
+	"--tradetest": ["res://tools/trade_test.gd", true],
+	"--elftest": ["res://tools/elf_test.gd", true],
+	"--foresttest": ["res://tools/forest_test.gd", true],
+	"--consoletest": ["res://tools/console_test.gd", true],
+	"--slicetest": ["res://tools/slice_test.gd", true],
+	"--squadtest": ["res://tools/squad_test.gd", true],
+	"--caravantest": ["res://tools/caravan_test.gd", true],
+	"--econtest": ["res://tools/economy_test.gd", true],
+	"--woundtest": ["res://tools/wound_test.gd", true],
+	"--walktest": ["res://tools/walk_test.gd", true],
+	"--combattest": ["res://tools/combat_test.gd", false],
+}
+
+
 func _apply_cmdline() -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	if args.has("--steam"):
@@ -784,202 +831,21 @@ func _apply_cmdline() -> void:
 		needs_session = true
 		_arm_strategy_test()
 
-	if args.has("--perftest"):
-		var perf: Node = preload("res://tools/perf_test.gd").new()
-		add_child(perf)
-		perf.start(_world)
-		needs_session = true
-
-	if args.has("--playerprobe"):
-		var probe: Node = preload("res://tools/player_probe.gd").new()
-		add_child(probe)
-		probe.start(_world)
-		needs_session = true
+	# Инструменты проверки — таблицей (см. TEST_FLAGS). В сборке для игроков
+	# их нет, и цикл просто ничего не находит.
+	for flag in TEST_FLAGS:
+		if not args.has(flag):
+			continue
+		var spec: Array = TEST_FLAGS[flag]
+		var tool_node: Node = _start_tool(String(spec[0]))
+		if tool_node != null and bool(spec[1]):
+			needs_session = true
 
 	for arg in args:
 		if arg.begins_with("--faction="):
 			var wanted := int(arg.substr("--faction=".length()))
 			_faction_opt.select(clampi(wanted, 0, FACTIONS.COUNT - 1))
 			Net.chosen_faction = _faction_opt.selected
-
-	if args.has("--magictest"):
-		var magic_test: Node = preload("res://tools/magic_test.gd").new()
-		add_child(magic_test)
-		magic_test.start(_world)
-		needs_session = true
-
-	if args.has("--weapontest"):
-		var weapon_test: Node = preload("res://tools/weapons_test.gd").new()
-		add_child(weapon_test)
-		weapon_test.start(_world)
-		needs_session = true
-
-	if args.has("--sfxtest"):
-		var sfx_test: Node = preload("res://tools/sfx_test.gd").new()
-		add_child(sfx_test)
-		sfx_test.start(_world)
-		needs_session = true
-
-	if args.has("--stewardtest"):
-		var steward_test: Node = preload("res://tools/steward_test.gd").new()
-		add_child(steward_test)
-		steward_test.start(_world)
-		needs_session = true
-
-	if args.has("--labtest"):
-		var lab_test: Node = preload("res://tools/labourer_test.gd").new()
-		add_child(lab_test)
-		lab_test.start(_world)
-		needs_session = true
-
-	if args.has("--navtest"):
-		var nav_test: Node = preload("res://tools/nav_test.gd").new()
-		add_child(nav_test)
-		nav_test.start(_world)
-		needs_session = true
-
-	if args.has("--soaktest"):
-		var soak_test: Node = preload("res://tools/soak_test.gd").new()
-		add_child(soak_test)
-		soak_test.start(_world)
-		needs_session = true
-
-	if args.has("--netsoaktest"):
-		var net_soak: Node = preload("res://tools/netsoak_test.gd").new()
-		add_child(net_soak)
-		net_soak.start(_world)
-		needs_session = true
-
-	if args.has("--herotest"):
-		var hero_test: Node = preload("res://tools/hero_test.gd").new()
-		add_child(hero_test)
-		hero_test.start(_world)
-		needs_session = true
-
-	if args.has("--horsetest"):
-		var horse_test: Node = preload("res://tools/horse_test.gd").new()
-		add_child(horse_test)
-		horse_test.start(_world)
-		needs_session = true
-
-	if args.has("--warbandtest"):
-		var warband_test: Node = preload("res://tools/warband_test.gd").new()
-		add_child(warband_test)
-		warband_test.start(_world)
-		needs_session = true
-
-	if args.has("--garrisontest"):
-		var garrison_test: Node = preload("res://tools/garrison_test.gd").new()
-		add_child(garrison_test)
-		garrison_test.start(_world)
-		needs_session = true
-
-	if args.has("--reentrytest"):
-		var reentry_test: Node = preload("res://tools/reentry_test.gd").new()
-		add_child(reentry_test)
-		reentry_test.start(_world)
-		needs_session = true
-
-	if args.has("--newgametest"):
-		var newgame_test: Node = preload("res://tools/newgame_test.gd").new()
-		add_child(newgame_test)
-		newgame_test.start(_world)
-		needs_session = true
-
-	if args.has("--savetest"):
-		var save_test: Node = preload("res://tools/save_test.gd").new()
-		add_child(save_test)
-		save_test.start(_world)
-		needs_session = true
-
-	if args.has("--diptest"):
-		var dip_test: Node = preload("res://tools/diplomacy_test.gd").new()
-		add_child(dip_test)
-		dip_test.start(_world)
-		needs_session = true
-
-	if args.has("--victorytest"):
-		var victory_test: Node = preload("res://tools/victory_test.gd").new()
-		add_child(victory_test)
-		victory_test.start(_world)
-		needs_session = true
-
-	if args.has("--deathtest"):
-		var death_test: Node = preload("res://tools/death_test.gd").new()
-		add_child(death_test)
-		death_test.start(_world)
-		needs_session = true
-
-	if args.has("--guardtest"):
-		var guard_test: Node = preload("res://tools/guard_test.gd").new()
-		add_child(guard_test)
-		guard_test.start(_world)
-		needs_session = true
-
-	if args.has("--tradetest"):
-		var trade_test: Node = preload("res://tools/trade_test.gd").new()
-		add_child(trade_test)
-		trade_test.start(_world)
-		needs_session = true
-
-	if args.has("--elftest"):
-		var elf_test: Node = preload("res://tools/elf_test.gd").new()
-		add_child(elf_test)
-		elf_test.start(_world)
-		needs_session = true
-
-	if args.has("--foresttest"):
-		var forest_test: Node = preload("res://tools/forest_test.gd").new()
-		add_child(forest_test)
-		forest_test.start(_world)
-		needs_session = true
-
-	if args.has("--consoletest"):
-		var console: Node = preload("res://tools/console_test.gd").new()
-		add_child(console)
-		console.start(_world)
-		needs_session = true
-
-	if args.has("--slicetest"):
-		var slice: Node = preload("res://tools/slice_test.gd").new()
-		add_child(slice)
-		slice.start(_world)
-		needs_session = true
-
-	if args.has("--squadtest"):
-		var squad: Node = preload("res://tools/squad_test.gd").new()
-		add_child(squad)
-		squad.start(_world)
-		needs_session = true
-
-	if args.has("--caravantest"):
-		var caravan: Node = preload("res://tools/caravan_test.gd").new()
-		add_child(caravan)
-		caravan.start(_world)
-		needs_session = true
-
-	if args.has("--econtest"):
-		var econ: Node = preload("res://tools/economy_test.gd").new()
-		add_child(econ)
-		econ.start(_world)
-		needs_session = true
-
-	if args.has("--woundtest"):
-		var wounds: Node = preload("res://tools/wound_test.gd").new()
-		add_child(wounds)
-		wounds.start(_world)
-		needs_session = true
-
-	if args.has("--combattest"):
-		var fighter: Node = preload("res://tools/combat_test.gd").new()
-		add_child(fighter)
-		fighter.start(_world)
-
-	if args.has("--walktest"):
-		var walker: Node = preload("res://tools/walk_test.gd").new()
-		add_child(walker)
-		walker.start(_world)
-		needs_session = true
 
 	for arg in args:
 		if arg.begins_with("--shots="):
@@ -991,9 +857,12 @@ func _apply_cmdline() -> void:
 		if arg.begins_with("--menushot="):
 			# Снимок меню делается БЕЗ сессии: меню видно, только пока её нет.
 			# Поэтому и выходим отсюда сразу, не дойдя до --host.
-			var shot: Node = preload("res://tools/menu_shot.gd").new()
-			add_child(shot)
-			shot.start(self, arg.substr("--menushot=".length()))
+			var menu_script: Script = (load("res://tools/menu_shot.gd")
+				if ResourceLoader.exists("res://tools/menu_shot.gd") else null)
+			if menu_script != null:
+				var shot: Node = menu_script.new()
+				add_child(shot)
+				shot.start(self, arg.substr("--menushot=".length()))
 			return
 
 	for arg in args:
@@ -1020,10 +889,37 @@ func _on_camera_mode_changed(strategy: bool) -> void:
 
 
 ## Режим съёмки ракурсов: инструмент проверки, к геймплею отношения не имеет.
+## Завести инструмент проверки. Пусто — значит это сборка для игроков и папки
+## `res://tools/` в ней нет.
+func _start_tool(path: String) -> Node:
+	if not ResourceLoader.exists(path):
+		return null
+	var script: Script = load(path)
+	if script == null:
+		return null
+	var node: Node = script.new()
+	add_child(node)
+	node.start(_world)
+	return node
+
+
 func _start_screenshots(dir: String) -> void:
-	var runner: Node = preload("res://tools/screenshotter.gd").new()
-	add_child(runner)
-	runner.start(_world, dir)
+	var runner: Node = _start_tool_with(dir, "res://tools/screenshotter.gd")
+	if runner == null:
+		push_warning("Съёмка ракурсов недоступна: это сборка без инструментов.")
+
+
+## То же, но инструменту нужен ещё и путь.
+func _start_tool_with(dir: String, path: String) -> Node:
+	if not ResourceLoader.exists(path):
+		return null
+	var script: Script = load(path)
+	if script == null:
+		return null
+	var node: Node = script.new()
+	add_child(node)
+	node.start(_world, dir)
+	return node
 
 
 func _arm_strategy_test() -> void:

@@ -26,8 +26,10 @@ var _world: Node3D
 ## отключается, доиграв свою половину, и «первая свободная» посреди прогона
 ## меняется. На этом прогон один раз уже сломался.
 var _side := -1
-## Объявления, дошедшие до этого пира. Набег обязан быть слышен: мир начал
-## воевать сам, и молча это делать нельзя.
+## События мира, дошедшие до этого пира. Набег обязан быть СЛЫШЕН ПО СЕТИ: мир
+## начал воевать сам, и клиент обязан об этом узнать. Слушаем канал лога, а не
+## объявлений: на экран набег больше не выводится (он давал игроку всезнание о
+## чужих ходах), но доезжать до всех пиров обязан по-прежнему.
 var _heard := PackedStringArray()
 
 
@@ -36,7 +38,7 @@ func start(world: Node3D) -> void:
 	expected_host = 20
 	expected_client = 3
 	_world = world
-	_world.objective.announced.connect(func(text: String) -> void: _heard.append(text))
+	_world.objective.logged.connect(func(text: String) -> void: _heard.append(text))
 	_run.call_deferred()
 
 
@@ -200,8 +202,8 @@ func _test_marches_on_property(me: Node3D) -> void:
 	for text in _heard:
 		if text.to_lower().contains("набег"):
 			announced = true
-	check(announced, "о набеге объявили всем",
-		"объявлений %d: %s" % [_heard.size(), ", ".join(_heard)])
+	check(announced, "о набеге знает весь мир",
+		"событий %d: %s" % [_heard.size(), ", ".join(_heard)])
 
 
 ## Построение меняется по обстановке — «использует построения» из плана.
@@ -313,7 +315,7 @@ func _run_client() -> void:
 	for text in _heard:
 		if text.to_lower().contains("набег"):
 			announced = true
-	check(announced, "объявление о набеге доехало до клиента",
+	check(announced, "событие о набеге доехало до клиента",
 		"объявлений %d" % _heard.size())
 	check(_world.warband.state_of(0) == 0 and not _world.warband.anchor_of(0).is_finite(),
 		"клиент сам ничем не командует", "состояние пустое")

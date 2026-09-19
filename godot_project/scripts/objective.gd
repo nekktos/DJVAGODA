@@ -31,6 +31,18 @@ const VICTORY_TEXT := [
 ]
 
 signal announced(text: String)
+## Событие мира — в ЛОГ, а не на экран.
+##
+## Отдельный канал нужен, потому что смешались две разные вещи. Объявление
+## («Дворец захвачен», «ПОБЕДА») адресовано игроку и обязано быть видно.
+## А «Набег: Охрана дворца → зона Охрана дворца» — это отладочная строка: она
+## выдаёт игроку всезнание о чужих ходах через всю карту, которого у него быть
+## не должно, и вдобавок читается бессмыслицей, когда сторона идёт «в набег» на
+## собственную зону (`_place_name` берёт ближайшую базу к цели).
+##
+## Событие всё так же доезжает до всех пиров — это проверяется набором, — но
+## на экран не попадает.
+signal logged(text: String)
 
 ## Реплицируемое состояние.
 @export var palace_owner: int = FACTIONS.Kind.GUARD
@@ -230,6 +242,16 @@ func announce(text: String) -> void:
 	if sender != 0 and sender != 1:
 		return
 	announced.emit(text)
+
+
+## Записать событие мира всем. На экран НЕ выводится — см. `logged`.
+@rpc("any_peer", "call_local", "reliable")
+func log_event(text: String) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != 1:
+		return
+	print("[мир] %s" % text)
+	logged.emit(text)
 
 
 func status_text() -> String:
