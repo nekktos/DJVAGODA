@@ -35,7 +35,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "герой"
-	expected_host = 28
+	expected_host = 33
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -92,6 +92,58 @@ func _test_camera_belongs_to_human(hero: Node3D) -> void:
 		"своя камера активна")
 	check(not hero._camera.current, "и НЕ у героя ИИ",
 		"камера героя выключена" if not hero._camera.current else "герой перехватил вид")
+	_test_first_person(me, hero)
+
+
+## Вид переключается между первым и третьим лицом (решение от 19.09.2026).
+##
+## Проверяем не «флаг переключился» — это проверка намерения, — а то, что
+## РЕЗУЛЬТАТ виден: камера переехала на уровень глаз, плечевой вынос ушёл, а
+## своё тело пропало из кадра. И отдельно то, ради чего тело гасят тенью, а не
+## `visible`: тень под ногами обязана остаться, иначе в первом лице персонажа в
+## мире как будто нет.
+func _test_first_person(me: Node3D, hero: Node3D) -> void:
+	const RIG := preload("res://scripts/combat/rig.gd")
+	var third_pivot: Vector3 = me._pivot.position
+	var third_arm: float = me._arm.spring_length
+
+	var now_first: bool = me.toggle_view()
+	var eye_level: bool = me._pivot.position.y < third_pivot.y and is_zero_approx(me._pivot.position.x)
+	check(now_first and eye_level and is_zero_approx(me._arm.spring_length),
+		"первое лицо: камера на уровне глаз, плечевой вынос убран",
+		"пивот %.2f -> %.2f, вынос %.2f -> %.2f" % [
+			third_pivot.y, me._pivot.position.y, third_arm, me._arm.spring_length])
+
+	var body_hidden := true
+	var casts_shadow := true
+	for mesh in RIG.body_meshes(me._skeleton):
+		if mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+			body_hidden = false
+			casts_shadow = false
+	check(body_hidden and casts_shadow,
+		"своё тело ушло из кадра, но тень осталась",
+		"мешей тела: %d" % RIG.body_meshes(me._skeleton).size())
+
+	# Оружие в руке в первом лице видеть НАДО: оно висит не на скелете, а на
+	# кости, и под гашение тела попасть не должно.
+	var weapon_shown := true
+	if me._weapon_visual != null:
+		for child in me._weapon_visual.get_children():
+			var mesh := child as MeshInstance3D
+			if mesh != null and mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				weapon_shown = false
+	check(weapon_shown, "оружие в руке в первом лице осталось видимым",
+		"оружие есть" if me._weapon_visual != null else "оружия в руке нет")
+
+	# Чужой вид не трогаем: герой ИИ как был в третьем лице, так и остался.
+	check(hero._pivot.position.is_equal_approx(third_pivot),
+		"переключение вида не задело чужого персонажа",
+		"пивот героя %.2f" % hero._pivot.position.y)
+
+	var back_to_third: bool = not me.toggle_view()
+	var restored: bool = me._pivot.position.is_equal_approx(third_pivot) 		and is_equal_approx(me._arm.spring_length, third_arm)
+	check(back_to_third and restored, "возврат в третье лицо ставит камеру на место",
+		"пивот %.2f, вынос %.2f" % [me._pivot.position.y, me._arm.spring_length])
 	# И ввод герой не слушает: две пары рук на одной клавиатуре — это тот же
 	# перехват, только незаметнее.
 	# Подпись говорит, что ВЫШЛО, а не что задумано: постоянная строка «ввод

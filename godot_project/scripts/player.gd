@@ -176,7 +176,32 @@ var _server_cooldown := 0.0
 var _swing_left := 0.0
 var _bandage_progress := 0.0
 
+## ВИД ОТ ПЕРВОГО И ОТ ТРЕТЬЕГО ЛИЦА — решение владельца от 19.09.2026.
+##
+## Это НЕ замена третьего лица первым и НЕ про стратегический режим: экшен
+## получил два подрежима, а `Tab` в вид сверху остался тем же, чем был. GDD
+## раздел 1 этим уточняется, а не отменяется.
+##
+## Числа. Третье лицо — из сцены: пивот вынесен вправо (вид из-за плеча) и
+## поднят выше головы. Первое — на уровне глаз: голова у скелета стоит на 2.10
+## в единицах модели, а модель ужата до MODEL_SCALE, то есть глаза примерно на
+## 1.36 мира. Брать сюда 1.6 от третьего лица нельзя — смотрел бы поверх
+## собственной макушки.
+const VIEW_THIRD_PIVOT := Vector3(0.65, 1.6, 0.0)
+const VIEW_THIRD_ARM := 4.5
+## Чуть вперёд по -Z: перед у персонажа там же, куда он идёт и целится.
+## Высота здесь — ЗАПАСНАЯ: обычно её считает `_eye_pivot` по кости головы.
+const VIEW_FIRST_PIVOT := Vector3(0.0, 1.36, -0.12)
+const VIEW_FIRST_ARM := 0.0
+## Насколько глаза выше центра кости головы.
+const EYE_ABOVE_HEAD_BONE := 0.05
+
+## Смотрим из глаз. ЛОКАЛЬНОЕ и нереплицируемое: чужим всё равно, каким видом
+## играет сосед, а тело прячется только от своей камеры.
+var _first_person := false
+
 @onready var _pivot: Node3D = $CamPivot
+@onready var _arm: SpringArm3D = $CamPivot/SpringArm3D
 @onready var _spring: SpringArm3D = $CamPivot/SpringArm3D
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _name_tag: Label3D = $NameTag
@@ -297,6 +322,11 @@ func _build_model(slot: int) -> void:
 	# готового калеку одним пакетом, и сигнала об отрыве при нём уже не будет.
 	# Поэтому применяем маску сразу, а не ждём события.
 	_apply_severed()
+	# Вид ставим ПОСЛЕ модели: до неё скелета нет, и прятать тело не от чего.
+	# Пересборка модели (респавн, смена облика) обязана вернуть камеру в тот же
+	# вид, в каком человек играл, — иначе первое лицо слетало бы на каждой
+	# смерти.
+	_apply_view()
 	_play("idle")
 
 
@@ -518,6 +548,9 @@ func _refresh_posture() -> void:
 	else:
 		_model.position.y = 0.0
 	_play(_current_anim, true)
+	# Поза сменилась — глаза переехали. В третьем лице это ничего не меняет, в
+	# первом решает всё: иначе ползающий смотрит с высоты стоящего.
+	_apply_view()
 
 
 # --- бой: сторона клиента -------------------------------------------------
@@ -1237,6 +1270,70 @@ func teleport(point: Vector3) -> void:
 func set_view_active(on: bool) -> void:
 	if is_multiplayer_authority():
 		_camera.current = on
+
+
+## Переключить первое лицо и третье. Только у своего персонажа.
+func toggle_view() -> bool:
+	_first_person = not _first_person
+	_apply_view()
+	return _first_person
+
+
+func in_first_person() -> bool:
+	return _first_person
+
+
+## Поставить камеру и решить, показывать ли своё тело.
+##
+## СВОЁ ТЕЛО ГАСИМ ТЕНЬЮ, А НЕ `visible`. Спрятанный меш перестал бы отбрасывать
+## тень, и в первом лице под ногами не было бы ничего — самый заметный признак,
+## что персонажа в мире нет. `SHADOWS_ONLY` убирает тело из кадра, оставляя
+## тень на земле; чужие видят тебя целиком в любом случае, это чисто своя
+## камера.
+##
+## Гасим ТОЛЬКО меши самого скелета: оружие висит на `BoneAttachment3D`, и меч
+## в руке в первом лице обязан остаться на виду (см. `rig.gd::body_meshes`).
+## Где сейчас глаза — по КОСТИ ГОЛОВЫ, а не по числу.
+##
+## Первый заход ставил первое лицо на постоянные 1.36, и это верно ровно пока
+## персонаж стоит. Ползание опускает модель на `CRAWL_MODEL_DROP`, коляска
+## усаживает его анимацией, — а `CamPivot` висит на ПЕРСОНАЖЕ и не едет ни за
+## тем, ни за другим: безногий смотрел бы с высоты стоящего, почти на полметра
+## выше собственной головы.
+##
+## Догонять каждую позу своей константой значит заводить новую на каждую
+## следующую. Кость головы уже едет за анимацией и закрывает их все разом — тем
+## же приёмом, которым зоны попадания живут на костях, а не на числах.
+##
+## Константа остаётся запасным путём и нужна: камеру ставят и до того, как
+## модель построена, и скелета в этот момент ещё нет.
+func _eye_pivot() -> Vector3:
+	var eye := VIEW_FIRST_PIVOT
+	if _skeleton == null or not is_inside_tree():
+		return eye
+	var head := RIG.bone(_skeleton, "Head")
+	if head < 0:
+		return eye
+	var at: Vector3 = (_skeleton.global_transform * _skeleton.get_bone_global_pose(head)).origin
+	var above: float = at.y - global_position.y + EYE_ABOVE_HEAD_BONE
+	# Модель может быть ещё не в позе, и тогда число выходит мусорным. Под
+	# землю и на второй этаж камеру за собой не тащим.
+	if above < 0.2 or above > 2.5:
+		return eye
+	eye.y = above
+	return eye
+
+
+func _apply_view() -> void:
+	if _pivot == null or _arm == null:
+		return
+	_pivot.position = _eye_pivot() if _first_person else VIEW_THIRD_PIVOT
+	_arm.spring_length = VIEW_FIRST_ARM if _first_person else VIEW_THIRD_ARM
+	var mine: bool = is_multiplayer_authority() and not ai_led
+	var hide_body: bool = _first_person and mine
+	for mesh in RIG.body_meshes(_skeleton):
+		mesh.cast_shadow = (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			if hide_body else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 
 
 ## Оружие висит на правой руке: едет с ней по анимации и исчезает вместе с

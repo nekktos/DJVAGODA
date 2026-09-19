@@ -76,6 +76,23 @@ static func bone(skeleton: Skeleton3D, wanted: String) -> int:
 	return -1
 
 
+## Меши самого ТЕЛА — те, что висят прямо на скелете.
+##
+## Нужны первому лицу: своё тело из глаз не видно, и показывать игроку изнанку
+## собственной головы нельзя. Прятать приходится именно тело и только его —
+## оружие, знамёна и всё навешенное живут на `BoneAttachment3D`, а не на самом
+## скелете, и в этот список не попадают. Меч в руке в первом лице видеть надо.
+static func body_meshes(skeleton: Skeleton3D) -> Array[MeshInstance3D]:
+	var found: Array[MeshInstance3D] = []
+	if skeleton == null:
+		return found
+	for child in skeleton.get_children():
+		var mesh := child as MeshInstance3D
+		if mesh != null:
+			found.append(mesh)
+	return found
+
+
 static func find_skeleton(node: Node) -> Skeleton3D:
 	if node is Skeleton3D:
 		return node

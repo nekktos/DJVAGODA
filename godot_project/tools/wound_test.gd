@@ -20,7 +20,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "раны"
-	expected_host = 40
+	expected_host = 42
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -156,6 +156,22 @@ func _test_legs(me: Node3D, body: Node, health: Node) -> void:
 	check(both < one and is_equal_approx(both, BODY.CRAWL_SPEED_BOTH),
 		"без двух ног — ползание медленнее", "скорость %.2f м/с" % both)
 	check(is_equal_approx(body.jump_velocity(5.5), 0.0), "ползком не прыгают", "прыжок %.1f" % body.jump_velocity(5.5))
+
+	# ГЛАЗА ПОЛЗУЩЕГО — У ЗЕМЛИ. Камера первого лица висит на персонаже, а
+	# ползание опускает МОДЕЛЬ: если высоту глаз брать числом, безногий смотрит
+	# с высоты стоящего. Меряем результат — высоту пивота, — а не то, что
+	# посчиталась какая-то кость.
+	me.toggle_view()
+	var crawling_eye: float = me._pivot.position.y
+	await _reset(me, body, health)
+	await get_tree().process_frame
+	var standing_eye: float = me._pivot.position.y
+	check(me.in_first_person() and crawling_eye < standing_eye - 0.2,
+		"в первом лице глаза ползущего ниже, чем у стоящего",
+		"ползком %.2f, стоя %.2f" % [crawling_eye, standing_eye])
+	me.toggle_view()
+	check(not me.in_first_person(), "вид вернулся в третье лицо",
+		"пивот %.2f" % me._pivot.position.y)
 
 
 func _test_eyes(me: Node3D, body: Node, health: Node) -> void:

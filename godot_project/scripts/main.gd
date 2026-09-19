@@ -351,7 +351,7 @@ func _help_text() -> String:
 			lines.append("заклинания: 4 / 5 / 6")
 	lines.append("E — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь")
 	lines.append("у постройки: наём у казарм, лошади в конюшне, обоз у склада · Y — перемирие")
-	lines.append("Tab — вид сверху · F10 — в меню · тильда — консоль")
+	lines.append("Tab — вид сверху · V — первое/третье лицо · F10 — в меню · тильда — консоль")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
@@ -496,6 +496,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed(&"toggle_camera") and Net.active:
 		_world.toggle_camera_mode()
+		get_viewport().set_input_as_handled()
+		return
+	# Первое лицо и третье. В стратегическом режиме молчим: там своя камера, и
+	# переключение вида экшена ничего бы не изменило, кроме вида после возврата.
+	if event.is_action_pressed(&"toggle_view") and Net.active and not _world.strategy_mode:
+		var me: Node3D = _world.local_player()
+		if me != null:
+			_on_announced("Вид: %s" % ("от первого лица" if me.toggle_view() else "от третьего лица"))
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed(&"ui_cancel"):
