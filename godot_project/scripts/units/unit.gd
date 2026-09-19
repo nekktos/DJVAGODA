@@ -200,6 +200,13 @@ var is_beast := false
 ## «пешками» тут не задумана: рубят всех одинаково, и выглядеть это должно
 ## одинаково.
 @export var severed := 0
+## Конечность на месте, но не работает: пробита стрелой, сломана молотом.
+##
+## У пешки нет `body.gd` и всей системы ранений — поэтому состояние живёт
+## прямо здесь, отдельной маской, и умеет ровно два следствия: перебитой ногой
+## не бежать, перебитыми руками не бить. Лечения у пешки нет: её не водят к
+## целителю, она воюет как есть и умирает как есть.
+@export var crippled := 0
 
 ## Урон, накопленный по зонам. Не реплицируется: считает его хост, а видно
 ## только результат — оторванную конечность.
@@ -842,6 +849,10 @@ func _reach_of(target: Node3D) -> float:
 func _strike(target: Node3D) -> void:
 	if _cooldown > 0.0 or target == null:
 		return
+	# Перебитыми руками не бьют. Без этого стрела в руку ничего бы пешке не
+	# стоила, и «калечит» осталось бы словом.
+	if not arms_work():
+		return
 	_cooldown = _strike_cooldown()
 	var point := target.global_position + Vector3.UP * 1.1
 	var dir := (target.global_position - global_position).normalized()
@@ -932,11 +943,14 @@ func _note_zone_damage(zone: String, amount: float, point: Vector3, dir: Vector3
 	_zone_damage[zone] = float(_zone_damage.get(zone, 0.0)) + amount
 	if float(_zone_damage[zone]) < BODY.LIMB_DURABILITY:
 		return
-	# Стрела не отрубает руку и пешке тоже. Состояния «перебита» у бойца нет —
-	# у него нет `body.gd` вовсе, — поэтому он просто не теряет конечность.
-	# Заводить пешке полноценную систему ранений ради этого не стали: вопрос
-	# открыт, и решать его дизайну, а не коду.
+	# Стрела не отрубает руку и пешке тоже — она её ПЕРЕБИВАЕТ. Конечность
+	# остаётся на месте и с модели никуда не девается, но работать перестаёт.
 	if not WEAPONS.severs(weapon):
+		if crippled & (1 << limb) == 0:
+			crippled |= (1 << limb)
+			# Держим счётчик у порога: перебитая конечность в одном рубящем
+			# ударе от того, чтобы её лишиться. То же правило, что у человека.
+			_zone_damage[zone] = BODY.LIMB_DURABILITY
 		return
 	severed |= (1 << limb)
 	tear_off.rpc(limb, point, dir)
@@ -1004,12 +1018,25 @@ func _apply_severed() -> void:
 			zone.collision_layer = 0 if gone else HITBOX_LAYER
 
 
+## Конечность не работает — оторвана или перебита.
+func _limb_down(limb: int) -> bool:
+	return (severed | crippled) & (1 << limb) != 0
+
+
+## Есть ли чем бить. Лучнику нужны ОБЕ руки: лук держат одной, тянут другой.
+func arms_work() -> bool:
+	var left := not _limb_down(BODY.Limb.ARM_L)
+	var right := not _limb_down(BODY.Limb.ARM_R)
+	return (left and right) if is_archer else (left or right)
+
+
 ## Насколько боец медленнее из-за ран. Без ноги — ползёт, как и персонаж.
 func wound_speed_scale() -> float:
 	var legs := 0
-	if severed & (1 << BODY.Limb.LEG_L) != 0:
+	# Перебитая нога не хуже и не лучше оторванной: идти на ней нельзя одинаково.
+	if _limb_down(BODY.Limb.LEG_L):
 		legs += 1
-	if severed & (1 << BODY.Limb.LEG_R) != 0:
+	if _limb_down(BODY.Limb.LEG_R):
 		legs += 1
 	if legs >= 2:
 		return BODY.CRAWL_SPEED_BOTH / BASE_SPEED

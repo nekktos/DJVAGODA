@@ -53,6 +53,7 @@ func _run() -> void:
 	await _test_wheelchair(me, body, health)
 	await _test_trophies(me, body, health)
 	await _test_necrotic(me, body, health)
+	await _test_pawn_crippled(me)
 
 	await _showcase(me, body, health)
 	finish()
@@ -270,6 +271,69 @@ func _test_wheelchair(me: Node3D, body: Node, health: Node) -> void:
 ##
 ## Проверяем на пешке, а не на втором игроке, потому что именно пешки — основной
 ## источник конечностей: чтобы набрать десяток, нужна война, а не дуэль.
+## Пешке стрела тоже не отрывает руку, а перебивает (GDD 4.0).
+##
+## У пешки нет `body.gd`, состояние живёт своей маской — и проверять надо не
+## маску, а СЛЕДСТВИЯ: перебитыми руками не бьют, перебитая нога замедляет так
+## же, как оторванная. Проверка на «бит выставился» была бы зелёной и при
+## состоянии, которое ни на что не влияет.
+func _test_pawn_crippled(me: Node3D) -> void:
+	var victim: Node3D = _world.spawn_unit(0, 0, me.global_position + Vector3(7.0, 0.0, 0.0))
+	if victim == null:
+		fail("пешку для проверки перебитых конечностей не заспавнить")
+		return
+	await get_tree().process_frame
+
+	for i in 30:
+		if victim.crippled != 0:
+			break
+		victim.health = UNIT_MAX_HEALTH
+		victim.take_damage(10.0, int(me.peer_id), "arm_r", victim.global_position,
+			Vector3.FORWARD, false, WEAPONS.Kind.BOW)
+		await get_tree().process_frame
+	check(victim.crippled != 0 and victim.severed == 0,
+		"стрела перебивает пешке руку, но не отрывает",
+		"перебито %d, оторвано %d" % [victim.crippled, victim.severed])
+
+	# Мечнику хватает одной руки, лучнику нужны обе — поэтому добиваем вторую.
+	for i in 30:
+		if not victim.arms_work():
+			break
+		victim.health = UNIT_MAX_HEALTH
+		victim.take_damage(10.0, int(me.peer_id), "arm_l", victim.global_position,
+			Vector3.FORWARD, false, WEAPONS.Kind.CROSSBOW)
+		await get_tree().process_frame
+
+	# ПРОВЕРЯЕМ УДАР, А НЕ ФЛАГ. Первый заход спрашивал `arms_work()` — то есть
+	# намерение, — и остался зелёным, когда я убрал саму проверку из `_strike`.
+	# Спрашиваем результат: после удара здоровье цели не изменилось.
+	me.health.revive()
+	var before: float = me.health.current
+	victim._cooldown = 0.0
+	victim._strike(me)
+	await get_tree().physics_frame
+	check(not victim.arms_work() and is_equal_approx(me.health.current, before),
+		"перебитыми руками пешка не бьёт",
+		"перебито %d, здоровье %.0f -> %.0f" % [
+			victim.crippled, before, me.health.current])
+
+	var whole: float = victim.wound_speed_scale()
+	for i in 30:
+		if victim.crippled & (1 << BODY.Limb.LEG_L) != 0:
+			break
+		victim.health = UNIT_MAX_HEALTH
+		victim.take_damage(10.0, int(me.peer_id), "leg_l", victim.global_position,
+			Vector3.FORWARD, false, WEAPONS.Kind.HAMMER)
+		await get_tree().process_frame
+	check(victim.wound_speed_scale() < whole and victim.severed == 0,
+		"перебитая нога замедляет пешку не хуже оторванной",
+		"было %.2f, стало %.2f" % [whole, victim.wound_speed_scale()])
+
+	if is_instance_valid(victim):
+		victim.queue_free()
+	await get_tree().process_frame
+
+
 ## Первая лежащая на земле конечность. Ищем по группе «loot» — в ней и груз, и
 ## отрубленное, а отличаем по полю `limb`, которого у кучи ресурсов нет.
 func _limb_on_ground() -> Node3D:

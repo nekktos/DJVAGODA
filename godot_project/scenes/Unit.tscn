@@ -21,6 +21,9 @@ properties/4/replication_mode = 1
 properties/5/path = NodePath(".:eyes_lost")
 properties/5/spawn = true
 properties/5/replication_mode = 1
+properties/6/path = NodePath(".:crippled")
+properties/6/spawn = true
+properties/6/replication_mode = 1
 
 [node name="Unit" type="CharacterBody3D"]
 script = ExtResource("1_unit")
