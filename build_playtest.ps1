@@ -27,6 +27,9 @@ $root = $PSScriptRoot
 $project = Join-Path $root "godot_project"
 $build = Join-Path $root "build"
 $readme = Join-Path $root "PLAYTEST_TESTERS.md"
+# Анкета едет РЯДОМ с инструкцией: без неё отчёты приходят в свободной форме и
+# не сравниваются между собой.
+$form = Join-Path $root "PLAYTEST_FORM.md"
 
 # Версия берётся из project.godot, чтобы имя архива и то, что видно в игре,
 # не могли разойтись.
@@ -47,6 +50,7 @@ Write-Host "`n=== Windows ==="
 & $Godot --headless --path $project $mode "Windows" (Join-Path $build "windows\DzhvaGoda.exe")
 if ($LASTEXITCODE -ne 0) { Write-Error "Экспорт под Windows не удался"; exit 1 }
 Copy-Item $readme (Join-Path $build "windows\README-PLAYTEST.md") -Force
+Copy-Item $form (Join-Path $build "windows\АНКЕТА.md") -Force
 
 Write-Host "`n=== macOS ==="
 & $Godot --headless --path $project $mode "macOS" (Join-Path $build "macos\DzhvaGoda.zip")
@@ -62,6 +66,7 @@ if ($LASTEXITCODE -ne 0) { Write-Error "Экспорт под macOS не уда�
 # внешний архив: внутренний .zip для него просто байты, права переживают.
 # Цена — тестер распаковывает дважды; это написано первой строкой инструкции.
 Copy-Item $readme (Join-Path $build "macos\README-PLAYTEST.md") -Force
+Copy-Item $form (Join-Path $build "macos\АНКЕТА.md") -Force
 
 # Итоговые архивы для раздачи.
 $winZip = Join-Path $build "DzhvaGoda-$version-windows.zip"
