@@ -15,7 +15,6 @@ const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const BODY := preload("res://scripts/combat/body.gd")
 const RIG := preload("res://scripts/combat/rig.gd")
-const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 ## Виды трофеев — те же цифры, что в `player.gd::Trophy`. Держим их числами, а
 ## не ссылкой на скрипт игрока: боец о игроке знать не должен.
 const TROPHY_ARMS := 0
@@ -938,13 +937,17 @@ func _note_zone_damage(zone: String, amount: float, point: Vector3, dir: Vector3
 		return
 	severed |= (1 << limb)
 	tear_off.rpc(limb, point, dir)
-	var arm := limb == BODY.Limb.ARM_L or limb == BODY.Limb.ARM_R
-	_award_trophy(attacker_id, TROPHY_ARMS if arm else TROPHY_LEGS)
+	# Трофей не начисляем: отрубленное лежит на земле, и достанется оно тому,
+	# кто поднимет (см. `tear_off`).
 
 
 ## Записать отрубленное на счёт нападавшего: из этого крафтится некротический
 ## протез. Рубить пешек должно засчитываться наравне с людьми — иначе выгодно
 ## охотиться только на игроков, а войско обходить стороной.
+func _trophy_kind(which: int) -> int:
+	return TROPHY_ARMS if which == BODY.Limb.ARM_L or which == BODY.Limb.ARM_R else TROPHY_LEGS
+
+
 func _award_trophy(attacker_id: int, kind: int) -> void:
 	if attacker_id <= 0:
 		return
@@ -978,10 +981,11 @@ func tear_off(limb: int, point: Vector3, dir: Vector3) -> void:
 	_apply_severed()
 	var root: Node = get_parent().get_parent()
 	EFFECTS.blood(root, point, dir, 60.0)
-	var piece: Node3D = SEVERED_LIMB.instantiate()
-	root.add_child(piece)
-	piece.setup(RIG.limb_mesh(limb), Transform3D(Basis(), RIG.limb_point(_skeleton, limb)),
-		MODEL_SCALE)
+	# Кусок роняет ХОЗЯИН и один на всех — так же, как у человека: пешку рубят
+	# ради трофеев не меньше, и её рука обязана быть таким же предметом.
+	if Net.hosting() and root != null and root.has_method("spawn_severed_limb"):
+		root.spawn_severed_limb(RIG.limb_point(_skeleton, limb), limb,
+			_trophy_kind(limb), MODEL_SCALE)
 
 
 ## Показать то, что оторвано. Зовём и при получении маски по сети: поздний

@@ -20,7 +20,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "раны"
-	expected_host = 37
+	expected_host = 40
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -254,6 +254,15 @@ func _test_wheelchair(me: Node3D, body: Node, health: Node) -> void:
 ##
 ## Проверяем на пешке, а не на втором игроке, потому что именно пешки — основной
 ## источник конечностей: чтобы набрать десяток, нужна война, а не дуэль.
+## Первая лежащая на земле конечность. Ищем по группе «loot» — в ней и груз, и
+## отрубленное, а отличаем по полю `limb`, которого у кучи ресурсов нет.
+func _limb_on_ground() -> Node3D:
+	for node in get_tree().get_nodes_in_group("loot"):
+		if node is Node3D and "limb" in node:
+			return node
+	return null
+
+
 func _test_trophies(me: Node3D, body: Node, health: Node) -> void:
 	await _reset(me, body, health)
 	me.trophies = PackedInt32Array([0, 0, 0])
@@ -274,9 +283,36 @@ func _test_trophies(me: Node3D, body: Node, health: Node) -> void:
 		await get_tree().process_frame
 	check(victim.severed != 0, "пешке отрывает руку тем же порогом, что и человеку",
 		"ударов %d, маска %d" % [hits, victim.severed])
-	check(me.trophies[me.Trophy.ARMS] == 1,
-		"отрубленная рука пешки записана нападавшему в трофеи",
+	# ТРОФЕЙ БОЛЬШЕ НЕ ПАДАЕТ В КАРМАН САМ. Отрубленное лежит на земле, и
+	# достаётся оно тому, кто дошёл, — хоть бы и не тому, кто рубил.
+	check(me.trophies[me.Trophy.ARMS] == 0,
+		"за отрыв трофей сам не начисляется",
 		"рук в трофеях: %d" % me.trophies[me.Trophy.ARMS])
+
+	await get_tree().process_frame
+	var piece := _limb_on_ground()
+	check(piece != null, "отрубленная рука лежит в мире предметом",
+		"нашлось: %s" % ("да" if piece != null else "ничего"))
+	if piece == null:
+		return
+
+	# Издалека не дотянуться: подбор меряет расстояние на ХОСТЕ, и это то же
+	# правило, что у груза каравана.
+	me.global_position = piece.global_position + Vector3(0.0, 0.0, 12.0)
+	await get_tree().process_frame
+	check(piece.collect(me) == 0 and me.trophies[me.Trophy.ARMS] == 0,
+		"издалека отрубленное не подобрать",
+		"рук в трофеях: %d" % me.trophies[me.Trophy.ARMS])
+
+	# Подошли — забрали.
+	me.global_position = piece.global_position + Vector3(0.0, 0.0, 1.2)
+	await get_tree().process_frame
+	var nearby: Node3D = me.loot_nearby()
+	var took: int = piece.collect(me)
+	check(nearby != null and took > 0 and me.trophies[me.Trophy.ARMS] == 1,
+		"подобранная рука идёт в трофеи",
+		"подсказка=%s, взято=%d, рук=%d" % [
+			"есть" if nearby != null else "нет", took, me.trophies[me.Trophy.ARMS]])
 
 	# Голова: тот же порог, что у человека, и глаз тоже идёт в трофеи.
 	var eyes := 0

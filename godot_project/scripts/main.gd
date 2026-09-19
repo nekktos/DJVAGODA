@@ -293,7 +293,7 @@ func _action_prompt(me: Node3D) -> String:
 		return "E — сесть на лошадь"
 	var pile: Node3D = me.loot_nearby()
 	if pile != null:
-		return "E — подобрать груз: %s" % pile.summary()
+		return "E — подобрать: %s" % pile.summary()
 	if me.at_trader():
 		return "E — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
 	if me.at_commander():

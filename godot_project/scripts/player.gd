@@ -26,7 +26,6 @@ const RES := preload("res://scripts/economy/resources.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const RIG := preload("res://scripts/combat/rig.gd")
-const SEVERED_LIMB := preload("res://scenes/SeveredLimb.tscn")
 
 ## Своя модель на сторону. Порядок — как в `factions.gd::Kind`: злодей,
 ## эльфы, стража. Классы подобраны по роли, а не по красоте: маг колдует,
@@ -1120,12 +1119,13 @@ func _award_trophies(attacker_id: int, mask_before: int, eyes_before: int) -> vo
 	var world := get_parent().get_parent()
 	if world == null or not world.has_method("award_trophy"):
 		return
-	var newly: int = body.severed_mask & ~mask_before
-	for limb in BODY.LIMB_KEYS.size():
-		if newly & (1 << limb) == 0:
-			continue
-		var kind := Trophy.ARMS if limb == BODY.Limb.ARM_L or limb == BODY.Limb.ARM_R else Trophy.LEGS
-		world.award_trophy(attacker_id, kind)
+	# КОНЕЧНОСТИ БОЛЬШЕ НЕ НАЧИСЛЯЮТСЯ САМИ. Отрубленное падает на землю
+	# предметом (см. `_on_limb_severed`), и трофей достаётся тому, кто дошёл и
+	# поднял, — может и не тому, кто рубил. Начислять здесь значило бы считать
+	# дважды.
+	#
+	# Глаз пока остаётся мгновенным: он не конечность, ронять его нечем —
+	# отдельной модели нет. Вопрос открыт для дизайна.
 	for i in (body.eyes_lost - eyes_before):
 		world.award_trophy(attacker_id, Trophy.EYES)
 
@@ -1165,14 +1165,15 @@ func _on_limb_severed(limb: int) -> void:
 	_apply_severed()
 	var at := RIG.limb_point(_skeleton, limb)
 
-	# Кровь и сама оторванная часть, которая падает и остаётся лежать.
+	# Кровь — у каждого своя, это чистый визуал.
 	EFFECTS.blood(_effects_root(), at, Vector3.UP, 80.0)
-	var piece: Node3D = SEVERED_LIMB.instantiate()
-	# Кладём прямо в мир, а не в Spawned: за той нодой следит MultiplayerSpawner,
-	# а оторванная часть — локальный визуал, её каждый пир создаёт себе сам по
-	# реплицированному состоянию тела.
-	get_parent().get_parent().add_child(piece)
-	piece.setup(RIG.limb_mesh(limb), Transform3D(Basis(), at), MODEL_SCALE)
+	# А сама оторванная часть теперь ПРЕДМЕТ, один на всех: её роняет хозяин
+	# через общий спавнер, и подобрать её может кто угодно. Раньше её создавал
+	# себе каждый пир сам, и лежала она у всех в разных местах.
+	if Net.hosting():
+		var world := get_parent().get_parent()
+		if world != null and world.has_method("spawn_severed_limb"):
+			world.spawn_severed_limb(at, limb, _trophy_kind(limb), MODEL_SCALE)
 	_refresh_posture()
 
 

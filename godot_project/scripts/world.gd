@@ -27,6 +27,7 @@ const CARAVAN_SCENE := preload("res://scenes/Caravan.tscn")
 const LOOT_SCENE := preload("res://scenes/Loot.tscn")
 const UNIT_SCENE := preload("res://scenes/Unit.tscn")
 const LABOURER_SCENE := preload("res://scenes/Labourer.tscn")
+const LIMB_SCENE := preload("res://scenes/SeveredLimb.tscn")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 
 ## Сколько батраков у злодея в начале партии.
@@ -469,6 +470,8 @@ func _make_spawned(data: Dictionary) -> Node:
 			node = CARAVAN_SCENE.instantiate()
 		"loot":
 			node = LOOT_SCENE.instantiate()
+		"limb":
+			node = LIMB_SCENE.instantiate()
 		"unit":
 			node = UNIT_SCENE.instantiate()
 		"labourer":
@@ -954,6 +957,36 @@ func spawn_loot_pile(point: Vector3, contents: PackedInt32Array) -> Node:
 		"id": _spawn_counter,
 		"point": point,
 		"contents": contents,
+	})
+
+
+## Уронить оторванную конечность на землю ОДНУ НА ВСЕХ.
+##
+## Раньше кусок был локальным визуалом у каждого пира, а трофей начислялся
+## нападавшему сам, в момент отрыва. Теперь рубить и собирать — разные
+## действия: за отрубленным надо дойти, и его может увести кто угодно, ровно
+## как груз разбитого каравана (GDD раздел 2.1 — «подобрать может любой»).
+##
+## Толчок считаем ЗДЕСЬ и кладём в данные спавна: каждый пир уронит кусок сам,
+## но одинаково. Случайность на хосте — единственная, остальные её получают
+## готовой.
+func spawn_severed_limb(point: Vector3, limb: int, trophy: int, model_scale := 1.0) -> Node:
+	if not Net.hosting():
+		return null
+	_spawn_counter += 1
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	return _world_spawner.spawn({
+		"type": "limb",
+		"id": _spawn_counter,
+		"point": point,
+		"limb": limb,
+		"trophy": trophy,
+		"model_scale": model_scale,
+		"impulse": Vector3(rng.randf_range(-2.5, 2.5), rng.randf_range(2.0, 4.0),
+			rng.randf_range(-2.5, 2.5)),
+		"spin": Vector3(rng.randf_range(-6.0, 6.0), rng.randf_range(-6.0, 6.0),
+			rng.randf_range(-6.0, 6.0)),
 	})
 
 
