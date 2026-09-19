@@ -808,6 +808,7 @@ const TEST_FLAGS := {
 	"--woundtest": ["res://tools/wound_test.gd", true],
 	"--walktest": ["res://tools/walk_test.gd", true],
 	"--combattest": ["res://tools/combat_test.gd", false],
+	"--playabletest": ["res://tools/playable_test.gd", true],
 }
 
 
