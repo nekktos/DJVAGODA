@@ -30,7 +30,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "навигация"
-	expected_host = 13
+	expected_host = 15
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -43,6 +43,7 @@ func _run() -> void:
 	await get_tree().create_timer(2.0).timeout
 
 	_test_baked()
+	_test_budget_covers_the_mesh()
 	_test_leaves_plateau()
 	_test_enters_palace()
 	_test_every_base_has_a_way_out()
@@ -58,6 +59,28 @@ func _nav() -> Node:
 ## Сетка есть. Без неё всё остальное бессмысленно, поэтому дальше не идём.
 func _test_baked() -> void:
 	check(_nav().is_ready(), "сетка испечена", "готова=%s" % _nav().is_ready())
+
+
+## Бюджет поиска больше, чем полигонов в сетке.
+##
+## СТОРОЖ ЗА НАЙДЕННЫМ БЛОКЕРОМ. У Godot предел поиска по умолчанию 4096
+## полигонов, а в нашей сетке их 17414. Превысив предел, A* не признаётся —
+## он отдаёт путь до лучшего, что успел найти, и ответ неотличим от честного.
+## Эльфы из-за этого не могли дойти до дворца, а их ИИ сорвал 440 набегов из
+## 442, и всё это выглядело как ошибка рельефа.
+##
+## Проверка сравнивает бюджет с РАЗМЕРОМ сетки, а не с числом: карта ещё будет
+## расти, и тогда предел надо поднять снова. Молча это не должно пройти.
+func _test_budget_covers_the_mesh() -> void:
+	var region: NavigationRegion3D = _nav().get_node_or_null("NavRegion")
+	check(region != null, "область навигации на месте", "NavRegion не найден")
+	if region == null:
+		return
+	var polys: int = region.navigation_mesh.get_polygon_count()
+	var budget: int = _nav().SEARCH_BUDGET
+	check(budget > polys, "бюджет поиска пути покрывает всю сетку",
+		"полигонов %d, бюджет %d — длинные пути будут обрываться молча"
+			% [polys, budget])
 
 
 ## Спуск с плато. Прямая от базы стражи к базе злодея идёт сквозь стену дворца и
