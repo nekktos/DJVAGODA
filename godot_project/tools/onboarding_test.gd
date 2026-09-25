@@ -32,7 +32,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "онбординг"
-	expected_host = 8
+	expected_host = 10
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -57,6 +57,8 @@ func _run() -> void:
 	_test_step_never_goes_back(me)
 	_test_strategy_step_counts(me)
 	_test_waypoint_hides_without_target()
+	_test_optional_step_is_skipped_when_broke(me)
+	_test_goal_is_named_before_the_shop()
 	finish()
 
 
@@ -194,3 +196,51 @@ func _test_waypoint_hides_without_target() -> void:
 	beacon.queue_free()
 	check(hidden and shown, "маяк прячется без цели и виден с целью",
 		"без цели скрыт=%s, с целью виден=%s" % [hidden, shown])
+
+
+## Необязательный шаг пропускается, когда сделать его нельзя.
+##
+## ЗАЧЕМ. Живой игрок дошёл до «зайди в лавку» и спросил: зачем мне туда, я
+## ничего не покупаю? Пока шаг был обязательным, цепочка вставала на нём
+## намертво: не пошёл в лавку — не узнал, что цель партии дворец. Шаг, который
+## человек вправе не делать, обязан уметь пропускаться сам.
+##
+## Проверяем РЕЗУЛЬТАТ: опустошаем склад и требуем, чтобы шаг стал проходным.
+func _test_optional_step_is_skipped_when_broke(me: Node3D) -> void:
+	var guide := ONBOARDING.new()
+	var optional := {}
+	for step in guide.chain_of(FACTIONS.Kind.VILLAIN):
+		if step.has("skip"):
+			optional = step
+	if optional.is_empty():
+		check(false, "у злодея шаг про лавку помечен необязательным",
+			"необязательных шагов в цепочке нет")
+		return
+	var cost: Array = me.next_gear_cost()
+	while not cost.is_empty() and me.stock.can_afford(cost):
+		me.stock.spend(cost)
+		cost = me.next_gear_cost()
+	check(guide._skipped(optional, me),
+		"необязательный шаг пропускается, когда платить нечем",
+		"склад пуст, а шаг всё равно обязателен")
+
+
+## Цель партии названа РАНЬШЕ, чем лавка.
+##
+## Та же жалоба, вторая её половина: «нет определённой цели, поэтому я не
+## понимаю, зачем мне сейчас туда идти». Снаряжение покупают ПЕРЕД чем-то;
+## пока игрок не знает, что впереди дворец, покупка беспричинна.
+func _test_goal_is_named_before_the_shop() -> void:
+	var guide := ONBOARDING.new()
+	var chain: Array = guide.chain_of(FACTIONS.Kind.VILLAIN)
+	var goal := -1
+	var shop := -1
+	for i in chain.size():
+		var place := String(chain[i].get("place", ""))
+		if goal < 0 and place == "дворец":
+			goal = i
+		if shop < 0 and place.begins_with("лавка"):
+			shop = i
+	check(goal >= 0 and shop >= 0 and goal < shop,
+		"цель партии названа раньше лавки",
+		"дворец на шаге %d, лавка на шаге %d" % [goal + 1, shop + 1])
