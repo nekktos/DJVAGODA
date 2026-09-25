@@ -65,6 +65,8 @@ const WARBAND := preload("res://scripts/ai/warband.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const ORDERS := preload("res://scripts/orders.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
+const ONBOARDING := preload("res://scripts/ui/onboarding.gd")
+const WAYPOINT := preload("res://scripts/ui/waypoint.gd")
 
 ## Человек ВЫБРАЛ сторону сам, а не получил её подстановкой из сейва.
 ##
@@ -72,6 +74,10 @@ const CARAVAN := preload("res://scripts/economy/caravan.gd")
 ## перебивал выбор: выбрал «Охрану дворца», тронул список — и начал новую игру
 ## злодеем, оказавшись в его форте. Выбор, который игра отменяет за спиной, хуже
 ## отсутствия выбора.
+## Подсказка первых минут и её маяк в мире. Личные: ничего не реплицируется,
+## в сохранение не идёт — это объяснение одному человеку, а не часть партии.
+var _onboarding := ONBOARDING.new()
+var _waypoint: Node3D = null
 var _faction_chosen := false
 
 ## Кнопка «Новая игра» уже спросила подтверждение и ждёт второго нажатия.
@@ -203,6 +209,9 @@ func _refresh_hud() -> void:
 		_hud.set_right(PackedStringArray())
 		_hud.set_prompt("")
 		_hud.set_spells("")
+		_hud.set_task({})
+		if _waypoint != null:
+			_waypoint.visible = false
 		return
 	_hud.vitals_panel.visible = true
 	# Прицел — только в бою и только у живого: сверху им не целятся, а мёртвому
@@ -224,6 +233,7 @@ func _refresh_hud() -> void:
 	_hud.set_help(_help_text())
 
 	var me: Node3D = _world.local_player()
+	_refresh_task(me)
 	var right := PackedStringArray()
 	# `_objective_hint` уже говорит и сторону, и цель, и владельца дворца. Свои
 	# строки рядом с ним давали ровно те же слова дважды — на снимке это первое,
@@ -276,6 +286,42 @@ func _refresh_hud() -> void:
 		magic = _abilities_hint(me).replace("магия: ", "")
 	_hud.set_spells(magic)
 	_hud.set_prompt(_action_prompt(me))
+
+
+## Подсказка первых минут: шаг в панели наверху и маяк над местом, куда идти.
+##
+## РАССТОЯНИЕ СЧИТАЕТСЯ ЗДЕСЬ, а не в маяке: игрок уже под рукой у того, кто
+## маяк ставит, а маяку пришлось бы искать его по всей сцене каждый кадр.
+func _refresh_task(me: Node3D) -> void:
+	var step: Dictionary = _onboarding.current(_world, me)
+	if step.is_empty():
+		_hud.set_task({})
+		if _waypoint != null:
+			_waypoint.visible = false
+		return
+
+	var at = step.get("at", null)
+	if at != null and me != null:
+		var gap: float = Vector2(me.global_position.x, me.global_position.z).distance_to(
+			Vector2(at.x, at.z))
+		step["where"] = "%s — %d м" % [step.get("place", "цель"), int(gap)]
+		_aim_waypoint(at, String(step.get("place", "цель")), gap)
+	else:
+		step["where"] = ""
+		if _waypoint != null:
+			_waypoint.visible = false
+	_hud.set_task(step)
+
+
+## Маяк родим при первой надобности и больше не трогаем: в меню он не нужен, а
+## создавать его вместе с миром значит держать столб над картой до входа.
+func _aim_waypoint(at: Vector3, place_name: String, gap: float) -> void:
+	if _waypoint == null:
+		_waypoint = WAYPOINT.new()
+		_waypoint.name = "Waypoint"
+		_world.add_child(_waypoint)
+	_waypoint.aim(at, place_name)
+	_waypoint.show_gap(gap)
 
 
 ## Что можно сделать ПРЯМО СЕЙЧАС. Одна строка и только самое близкое: полный
@@ -496,6 +542,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed(&"toggle_camera") and Net.active:
 		_world.toggle_camera_mode()
+		# Засчитываем шаг «открой вид сверху» ЗДЕСЬ, а не опросом состояния:
+		# игрок успевает открыть и закрыть его между двумя кадрами опроса.
+		if _world.strategy_mode:
+			_onboarding.note_strategy()
 		get_viewport().set_input_as_handled()
 		return
 	# Первое лицо и третье. В стратегическом режиме молчим: там своя камера, и
@@ -730,6 +780,10 @@ func _on_status(text: String) -> void:
 
 func _on_session_started() -> void:
 	_show_menu(false)
+	# Подсказку начинаем с первого шага на КАЖДОЙ партии: иначе второй заход
+	# открывался бы с конца цепочки, и новый человек за вторым столом остался
+	# бы без неё вовсе.
+	_onboarding.reset()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	get_window().title = "ДжваГода — %s (id %d)" % ["ХОСТ" if Net.is_host else "КЛИЕНТ", Net.local_id()]
 
@@ -809,6 +863,7 @@ const TEST_FLAGS := {
 	"--walktest": ["res://tools/walk_test.gd", true],
 	"--combattest": ["res://tools/combat_test.gd", false],
 	"--playabletest": ["res://tools/playable_test.gd", true],
+	"--onboardingtest": ["res://tools/onboarding_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 

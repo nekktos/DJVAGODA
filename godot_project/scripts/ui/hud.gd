@@ -73,6 +73,11 @@ var crosshair: Control
 var spells: Label
 var help_panel: PanelContainer
 var help_text: RichTextLabel
+var task_panel: PanelContainer
+var task_step: Label
+var task_text: Label
+var task_keys: Label
+var task_where: Label
 
 
 func _ready() -> void:
@@ -203,6 +208,44 @@ func _build() -> void:
 	spells.add_theme_color_override("font_color", ACCENT)
 	vitals_box.add_child(spells)
 
+	# ЗАДАЧА: верх по центру. Единственное место на экране, куда смотрит
+	# человек, который не понимает, что происходит, — и единственное, которое
+	# до сих пор пустовало. Здесь ровно один шаг: что делать сейчас, какими
+	# клавишами и куда для этого идти.
+	task_panel = _panel()
+	task_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	task_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	task_panel.position = Vector2(0.0, 34.0)
+	task_panel.visible = false
+	add_child(task_panel)
+	var task_box := VBoxContainer.new()
+	task_box.add_theme_constant_override("separation", 2)
+	task_panel.add_child(task_box)
+
+	task_step = Label.new()
+	task_step.add_theme_font_size_override("font_size", 12)
+	task_step.add_theme_color_override("font_color", TEXT_DIM)
+	task_step.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	task_box.add_child(task_step)
+
+	task_text = Label.new()
+	task_text.add_theme_font_size_override("font_size", 21)
+	task_text.add_theme_color_override("font_color", TEXT_MAIN)
+	task_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	task_box.add_child(task_text)
+
+	task_keys = Label.new()
+	task_keys.add_theme_font_size_override("font_size", 15)
+	task_keys.add_theme_color_override("font_color", ACCENT)
+	task_keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	task_box.add_child(task_keys)
+
+	task_where = Label.new()
+	task_where.add_theme_font_size_override("font_size", 15)
+	task_where.add_theme_color_override("font_color", TEXT_DIM)
+	task_where.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	task_box.add_child(task_where)
+
 	# Полный список клавиш — по F1 и только по нему. Постоянно висящий список
 	# перестают читать на второй минуте, а найти его потом негде.
 	help_panel = _panel()
@@ -244,6 +287,23 @@ func _panel() -> PanelContainer:
 
 
 # --- наполнение ------------------------------------------------------------
+
+## Текущий шаг подсказки. Пустой словарь прячет панель целиком.
+##
+## Панель именно ПРЯЧЕТСЯ, а не пустеет: рамка без текста посреди экрана
+## читается как поломка интерфейса.
+func set_task(step: Dictionary) -> void:
+	if step.is_empty():
+		task_panel.visible = false
+		return
+	task_panel.visible = true
+	task_step.text = "ЗАДАЧА %d из %d" % [int(step["number"]), int(step["total"])]
+	task_text.text = String(step["text"])
+	task_keys.text = String(step.get("keys", ""))
+	task_keys.visible = task_keys.text != ""
+	task_where.text = String(step.get("where", ""))
+	task_where.visible = task_where.text != ""
+
 
 ## Техническая строка: то, что просят приложить к отчёту об ошибке.
 func set_tech(text: String) -> void:
