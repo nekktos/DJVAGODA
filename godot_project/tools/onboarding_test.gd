@@ -18,6 +18,7 @@ extends "res://tools/test_base.gd"
 const ONBOARDING := preload("res://scripts/ui/onboarding.gd")
 const WAYPOINT := preload("res://scripts/ui/waypoint.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
+const OBJECTIVE := preload("res://scripts/objective.gd")
 
 ## Насколько близко путь обязан подвести к точке маяка.
 ##
@@ -32,7 +33,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "онбординг"
-	expected_host = 10
+	expected_host = 12
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -59,6 +60,8 @@ func _run() -> void:
 	_test_waypoint_hides_without_target()
 	_test_optional_step_is_skipped_when_broke(me)
 	_test_goal_is_named_before_the_shop()
+	_test_capture_rule_is_told()
+	_test_last_step_reports_the_capture(me)
 	finish()
 
 
@@ -244,3 +247,80 @@ func _test_goal_is_named_before_the_shop() -> void:
 	check(goal >= 0 and shop >= 0 and goal < shop,
 		"цель партии названа раньше лавки",
 		"дворец на шаге %d, лавка на шаге %d" % [goal + 1, shop + 1])
+
+
+## Последний шаг называет НАСТОЯЩЕЕ условие захвата.
+##
+## ЗАЧЕМ. Живой игрок встал внутри дворца и написал: «я стою и ничего дальше не
+## происходит». Шаг говорил «войти в ворота с юга и стоять внутри» — правда, но
+## не вся: точка берётся за двадцать секунд и только пока внутри нет чужого
+## вожака. Неполная правда в подсказке работает как ложь.
+##
+## Проверяем, что число секунд в тексте — ТО ЖЕ, что в игре. Вписанное руками
+## оно однажды разойдётся с `objective.gd`, и подсказка станет врать молча.
+func _test_capture_rule_is_told() -> void:
+	var guide := ONBOARDING.new()
+	var seconds := "%d" % int(OBJECTIVE.CAPTURE_SECONDS)
+	var bad := PackedStringArray()
+	for faction in FACTIONS.COUNT:
+		var chain: Array = guide.chain_of(faction)
+		if chain.is_empty():
+			continue
+		var last: Dictionary = chain[chain.size() - 1]
+		var words := String(last.get("text", "")) + " " + String(last.get("keys", ""))
+		if String(last.get("place", "")) != "дворец":
+			continue
+		if not words.contains(seconds) or not words.contains("вожак"):
+			bad.append(FACTIONS.name_of(faction))
+	check(bad.is_empty(),
+		"последний шаг называет срок захвата и правило про чужого вожака",
+		"молчат: %s" % ", ".join(bad))
+
+
+## Последний шаг ОТЧИТЫВАЕТСЯ о том, что происходит в точке.
+##
+## ЗАЧЕМ. Живой игрок встал во дворце и простоял пять минут: «другого вожака
+## нет, просто не хочет дальше работать». Захват при этом был исправен — набор
+## «проходимость» показывает, что дворец переходит за двадцать секунд. Сломано
+## было другое: последний шаг не менялся НИКОГДА, и человек, смотревший ровно
+## туда, где написана задача, не видел ни хода захвата, ни того, что дворец уже
+## взят.
+##
+## Проверяем РЕЗУЛЬТАТ: меняем состояние точки и требуем, чтобы текст шага
+## поменялся вслед.
+func _test_last_step_reports_the_capture(me: Node3D) -> void:
+	var guide := ONBOARDING.new()
+	var goal: Node = _world.objective
+	var owner_was: int = int(goal.palace_owner)
+	var disputed_was: bool = bool(goal.contested)
+	var progress_was: float = float(goal.capture_progress)
+
+	# Гоним подсказку до последнего шага: он и есть живой.
+	var chain: Array = guide.chain_of(int(me.faction))
+	guide._passed = chain.size() - 1
+
+	goal.palace_owner = (int(me.faction) + 1) % FACTIONS.COUNT
+	goal.contested = false
+	goal.capture_progress = 0.0
+	var idle := String(guide.current(_world, me).get("text", ""))
+
+	goal.capture_progress = 0.5
+	var going := String(guide.current(_world, me).get("text", ""))
+
+	goal.contested = true
+	var fight := String(guide.current(_world, me).get("text", ""))
+
+	goal.contested = false
+	goal.palace_owner = int(me.faction)
+	var taken := String(guide.current(_world, me).get("text", ""))
+
+	goal.palace_owner = owner_was
+	goal.contested = disputed_was
+	goal.capture_progress = progress_was
+
+	var all_different: bool = (idle != going and going != fight and fight != taken
+		and idle != taken)
+	check(all_different and going.contains("50") and fight.contains("ОСПАРИВАЕТСЯ")
+			and taken.contains("ТВОЙ"),
+		"последний шаг отчитывается: идёт захват, оспаривается, взят",
+		"покой=«%s» ход=«%s» спор=«%s» взят=«%s»" % [idle, going, fight, taken])

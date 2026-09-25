@@ -50,7 +50,7 @@ var _side := 0
 
 func start(world: Node3D) -> void:
 	tag = "проходимость"
-	expected_host = 8
+	expected_host = 9
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -73,7 +73,45 @@ func _run() -> void:
 	_test_landmarks_reachable(me)
 	_test_first_purchase_affordable()
 	await _test_iron_has_a_source(me)
+	await _test_victory_can_actually_be_taken(me)
 	finish()
+
+
+## Условие победы не просто достижимо, а ВЫПОЛНИМО.
+##
+## ЗАЧЕМ ОТДЕЛЬНО ОТ «ДОСТИЖИМО НОГАМИ». Живой игрок дошёл до дворца, встал
+## внутри и простоял ПЯТЬ МИНУТ: «другого вожака нет, просто не хочет дальше
+## работать». Я полез смотреть, чем это покрыто, и не нашёл ничего: во всех
+## наборах `palace_owner` ПРИСВАИВАЛСЯ напрямую, а чтобы кто-то встал в точку и
+## дождался захвата — ни разу. Главное условие победы всей игры не проверялось
+## целиком ни одного раза.
+##
+## Проверка ставит игрока в середину дворца и ждёт РЕАЛЬНОЕ время, а не дёргает
+## `_server_tick` сама: дёрнуть — значит проверить арифметику, а вопрос в том,
+## работает ли цепочка от `_process` до смены владельца.
+func _test_victory_can_actually_be_taken(me: Node3D) -> void:
+	var objective: Node3D = _world.objective
+	var owner_before: int = int(objective.palace_owner)
+	var mine: int = int(me.faction)
+	var home: Vector3 = me.global_position
+	me.global_position = OBJECTIVE.PALACE
+	# Ждём срок захвата с запасом: точка засчитывается за CAPTURE_SECONDS.
+	await get_tree().create_timer(OBJECTIVE.CAPTURE_SECONDS + 6.0).timeout
+	var owner_after: int = int(objective.palace_owner)
+	var progress: float = float(objective.capture_progress)
+	var disputed: bool = bool(objective.contested)
+	me.global_position = home
+
+	if mine == owner_before:
+		check(owner_after == mine, "дворец остаётся у своей стороны",
+			"был у «%s», стал у «%s»" % [FACTIONS.name_of(owner_before),
+				FACTIONS.name_of(owner_after)])
+		return
+	check(owner_after == mine,
+		"постоял в точке захвата — дворец перешёл",
+		"стоял %d с, владелец «%s», прогресс %d%%, оспаривается=%s"
+			% [int(OBJECTIVE.CAPTURE_SECONDS + 6.0), FACTIONS.name_of(owner_after),
+				int(progress * 100.0), disputed])
 
 
 ## Условие победы достижимо НОГАМИ.
