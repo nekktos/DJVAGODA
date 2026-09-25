@@ -22,12 +22,18 @@ const AMBIENCE := preload("res://scripts/audio/ambience.gd")
 ## Выше этого фон считается режущим. Обоснование числа — у проверки.
 const HARSH := 1.0
 
+## Реже какого промежутка обязаны звучать слои с узнаваемым рисунком, секунды.
+## Числа не с потолка: живой игрок попросил «хотя бы раз в 30 секунд» про
+## стрекот, и это нижняя граница, а не пожелание.
+const MIN_CRICKET_GAP := 20.0
+const MIN_BIRD_GAP := 8.0
+
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "звук"
-	expected_host = 15
+	expected_host = 16
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -44,6 +50,7 @@ func _run() -> void:
 	await _test_hooks()
 	_test_living_world()
 	_test_background_is_not_harsh()
+	_test_background_does_not_nag()
 
 	finish()
 
@@ -157,7 +164,7 @@ func _test_background_is_not_harsh() -> void:
 	var box := AMBIENCE.new()
 	var loops := {
 		"ветер": box._wind_loop(),
-		"стрекот": box._cricket_loop(),
+		"стрекот": box._cricket_trill(),
 		"щебет": box._bird_call(0),
 	}
 	var bad := PackedStringArray()
@@ -168,6 +175,47 @@ func _test_background_is_not_harsh() -> void:
 			bad.append("%s: %.3f" % [label, sharp])
 	check(bad.is_empty(), "фон не режет ухо: энергия не ушла в верх диапазона",
 		"порог %.2f, превысили: %s" % [HARSH, ", ".join(bad)])
+
+
+## Фон не навязчив: непрерывен только бесформенный слой.
+##
+## СТОРОЖ ЗА ВТОРОЙ ЖИВОЙ ЖАЛОБОЙ — «очень очень надоедает жутко». Стрекот
+## крутился непрерывной петлёй: три трели на четыре секунды, то есть примерно
+## раз в секунду. Ухо запоминает МОТИВ за полминуты и дальше слышит каждый
+## повтор как навязчивость, сколько громкость ни убавляй. Щебет страдал тем же
+## помягче: от 2.6 секунды, а в лесу втрое чаще.
+##
+## Правило, которое проверка и стережёт: непрерывным может быть только
+## БЕСФОРМЕННЫЙ слой — шум ветра. Всё, у чего есть узнаваемый рисунок, звучит
+## редко и через неровные промежутки.
+func _test_background_does_not_nag() -> void:
+	var box := AMBIENCE.new()
+	var bad := PackedStringArray()
+
+	var wind: AudioStreamWAV = box._wind_loop()
+	if wind.loop_mode != AudioStreamWAV.LOOP_FORWARD:
+		bad.append("ветер не зациклен, а должен: он и убирает тишину")
+	var trill: AudioStreamWAV = box._cricket_trill()
+	if trill.loop_mode != AudioStreamWAV.LOOP_DISABLED:
+		bad.append("стрекот зациклен — он обязан быть разовым")
+	var call: AudioStreamWAV = box._bird_call(0)
+	if call.loop_mode != AudioStreamWAV.LOOP_DISABLED:
+		bad.append("щебет зациклен")
+
+	if AMBIENCE.CRICKET_GAP.x < MIN_CRICKET_GAP:
+		bad.append("стрекот чаще раза в %d с" % int(MIN_CRICKET_GAP))
+	if AMBIENCE.BIRD_GAP.x < MIN_BIRD_GAP:
+		bad.append("щебет чаще раза в %d с" % int(MIN_BIRD_GAP))
+	# Промежуток обязан ГУЛЯТЬ: ровно раз в тридцать секунд — тот же мотив,
+	# только медленнее, и ухо его так же выучит.
+	if AMBIENCE.CRICKET_GAP.y - AMBIENCE.CRICKET_GAP.x < 5.0:
+		bad.append("промежуток стрекота не гуляет")
+
+	note("стрекот раз в %d-%d с, щебет раз в %d-%d с" % [
+		int(AMBIENCE.CRICKET_GAP.x), int(AMBIENCE.CRICKET_GAP.y),
+		int(AMBIENCE.BIRD_GAP.x), int(AMBIENCE.BIRD_GAP.y)])
+	check(bad.is_empty(), "фон не навязчив: непрерывен только шум ветра",
+		", ".join(bad))
 
 
 ## Насколько звук «острый»: энергия разностей к энергии сигнала.
