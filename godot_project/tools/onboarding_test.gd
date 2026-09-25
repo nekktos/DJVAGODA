@@ -321,6 +321,6 @@ func _test_last_step_reports_the_capture(me: Node3D) -> void:
 	var all_different: bool = (idle != going and going != fight and fight != taken
 		and idle != taken)
 	check(all_different and going.contains("50") and fight.contains("ОСПАРИВАЕТСЯ")
-			and taken.contains("ТВОЙ"),
+			and taken.contains("ПОБЕДА"),
 		"последний шаг отчитывается: идёт захват, оспаривается, взят",
 		"покой=«%s» ход=«%s» спор=«%s» взят=«%s»" % [idle, going, fight, taken])

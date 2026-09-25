@@ -67,6 +67,11 @@ func _run() -> void:
 		finish()
 		return
 	_side = int(me.faction)
+	# У ЗЛОДЕЯ ПРОВЕРОК НА ОДНУ БОЛЬШЕ, и это не мелочь учёта. Дворец — условие
+	# победы ТОЛЬКО злодея (GDD 7): эльф может взять точку и не получить за это
+	# ничего, у него условие другое. Первая версия требовала «победа осталась»
+	# со всех сторон и честно упала на эльфах числом victors=0.
+	expected_host = 10 if _side == FACTIONS.Kind.VILLAIN else 9
 	print("[проходимость] сторона: %s" % FACTIONS.name_of(_side))
 
 	_test_victory_reachable(me)
@@ -107,11 +112,34 @@ func _test_victory_can_actually_be_taken(me: Node3D) -> void:
 			"был у «%s», стал у «%s»" % [FACTIONS.name_of(owner_before),
 				FACTIONS.name_of(owner_after)])
 		return
+
 	check(owner_after == mine,
 		"постоял в точке захвата — дворец перешёл",
 		"стоял %d с, владелец «%s», прогресс %d%%, оспаривается=%s"
 			% [int(OBJECTIVE.CAPTURE_SECONDS + 6.0), FACTIONS.name_of(owner_after),
 				int(progress * 100.0), disputed])
+
+	# ПОБЕДА НАЗАД НЕ ОТЫГРЫВАЕТСЯ. Живой игрок спросил прямо: «а зачем мне
+	# держать дворец дальше?» — и оказался прав, держать незачем. По GDD 7
+	# победа объявляется, а партия живёт дальше песочницей. Проверка закрепляет
+	# это правилом: отнимаем дворец обратно и требуем, чтобы победа осталась.
+	# Без неё подсказка снова начнёт звать стеречь то, что стеречь не нужно.
+	if mine != FACTIONS.Kind.VILLAIN:
+		# Взять дворец эта сторона может, а победы ей это не даёт: у неё другое
+		# условие. Само по себе полезное знание — на вопрос «зачем держать
+		# дворец» у эльфа и стражи ответ «незачем вовсе».
+		note("дворец взят, но победа этой стороны не в нём (GDD 7): %s"
+			% OBJECTIVE.VICTORY_TEXT[mine])
+		return
+	if owner_after == mine:
+		objective.palace_owner = owner_before
+		objective.check_victories()
+		check(int(objective.victors[mine]) == 1,
+			"победа объявлена навсегда: дворец отняли, победа осталась",
+			"victors[%s]=%d" % [FACTIONS.name_of(mine), int(objective.victors[mine])])
+	else:
+		check(false, "победа объявлена навсегда: дворец отняли, победа осталась",
+			"дворец не был взят, проверять нечего")
 
 
 ## Условие победы достижимо НОГАМИ.
