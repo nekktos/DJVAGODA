@@ -92,6 +92,20 @@ var _saves: Array = []
 ## Сколько секунд держится объявление о результате.
 const ANNOUNCE_SECONDS := 7.0
 
+## Громкость: шаг, дно и потолок в децибелах.
+##
+## ЗАЧЕМ ВООБЩЕ. Живой игрок написал «противный звук бьёт по ушам», и
+## выяснилось, что убавить его в игре НЕЧЕМ: ни клавиши, ни настройки. Сам
+## звук починен (см. шапку `audio/ambience.gd`), но вывод шире починки — у
+## человека всегда должен быть способ сделать тише, не убивая игру. Тем более
+## у тестера, которого мы сами просим играть сорок минут подряд.
+const VOLUME_STEP := 4.0
+const VOLUME_FLOOR := -40.0
+const VOLUME_CEIL := 6.0
+
+var _volume_db := 0.0
+var _muted := false
+
 @onready var _menu: Control = $UI/Menu
 @onready var _status: Label = $UI/Menu/Panel/VBox/Status
 @onready var _transport_opt: OptionButton = $UI/Menu/Panel/VBox/TransportRow/TransportOpt
@@ -226,7 +240,7 @@ func _refresh_hud() -> void:
 		role, kind, Net.local_id(), Net.peer_count(),
 		Engine.get_frames_per_second(),
 		ProjectSettings.get_setting("application/config/version", "?"),
-	]
+	] + _volume_note()
 	if Net.is_host and Net.transport == Net.Transport.STEAM:
 		tech += "\nSteam ID для друга: %d  (F9 — скопировать)" % Net.local_steam_id()
 	_hud.set_tech(tech)
@@ -383,6 +397,26 @@ func _strategy_prompt() -> String:
 	return "F1 — все клавиши"
 
 
+## Отдать громкость звуковой шине. Одна общая на всё: и на фон, и на удары.
+## Раздельные ползунки — это настройки, а нам нужна клавиша под рукой.
+func _apply_volume() -> void:
+	var bus := AudioServer.get_bus_index("Master")
+	if bus < 0:
+		return
+	AudioServer.set_bus_mute(bus, _muted)
+	AudioServer.set_bus_volume_db(bus, _volume_db)
+
+
+## Как звук сейчас — для технической строки. Пусто, когда ничего не трогали:
+## строка и без того длинная.
+func _volume_note() -> String:
+	if _muted:
+		return " · звук ВЫКЛ (M)"
+	if absf(_volume_db) < 0.5:
+		return ""
+	return " · звук %+d дБ" % int(_volume_db)
+
+
 ## Полный список клавиш. Живёт под F1 и не занимает экран постоянно: список,
 ## висящий всегда, перестают читать на второй минуте.
 func _help_text() -> String:
@@ -398,6 +432,7 @@ func _help_text() -> String:
 	lines.append("E — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь")
 	lines.append("у постройки: наём у казарм, лошади в конюшне, обоз у склада · Y — перемирие")
 	lines.append("Tab — вид сверху · V — первое/третье лицо · F10 — в меню · тильда — консоль")
+	lines.append("M — звук выкл/вкл · минус и равно — тише и громче")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
@@ -425,6 +460,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		_hud.toggle_help()
 		get_viewport().set_input_as_handled()
 		return
+	# Громкость. Работает всегда и везде, кроме открытой консоли: сделать тише
+	# нужно ровно тогда, когда звук мешает, а не тогда, когда до этого дошли
+	# руки. Клавиши читаем по ФИЗИЧЕСКОЙ позиции — на русской раскладке «M»
+	# иначе не нажать.
+	if event is InputEventKey and event.pressed and not event.echo and not _console.visible:
+		var sound_key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+		if sound_key == KEY_M:
+			_muted = not _muted
+			_apply_volume()
+			get_viewport().set_input_as_handled()
+			return
+		if sound_key == KEY_MINUS:
+			_volume_db = maxf(VOLUME_FLOOR, _volume_db - VOLUME_STEP)
+			_muted = false
+			_apply_volume()
+			get_viewport().set_input_as_handled()
+			return
+		if sound_key == KEY_EQUAL:
+			_volume_db = minf(VOLUME_CEIL, _volume_db + VOLUME_STEP)
+			_muted = false
+			_apply_volume()
+			get_viewport().set_input_as_handled()
+			return
 	if Net.active and _world.strategy_mode and event is InputEventKey and event.pressed and not event.echo:
 		# Игровые клавиши читаем по ФИЗИЧЕСКОЙ позиции, а не по символу: keycode
 		# зависит от раскладки, и на русской раскладке управление отваливалось бы

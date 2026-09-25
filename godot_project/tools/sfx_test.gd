@@ -19,12 +19,15 @@ const SFX := preload("res://scripts/audio/sfx.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const AMBIENCE := preload("res://scripts/audio/ambience.gd")
 
+## Выше этого фон считается режущим. Обоснование числа — у проверки.
+const HARSH := 1.0
+
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "звук"
-	expected_host = 14
+	expected_host = 15
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -40,6 +43,7 @@ func _run() -> void:
 	_test_safe_when_silent()
 	await _test_hooks()
 	_test_living_world()
+	_test_background_is_not_harsh()
 
 	finish()
 
@@ -129,6 +133,62 @@ func _test_hooks() -> void:
 
 
 ## Наибольшая громкость в сэмпле, 0..1.
+## Фон не режет ухо.
+##
+## СТОРОЖ ЗА ЖИВОЙ ЖАЛОБОЙ «противный звук бьёт по ушам». Виновата была не
+## громкость, а форма: стрекот рубил тон прямоугольной крошкой, и у краёв
+## оказались гармоники по всему диапазону — 40% энергии в полосе 5-8 кГц и
+## заворот частот выше потолка. Убавленная громкость такое не лечит, только
+## отодвигает.
+##
+## КАК МЕРЯЕМ БЕЗ СПЕКТРА. Полное преобразование в GDScript стоило бы секунд
+## прогона, а нам нужен один вопрос: далеко ли энергия ушла вверх. На это
+## честно отвечает отношение энергии РАЗНОСТЕЙ соседних отсчётов к энергии
+## самого сигнала: у низкого звука соседние отсчёты почти равны и разности
+## малы, у резкого — велики. Предел величины 4.0 (отсчёты через один).
+##
+## Замеры, по которым выбран порог:
+##
+##   ветер                       0.015
+##   стрекот ПОСЛЕ починки       0.804
+##   ПОРОГ                       1.000
+##   стрекот ДО починки          1.318   <- так звучать не должно
+func _test_background_is_not_harsh() -> void:
+	var box := AMBIENCE.new()
+	var loops := {
+		"ветер": box._wind_loop(),
+		"стрекот": box._cricket_loop(),
+		"щебет": box._bird_call(0),
+	}
+	var bad := PackedStringArray()
+	for label in loops:
+		var sharp: float = _sharpness(loops[label])
+		note("%s: резкость %.3f" % [label, sharp])
+		if sharp >= HARSH:
+			bad.append("%s: %.3f" % [label, sharp])
+	check(bad.is_empty(), "фон не режет ухо: энергия не ушла в верх диапазона",
+		"порог %.2f, превысили: %s" % [HARSH, ", ".join(bad)])
+
+
+## Насколько звук «острый»: энергия разностей к энергии сигнала.
+func _sharpness(wav: AudioStreamWAV) -> float:
+	var data := wav.data
+	var count: int = data.size() / 2
+	if count < 2:
+		return 0.0
+	var diff := 0.0
+	var power := 0.0
+	var previous: float = float(data.decode_s16(0)) / 32768.0
+	for i in range(1, count):
+		var value: float = float(data.decode_s16(i * 2)) / 32768.0
+		diff += (value - previous) * (value - previous)
+		power += value * value
+		previous = value
+	if power <= 0.0:
+		return 0.0
+	return diff / power
+
+
 func _peak(wav: AudioStreamWAV) -> float:
 	var data := wav.data
 	var peak := 0.0

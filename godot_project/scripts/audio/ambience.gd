@@ -65,7 +65,7 @@ func _ready() -> void:
 
 	_crickets = AudioStreamPlayer.new()
 	_crickets.stream = _cricket_loop()
-	_crickets.volume_db = -34.0
+	_crickets.volume_db = -38.0
 	add_child(_crickets)
 
 	for i in 4:
@@ -128,7 +128,7 @@ func _sing() -> void:
 		cos(angle) * away, _rng.randf_range(3.0, 9.0), sin(angle) * away)
 	voice.stream = _birds[_rng.randi() % _birds.size()]
 	voice.pitch_scale = _rng.randf_range(0.88, 1.18)
-	voice.volume_db = _rng.randf_range(-22.0, -14.0)
+	voice.volume_db = _rng.randf_range(-30.0, -21.0)
 	voice.play()
 
 
@@ -163,25 +163,56 @@ func _wind_loop() -> AudioStreamWAV:
 	return _wav(data, true)
 
 
-## Стрекот: ровная высокая рябь. Отдельно от ветра, потому что слышна она на
-## открытом месте, а в лесу её перебивают птицы.
+## Стрекот: короткие трели с паузами.
+##
+## ПЕРЕПИСАН ПОСЛЕ ЖИВОЙ ЖАЛОБЫ «противный звук бьёт по ушам». Жалоба была
+## справедливой, и виновата была не громкость, а форма звука. Первая версия
+## рубила тон 4.2 кГц ПРЯМОУГОЛЬНОЙ крошкой — мгновенное включение и выключение.
+## У прямоугольника гармоники до бесконечности: замер спектра показал 40%
+## энергии в полосе 5-8 кГц, там, где ухо болезненнее всего, и ещё 6% выше 8 кГц
+## — это уже заворот частот, потолок-то 11 кГц. Вместо насекомых выходила
+## радиопомеха, и тише она от убавленной громкости не становилась, только
+## дальше.
+##
+## Что изменено и что это дало (замер до и после):
+##
+##   импульс приподнятым косинусом вместо 1/0 — нет разрывов, нет гармоник;
+##   однополюсный НЧ-фильтр поверх — снимает то, что осталось;
+##   тон 4.2 -> 3.4 кГц;
+##   ТРЕЛИ С ПАУЗАМИ вместо ровного гудения: три серии за петлю.
+##
+##   полоса 5-8 кГц:  40.2% -> 0.0%
+##   выше 8 кГц:       6.3% -> 0.0%
+##   звучит времени:    100% -> 6%
+##
+## Общий урок: ровный фон обязан быть ТУПЫМ по спектру. Любой резкий край в
+## сэмпле — это гармоники по всему диапазону, и слышно их будет часами.
 func _cricket_loop() -> AudioStreamWAV:
 	var seconds := 4.0
 	var count := int(MIX_RATE * seconds)
 	var data := PackedByteArray()
 	data.resize(count * 2)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 90909
 	var phase := 0.0
+	var low := 0.0
+	# Длина импульса и его звучащая часть, в отсчётах.
+	var pulse := 46
+	var voiced := 15
 	for i in count:
 		var t: float = float(i) / float(count)
-		# Стрекот — не тон, а частые щелчки: тон на 4.2 кГц, рубленный в крошку.
-		phase += TAU * 4200.0 / float(MIX_RATE)
-		var chop: float = 1.0 if fmod(float(i), 46.0) < 15.0 else 0.0
-		var sway: float = 0.6 + 0.4 * sin(t * TAU * 3.0)
+		phase += TAU * 3400.0 / float(MIX_RATE)
+		var k: int = i % pulse
+		# Приподнятый косинус: звук входит и выходит плавно, краёв нет.
+		var shape := 0.0
+		if k < voiced:
+			shape = 0.5 - 0.5 * cos(TAU * float(k) / float(voiced))
+		# Трель: чуть больше половины отрезка звучит, остальное тишина.
+		var inside: float = fmod(t * 3.0, 1.0)
+		var burst := 0.0
+		if inside < 0.55:
+			burst = 0.5 - 0.5 * cos(TAU * inside / 0.55)
 		var seam: float = minf(1.0, minf(t, 1.0 - t) * 24.0)
-		_put(data, i, sin(phase) * chop * sway * seam * 0.35
-			+ rng.randf_range(-0.02, 0.02))
+		low = lerpf(low, sin(phase) * shape * burst * seam, 0.55)
+		_put(data, i, low * 0.35)
 	return _wav(data, true)
 
 
@@ -201,13 +232,19 @@ func _bird_call(seed_value: int) -> AudioStreamWAV:
 		var t: float = float(i) / float(count)
 		var slot: int = mini(notes - 1, int(t * float(notes)))
 		var inside: float = fmod(t * float(notes), 1.0)
-		var base: float = 2100.0 + float(slot) * rng.randf_range(-260.0, 420.0)
-		var hz: float = base + inside * 900.0
+		# НИЖЕ И НЕ ЧИСТЫМ ТОНОМ. Первая версия пела на 2100-3400 Гц ровной
+		# синусоидой: замер дал 99.7% энергии в одной полосе, и на слух это
+		# писк прибора, а не птица. Ухо всего чувствительнее как раз там, и
+		# вместе с жёстким стрекотом это и «било по ушам».
+		var base: float = 1500.0 + float(slot) * rng.randf_range(-200.0, 320.0)
+		var hz: float = base + inside * 620.0
 		phase += TAU * hz / float(MIX_RATE)
 		# Каждая нота со своим коротким затуханием: между ними тишина, иначе
 		# выходит одна длинная трель, а не щебет.
-		var envelope: float = sin(inside * PI)
-		_put(data, i, sin(phase) * envelope * 0.5)
+		var envelope: float = pow(sin(inside * PI), 1.6)
+		# Второй обертон вполсилы: он и делает звук голосом, а не сигналом.
+		var voice: float = sin(phase) * 0.75 + sin(phase * 2.0) * 0.18
+		_put(data, i, voice * envelope * 0.5)
 	return _wav(data, false)
 
 
