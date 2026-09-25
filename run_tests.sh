@@ -109,11 +109,20 @@ run_suite() {
 			args=(--join=127.0.0.1 "${args[@]}")
 		fi
 		local log="$LOGS/$name-$peer.log"
+		# `--log-file` уводит лог ДВИЖКА в нашу папку.
+		#
+		# Без него каждый набор писал в `user://logs` — туда же, куда пишет игра
+		# у тестера. Godot держит там всего пять файлов и ротирует их, а полный
+		# прогон поднимает Godot тридцать три раза: все пять слотов забиваются
+		# за первые секунды. Так и пропал лог playtest-6: тестер играл 21.09
+		# утром, прогон в 10:39 стёр его подчистую, и к отчёту стало нечего
+		# приложить.
+		local elog="$LOGS/$name-$peer-engine.log"
 		if [ ${#sides[@]} -eq 1 ]; then
-			timeout -k 5 "$SUITE_TIMEOUT" "$GODOT" --headless --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1
+			timeout -k 5 "$SUITE_TIMEOUT" "$GODOT" --headless --log-file "$elog" --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1
 			rcs+=($?)
 		else
-			timeout -k 5 "$SUITE_TIMEOUT" "$GODOT" --headless --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1 &
+			timeout -k 5 "$SUITE_TIMEOUT" "$GODOT" --headless --log-file "$elog" --path "$PROJECT" $fresh -- "${args[@]}" >"$log" 2>&1 &
 			pids+=($!)
 			sleep 2
 		fi
