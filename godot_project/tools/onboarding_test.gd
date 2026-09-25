@@ -33,7 +33,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "онбординг"
-	expected_host = 12
+	expected_host = 14
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -62,6 +62,8 @@ func _run() -> void:
 	_test_goal_is_named_before_the_shop()
 	_test_capture_rule_is_told()
 	_test_last_step_reports_the_capture(me)
+	_test_economy_comes_before_the_assault()
+	_test_faction_change_restarts_the_chain(me)
 	finish()
 
 
@@ -295,7 +297,10 @@ func _test_last_step_reports_the_capture(me: Node3D) -> void:
 	var disputed_was: bool = bool(goal.contested)
 	var progress_was: float = float(goal.capture_progress)
 
-	# Гоним подсказку до последнего шага: он и есть живой.
+	# Гоним подсказку до последнего шага: он и есть живой. Сперва ОДИН вызов,
+	# чтобы цепочка привязалась к стороне: иначе следующий вызов сбросит
+	# прогресс как чужой.
+	guide.current(_world, me)
 	var chain: Array = guide.chain_of(int(me.faction))
 	guide._passed = chain.size() - 1
 
@@ -324,3 +329,70 @@ func _test_last_step_reports_the_capture(me: Node3D) -> void:
 			and taken.contains("ПОБЕДА"),
 		"последний шаг отчитывается: идёт захват, оспаривается, взят",
 		"покой=«%s» ход=«%s» спор=«%s» взят=«%s»" % [idle, going, fight, taken])
+
+
+## Хозяйство и армия идут ДО штурма, а захват — последним шагом.
+##
+## ЗАЧЕМ. Решение живого игрока, и оно про темп: «не вижу смысла в том, что
+## восьмое задание — буквально сразу пойти и захватывать; лучше отправить
+## добывать железо и прокачивать базу и армию, а про захват чуть позже». До
+## этого цепочка вела от первого железа прямо к дворцу, и вся середина игры —
+## казармы, найм, конюшня — оставалась ненайденной: ровно та беда, из-за
+## которой у тестера за сорок минут прошла мимо целая ветка с конечностями.
+##
+## Проверка стережёт ПОРЯДОК, а не тексты: шаги про базу обязаны лежать между
+## железом и штурмом, а захват — быть последним.
+func _test_economy_comes_before_the_assault() -> void:
+	var guide := ONBOARDING.new()
+	var chain: Array = guide.chain_of(FACTIONS.Kind.VILLAIN)
+	var at := {}
+	for i in chain.size():
+		var rule := String(chain[i].get("done", ""))
+		if rule != "" and not at.has(rule):
+			at[rule] = i
+	var last: int = chain.size() - 1
+	var bad := PackedStringArray()
+	if String(chain[last].get("live", "")) != "palace":
+		bad.append("последний шаг не про захват дворца")
+	for rule in ["barracks", "squad", "stable"]:
+		if not at.has(rule):
+			bad.append("нет шага «%s»" % rule)
+			continue
+		if not at.has("iron") or int(at[rule]) < int(at["iron"]):
+			bad.append("«%s» раньше железа" % rule)
+		if int(at[rule]) >= last:
+			bad.append("«%s» не раньше штурма" % rule)
+	note("у злодея шагов %d, захват последний" % chain.size())
+	check(bad.is_empty(),
+		"база и армия объясняются до штурма, захват — последний шаг",
+		", ".join(bad))
+
+
+## Сменилась сторона — цепочка начинается заново и не валится за границу.
+##
+## ЗАЧЕМ. Цепочки у сторон РАЗНОЙ ДЛИНЫ: у злодея одиннадцать шагов, у стражи
+## четыре. Прогресс жил сам по себе, и дойдя до шестого шага за злодея, а потом
+## получив стража, подсказка обращалась к шагу номер пять в массиве из четырёх.
+## Проверки при этом были ЗЕЛЁНЫМИ — поймало правило «ругань движка в логе тоже
+## провал»: лог набора «стража» вырос на 3220 ошибок.
+func _test_faction_change_restarts_the_chain(me: Node3D) -> void:
+	var guide := ONBOARDING.new()
+	var was: int = int(me.faction)
+	var long_side := FACTIONS.Kind.VILLAIN
+	var short_side := FACTIONS.Kind.GUARD
+
+	me.faction = long_side
+	guide.current(_world, me)
+	guide._passed = guide.chain_of(long_side).size() - 1
+	var far: int = int(guide.current(_world, me).get("number", 0))
+
+	me.faction = short_side
+	var after: Dictionary = guide.current(_world, me)
+	me.faction = was
+
+	var short_len: int = guide.chain_of(short_side).size()
+	check(far > short_len and int(after.get("number", 0)) == 1
+			and int(after.get("total", 0)) == short_len,
+		"смена стороны начинает цепочку заново",
+		"было %d из длинной, стало %d из %d" % [far,
+			int(after.get("number", 0)), int(after.get("total", 0))])

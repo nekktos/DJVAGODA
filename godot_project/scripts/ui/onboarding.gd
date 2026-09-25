@@ -59,6 +59,13 @@ const LOOKED_AROUND := 40.0
 const ARRIVED := 25.0
 
 var _passed := 0
+## Чья это цепочка. Без привязки прогресс переезжает между сторонами, а
+## цепочки у них РАЗНОЙ ДЛИНЫ: у злодея одиннадцать шагов, у стражи четыре.
+## Дошёл до шестого за злодея, сменился персонаж — и обращение к шагу номер
+## пять валится за границу массива. Поймано правилом «ругань движка в логе —
+## тоже провал»: проверки при этом были зелёными, а лог набора «стража» вырос
+## на 3220 ошибок.
+var _faction := -1
 var _seen_strategy := false
 var _spawn := Vector3.ZERO
 var _have_spawn := false
@@ -77,6 +84,7 @@ func note_strategy() -> void:
 ## подсказки вовсе.
 func reset() -> void:
 	_passed = 0
+	_faction = -1
 	_seen_strategy = false
 	_have_spawn = false
 
@@ -88,10 +96,20 @@ func reset() -> void:
 func current(world: Node3D, me: Node3D) -> Dictionary:
 	if me == null:
 		return {}
+	# Сменился персонаж или сторона — начинаем цепочку заново. Это не только
+	# про границы массива: шаги у сторон разные по смыслу, и продолжать чужую
+	# цепочку с середины значит показывать человеку задачи не его стороны.
+	if int(me.faction) != _faction:
+		_faction = int(me.faction)
+		_passed = 0
+		_have_spawn = false
 	if not _have_spawn:
 		_spawn = me.global_position
 		_have_spawn = true
-	var chain := chain_of(int(me.faction))
+	var chain := chain_of(_faction)
+	# Пояс поверх подтяжек: даже если прогресс окажется больше цепочки,
+	# показать надо последний шаг, а не уронить кадр.
+	_passed = clampi(_passed, 0, chain.size() - 1)
 	while _passed < chain.size() - 1 and (_done(chain[_passed], world, me)
 			or _skipped(chain[_passed], me)):
 		_passed += 1
@@ -152,6 +170,12 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return world.storage_of(int(me.faction)) != null
 		"crew":
 			return not world.labourers_of(int(me.faction)).is_empty()
+		"barracks":
+			return _has_barracks(world, int(me.faction))
+		"squad":
+			return not world.units_of(int(me.peer_id)).is_empty()
+		"stable":
+			return world.stable_of(int(me.faction)) != null
 		"iron":
 			return me.stock.get_amount(RES.Kind.IRON) > 0
 		"trader":
@@ -206,6 +230,34 @@ func _gear_price() -> String:
 	if cost.size() < 4:
 		return ""
 	return "%d золота и %d железа" % [cost[RES.Kind.GOLD], cost[RES.Kind.IRON]]
+
+
+## Есть ли у стороны казарма — любая. Склад не в счёт: он про добычу, а шаг
+## про то, чтобы было кем воевать.
+func _has_barracks(world: Node3D, faction: int) -> bool:
+	for node in world.get_tree().get_nodes_in_group("building"):
+		if not ("faction" in node) or not ("kind" in node):
+			continue
+		if int(node.faction) != faction:
+			continue
+		if int(node.kind) != RES.Building.STORAGE:
+			return true
+	return false
+
+
+## Цена постройки словами. Берём У ИГРЫ по той же причине, что и цену
+## снаряжения: числа ещё будут меняться, а подсказка, врущая про цену, хуже
+## молчания.
+func _build_price(kind: int) -> String:
+	var cost: Array = RES.BUILDING_COST.get(kind, [])
+	if cost.size() < 4:
+		return ""
+	var parts := PackedStringArray()
+	var names := ["дерева", "камня", "золота", "железа"]
+	for i in 4:
+		if int(cost[i]) > 0:
+			parts.append("%d %s" % [int(cost[i]), names[i]])
+	return ", ".join(parts)
 
 
 ## Расстояние ПО ГОРИЗОНТАЛИ. Дворец стоит на шестиметровом плато, лавка в
@@ -268,6 +320,29 @@ func _villain_chain() -> Array:
 			"done": "iron",
 			"place": "шахта",
 			"at": _mine_entrance(),
+		},
+		{
+			"text": "Воевать пока некем. Поставь казарму: бойцы берутся только из неё",
+			"keys": "сверху: 2 — казарма мечников, 3 — лучников, ЛКМ по земле · нужно %s"
+				% _build_price(RES.Building.SWORD_BARRACKS),
+			"done": "barracks",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
+		},
+		{
+			"text": "Найми бойцов. Они пойдут за тобой — один ты дворец не возьмёшь",
+			"keys": "подойди к казарме и нажми E · сверху T — мечник, Y — лучник · отряд виден справа внизу",
+			"done": "squad",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
+		},
+		{
+			"text": "Поставь конюшню. Лошади тянут обозы, а верхом ты быстрее в полтора раза",
+			"keys": "сверху: 4 — конюшня, нужно %s · N — купить лошадь · K — впрячь в обоз"
+				% _build_price(RES.Building.STABLE),
+			"done": "stable",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
 			"text": "Вот ради чего всё: дворец императора на северо-востоке. Сходи посмотри, что тебя ждёт",
