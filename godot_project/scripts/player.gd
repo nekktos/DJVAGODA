@@ -57,6 +57,14 @@ const ZONE_MULTIPLIERS := {
 	"leg_r": 0.7,
 }
 
+## Полный запас маны и сколько её возвращается в секунду.
+##
+## Восполнение МЕДЛЕННОЕ и намеренно: полный запас набирается сорок секунд, а
+## самое дорогое заклинание стоит половину. Быстрее — и мана перестанет быть
+## ограничением, превратившись во второй откат.
+const MANA_MAX := 100.0
+const MANA_REGEN := 2.5
+
 const SPEED := 6.0
 ## Во сколько раз быстрее бег. Шаг пешком — шесть метров в секунду, бегом —
 ## десять с половиной: карта полтора километра в поперечнике, и дорога от форта
@@ -102,6 +110,22 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 ## Уровень снаряжения, куплен у торговца. Ведёт ХОСТ — иначе клиент выписал бы
 ## себе эльфийский клинок бесплатно. Действует на любое оружие в руках.
 @export var gear_tier: int = 0
+
+## Колчан. Ведёт ХОСТ, клиент только показывает.
+##
+## ЗАЧЕМ КОНЕЧНЫЕ СТРЕЛЫ. Решение живого игрока: «стрелы должны быть
+## конечными». Бесконечный лук делает ближний бой необязательным — стрелять
+## безопаснее всегда, и выбор оружия перестаёт быть выбором. Кончились стрелы —
+## берёшься за меч; это и есть решение, которого раньше не было.
+@export var arrows: int = RES.QUIVER_START
+
+## Мана. Ведёт ХОСТ.
+##
+## ЗАЧЕМ ОНА ПРИ СУЩЕСТВУЮЩИХ ОТКАТАХ. Живой игрок: «магия имба какая та, и
+## чтобы был выбор — пойти в магию, либо ручками сражаться». Откат ограничивает
+## ОДНО заклинание, а не колдуна: имея шесть штук с разными откатами, злодей
+## колдовал непрерывно, чередуя их. Мана — общий кошелёк на все шесть.
+@export var mana: float = MANA_MAX
 ## Приказ командира (Этап 9). Ведёт ХОСТ, клиент только показывает.
 ## -1 — приказа нет.
 @export var order_kind: int = -1
@@ -707,6 +731,12 @@ func _tick_curses(delta: float) -> void:
 		_was_paralysed = false
 		_paralysis_immunity = ABILITIES.PARALYSIS_IMMUNITY
 
+	# Мана возвращается всегда, даже в бою: она и так медленная, а «вне боя» на
+	# этой карте означает «убеги на двести метров», и получилось бы наказание
+	# за то, что дерёшься.
+	if mana < MANA_MAX:
+		mana = minf(MANA_MAX, mana + MANA_REGEN * delta)
+
 	if _cast_left > 0.0:
 		_cast_left -= delta
 		if _cast_left <= 0.0:
@@ -804,6 +834,13 @@ func request_ability(kind: int) -> void:
 		return
 	if sync_ability_cd[kind] > 0.0:
 		return
+	# МАНУ ПРОВЕРЯЕМ ЗДЕСЬ, а списываем после того, как заклинание сработало
+	# (см. `_pay_mana`). Порядок тот же, что у отката, и по той же причине:
+	# сорванный каст не должен стоить маны, иначе прерывание наказывает дважды.
+	if mana < ABILITIES.mana_cost(kind):
+		_refuse("не хватает маны: нужно %d, есть %d"
+			% [int(ABILITIES.mana_cost(kind)), int(mana)])
+		return
 	# Способности требуют полноценной руки — как лук (GDD раздел 4).
 	if not body.can_attack_ranged():
 		return
@@ -826,6 +863,7 @@ func request_ability(kind: int) -> void:
 
 	if not _run_ability(kind):
 		return
+	_pay_mana(kind)
 	sync_ability_cd[kind] = ABILITIES.cooldown_of(kind)
 	ability_cast.rpc(kind, global_position)
 
@@ -835,10 +873,21 @@ func request_ability(kind: int) -> void:
 func _finish_cast(kind: int) -> void:
 	if kind < 0 or not health.alive:
 		return
+	# Мана могла кончиться, пока шёл каст: проверяем ЕЩЁ РАЗ. Без этого долгие
+	# заклинания обходили бы ограничение, начавшись впритык.
+	if mana < ABILITIES.mana_cost(kind):
+		_refuse("мана кончилась, пока шёл каст")
+		return
 	if not _run_ability(kind):
 		return
+	_pay_mana(kind)
 	sync_ability_cd[kind] = ABILITIES.cooldown_of(kind)
 	ability_cast.rpc(kind, global_position)
+
+
+## Списать ману за сработавшее заклинание.
+func _pay_mana(kind: int) -> void:
+	mana = maxf(0.0, mana - ABILITIES.mana_cost(kind))
 
 
 func _run_ability(kind: int) -> bool:
@@ -1087,6 +1136,14 @@ func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
 		if not _server_try_harvest(aim, kind):
 			_server_swing_melee(aim, kind)
 	else:
+		# СТРЕЛУ СНИМАЕМ ЗДЕСЬ, у хоста, и только когда выстрел состоялся.
+		# Снимать у клиента нельзя по той же причине, по которой он не считает
+		# урон: колчан стал бы честным лишь у честных.
+		if WEAPONS.uses_arrows(kind):
+			if arrows <= 0:
+				_refuse("стрелы кончились — возьмись за меч или докупи в лавке")
+				return
+			arrows -= 1
 		# Снаряд создаёт и ведёт мир — он владеет спавнером снарядов.
 		projectile_requested.emit(kind, host_origin, aim, peer_id, gear_tier)
 
@@ -1288,6 +1345,11 @@ func set_dead(dead: bool) -> void:
 
 
 func respawn_at_slot() -> void:
+	# Колчан и мана возвращаются вместе с жизнью. Вещи при смерти падают кучей
+	# (GDD 6), но выйти в мир без единой стрелы и без капли маны — это не
+	# наказание за смерть, а невозможность играть.
+	arrows = RES.QUIVER_START
+	mana = MANA_MAX
 	teleport.rpc(faction_spawn())
 
 
@@ -1678,6 +1740,8 @@ func request_trade(what: int) -> void:
 			_server_buy_bandages()
 		RES.Trade.GEAR:
 			_server_buy_gear()
+		RES.Trade.ARROWS:
+			_server_buy_arrows()
 
 
 func _server_buy_bandages() -> void:
@@ -1690,6 +1754,23 @@ func _server_buy_bandages() -> void:
 		return
 	body.bandages = mini(RES.BANDAGE_LIMIT, body.bandages + RES.BANDAGE_PACK)
 	print("[торг] игрок %d купил бинты, стало %d" % [peer_id, body.bandages])
+
+
+## Цена пачки стрел с учётом отношения к хозяевам лавки — как у бинтов.
+func arrow_cost() -> Array:
+	return trade_cost(RES.ARROW_COST)
+
+
+func _server_buy_arrows() -> void:
+	if arrows >= RES.QUIVER_LIMIT:
+		return
+	if not trade_allowed():
+		_refuse("лавка закрыта: отношения слишком плохи")
+		return
+	if not stock.spend(arrow_cost()):
+		return
+	arrows = mini(RES.QUIVER_LIMIT, arrows + RES.ARROW_PACK)
+	print("[торг] игрок %d купил стрелы, в колчане %d" % [peer_id, arrows])
 
 
 func _server_buy_gear() -> void:

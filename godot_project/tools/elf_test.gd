@@ -46,6 +46,7 @@ func _run() -> void:
 		# Под занавес вешаем клич и держим: клиенту надо на чём-то проверить, что
 		# бафф и откаты хоста реально доезжают по сети.
 		me.sync_ability_cd[ABILITIES.Kind.RALLY] = 0.0
+		me.mana = me.MANA_MAX
 		me.request_ability(ABILITIES.Kind.RALLY)
 		await get_tree().create_timer(8.0).timeout
 	finish()
@@ -80,6 +81,7 @@ func _test_heal(me: Node3D) -> void:
 	var before: float = me.health.current
 	var severed_before: int = me.body.severed_mask
 
+	me.mana = me.MANA_MAX
 	me.request_ability(ABILITIES.Kind.HEAL)
 	await get_tree().physics_frame
 
@@ -94,6 +96,7 @@ func _test_heal(me: Node3D) -> void:
 	# Повторный вызов на откате не должен пройти.
 	var health_before: float = me.health.current
 	me.health.apply_damage(20.0, 0)
+	me.mana = me.MANA_MAX
 	me.request_ability(ABILITIES.Kind.HEAL)
 	await get_tree().physics_frame
 	check(me.health.current < health_before, "на откате лечение не срабатывает",
@@ -103,6 +106,7 @@ func _test_heal(me: Node3D) -> void:
 ## Клич леса ускоряет и учащает удары на время.
 func _test_rally(me: Node3D) -> void:
 	var speed_before: float = me.buff_speed_scale()
+	me.mana = me.MANA_MAX
 	me.request_ability(ABILITIES.Kind.RALLY)
 	await get_tree().physics_frame
 
@@ -122,6 +126,7 @@ func _test_rally(me: Node3D) -> void:
 ## Призыв: волк появляется, он зверь, и больше предела их не бывает.
 func _test_summon(me: Node3D) -> void:
 	me.sync_ability_cd[ABILITIES.Kind.SUMMON] = 0.0
+	me.mana = me.MANA_MAX
 	me.request_ability(ABILITIES.Kind.SUMMON)
 	await get_tree().physics_frame
 
@@ -158,9 +163,11 @@ func _test_summon(me: Node3D) -> void:
 	# Добиваем до предела и просим ещё одного сверх него.
 	while _beasts_of(int(me.peer_id)).size() < ABILITIES.SUMMON_LIMIT:
 		me.sync_ability_cd[ABILITIES.Kind.SUMMON] = 0.0
+		me.mana = me.MANA_MAX
 		me.request_ability(ABILITIES.Kind.SUMMON)
 		await get_tree().physics_frame
 	me.sync_ability_cd[ABILITIES.Kind.SUMMON] = 0.0
+	me.mana = me.MANA_MAX
 	me.request_ability(ABILITIES.Kind.SUMMON)
 	await get_tree().physics_frame
 	check(_beasts_of(int(me.peer_id)).size() == ABILITIES.SUMMON_LIMIT,
@@ -190,6 +197,7 @@ func _test_cheat_guard(me: Node3D) -> void:
 
 	# Отрубаем обе руки: заклинания требуют полноценной кисти, как и лук.
 	me.body.severed_mask = 0b0011
+	me.mana = me.MANA_MAX
 	me.request_ability(ABILITIES.Kind.HEAL)
 	await get_tree().physics_frame
 	check(me.health.current == before, "без рук колдовать нельзя",

@@ -163,6 +163,7 @@ func _ready() -> void:
 
 	var trader := $UI/Trader/Panel/VBox
 	trader.get_node("Bandages").pressed.connect(_on_trade.bind(RES.Trade.BANDAGES))
+	trader.get_node("Arrows").pressed.connect(_on_trade.bind(RES.Trade.ARROWS))
 	trader.get_node("Gear").pressed.connect(_on_trade.bind(RES.Trade.GEAR))
 	trader.get_node("Close").pressed.connect(_close_trader)
 
@@ -283,7 +284,10 @@ func _refresh_hud() -> void:
 		_hud.set_spells("")
 		return
 
-	var note := "%s · бинтов %d" % [WEAPONS.NAMES[me.sync_weapon], me.body.bandages]
+	# Стрелы показываем ВСЕГДА, а не только с луком в руках: колчан — это то,
+	# что планируют заранее, и узнавать о пустоте в момент выстрела поздно.
+	var note := "%s · стрел %d · бинтов %d" % [
+		WEAPONS.NAMES[me.sync_weapon], me.arrows, me.body.bandages]
 	# Трофеи показываем только когда они есть: пустая строчка «рук 0, ног 0»
 	# висела бы у всех и всегда, а нужна она одному злодею с топором.
 	var haul: int = me.trophies[0] + me.trophies[1] + me.trophies[2]
@@ -297,7 +301,10 @@ func _refresh_hud() -> void:
 	_hud.set_right(right)
 	var magic := ""
 	if FACTIONS.has_abilities(me.faction):
-		magic = _abilities_hint(me).replace("магия: ", "")
+		# Мана впереди списка заклинаний: без неё список — это перечень того,
+		# чего нельзя.
+		magic = "мана %d/%d" % [int(me.mana), int(me.MANA_MAX)]
+		magic += "\n" + _abilities_hint(me).replace("магия: ", "")
 	_hud.set_spells(magic)
 	_hud.set_prompt(_action_prompt(me))
 
@@ -433,6 +440,7 @@ func _help_text() -> String:
 	lines.append("у постройки: наём у казарм, лошади в конюшне, обоз у склада · Y — перемирие")
 	lines.append("Tab — вид сверху · V — первое/третье лицо · F10 — в меню · тильда — консоль")
 	lines.append("M — звук выкл/вкл · минус и равно — тише и громче")
+	lines.append("Стрелы и мана КОНЧАЮТСЯ. Стрелы — в лавке, мана копится сама.")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
@@ -922,6 +930,7 @@ const TEST_FLAGS := {
 	"--combattest": ["res://tools/combat_test.gd", false],
 	"--playabletest": ["res://tools/playable_test.gd", true],
 	"--onboardingtest": ["res://tools/onboarding_test.gd", true],
+	"--ammotest": ["res://tools/ammo_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1522,6 +1531,19 @@ func _refresh_trader(me: Node3D) -> void:
 		var cost_b: Array = me.bandage_cost()
 		bandages.text = "Бинты, %d шт — %s" % [RES.BANDAGE_PACK, RES.format_cost(cost_b)]
 		bandages.disabled = not me.stock.can_afford(cost_b)
+
+	var quiver: Button = box.get_node("Arrows")
+	if not allowed:
+		quiver.text = "Лавка не обслуживает: война"
+		quiver.disabled = true
+	elif me.arrows >= RES.QUIVER_LIMIT:
+		quiver.text = "Стрелы — колчан полон (%d)" % RES.QUIVER_LIMIT
+		quiver.disabled = true
+	else:
+		var cost_a: Array = me.arrow_cost()
+		quiver.text = "Стрелы, %d шт (в колчане %d) — %s" % [
+			RES.ARROW_PACK, me.arrows, RES.format_cost(cost_a)]
+		quiver.disabled = not me.stock.can_afford(cost_a)
 
 	var gear: Button = box.get_node("Gear")
 	var cost: Array = me.next_gear_cost()

@@ -62,6 +62,7 @@ SUITES=(
 	"horse:--horsetest:0:"
 	"slice:--slicetest:0,1,2:"
 	"onboarding:--onboardingtest:0:"
+	"ammo:--ammotest:1:"
 	"playable0:--playabletest:0:"
 	"playable1:--playabletest:1:"
 	"playable2:--playabletest:2:"
