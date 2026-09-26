@@ -27,7 +27,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 32
+	expected_host = 36
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -55,6 +55,10 @@ func _run() -> void:
 	await _test_killed_worker_drops_cargo(me)
 	await _test_farm_feeds_the_side(me)
 	await _test_flees(me)
+	# ГОЛОД — ПОСЛЕДНИМ: он выкашивает артель целиком, и всё, что идёт после,
+	# осталось бы без батраков. Первая версия стояла выше и уносила с собой
+	# три чужие проверки.
+	await _test_hunger(me)
 	finish()
 
 
@@ -455,7 +459,10 @@ func _test_farm_feeds_the_side(me: Node3D) -> void:
 
 	var field: Node3D = _world.spawn_building(RES.Building.FARM,
 		base + Vector3(0.0, 0.0, -34.0), int(me.peer_id), side, true)
-	await get_tree().create_timer(3.0).timeout
+	# Ждём с запасом на скорость поля: RES.FARM_RATE намеренно невелика, и трёх
+	# секунд ей не хватает даже на одну единицу. Считаем от самой скорости, а не
+	# от числа: её ещё будут крутить по playtest.
+	await get_tree().create_timer(4.0 / RES.FARM_RATE).timeout
 	var ripe: int = int(field.grown[RES.Kind.FOOD]) if field != null else 0
 	check(field != null and ripe > 0, "достроенное поле растит еду",
 		"выросло %d" % ripe)
@@ -485,3 +492,75 @@ func _test_farm_feeds_the_side(me: Node3D) -> void:
 			break
 	check(delivered, "еда доносится до склада стороны",
 		"еда %d -> %d" % [before, wallet.get_amount(RES.Kind.FOOD)])
+
+
+## Артель ест, а без еды голодает — и умирает не сразу.
+##
+## ЗАЧЕМ ИМЕННО ТАК. Решение автора: «каждый рабочий каждые 5 минут съедает
+## определённое количество еды, чтобы приходилось следить за рабочими, а то
+## могут помереть от голода». Пять минут в проверке ждать нечего, поэтому
+## кормёжку дёргаем напрямую — вопрос не в таймере, а в том, что происходит на
+## каждом её шаге.
+##
+## ГЛАВНАЯ ИЗ ЧЕТЫРЁХ — ПОСЛЕДНЯЯ, про предохранитель. Голодная смерть артели у
+## игрока, который ушёл воевать, — наказание за то, что он играл в другую часть
+## игры. Смерть обязана наступать с ТРЕТЬЕГО пропуска, а не с первого.
+func _test_hunger(me: Node3D) -> void:
+	var side: int = int(me.faction)
+	var wallet: Node = _world.treasury.of(side)
+	var crew: Array = _crew(me)
+	if crew.is_empty():
+		fail("батраков нет")
+		return
+
+	# СЫТАЯ АРТЕЛЬ. Кладём заведомо достаточно и требуем, чтобы съели ровно
+	# свою долю и никто не проголодался.
+	_set_food(wallet, crew.size() * RES.FEED_PER_WORKER * 3)
+	var before: int = wallet.get_amount(RES.Kind.FOOD)
+	_feed_now()
+	var eaten: int = before - wallet.get_amount(RES.Kind.FOOD)
+	var hungry := 0
+	for worker in _crew(me):
+		hungry += 1 if int(worker.sync_hunger) > 0 else 0
+	check(eaten == crew.size() * RES.FEED_PER_WORKER and hungry == 0,
+		"сытая артель съедает свою долю и не голодает",
+		"съедено %d на %d ртов, голодных %d" % [eaten, crew.size(), hungry])
+
+	# ПУСТАЯ КАЗНА. Никто не ест, все голодны, но все живы.
+	_set_food(wallet, 0)
+	var alive_before: int = _crew(me).size()
+	_feed_now()
+	var all_hungry := true
+	for worker in _crew(me):
+		if int(worker.sync_hunger) != 1:
+			all_hungry = false
+	check(all_hungry and _crew(me).size() == alive_before,
+		"без еды артель голодает, но с первого раза не умирает",
+		"живых %d из %d" % [_crew(me).size(), alive_before])
+
+	# ВТОРОЙ ПРОПУСК — всё ещё живы. Это и есть предохранитель.
+	_feed_now()
+	check(_crew(me).size() == alive_before,
+		"второй пропуск кормёжки тоже переживают",
+		"живых %d из %d" % [_crew(me).size(), alive_before])
+
+	# ТРЕТИЙ — умирают. Ждём кадр: удаление узла происходит в конце кадра, и
+	# первая версия проверки считала живых раньше, чем мёртвые исчезли.
+	_feed_now()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check(_crew(me).size() < alive_before,
+		"на третьем пропуске от голода умирают",
+		"живых %d из %d" % [_crew(me).size(), alive_before])
+
+
+## Положить стороне ровно столько еды. Остальные ресурсы не трогаем.
+func _set_food(wallet: Node, amount: int) -> void:
+	wallet.carried.amounts[RES.Kind.FOOD] = amount
+	wallet.stored.amounts[RES.Kind.FOOD] = 0
+
+
+## Немедленно провести кормёжку, не дожидаясь пяти минут.
+func _feed_now() -> void:
+	_world._hunger_t = RES.FEED_INTERVAL
+	_world._tick_hunger(0.1)

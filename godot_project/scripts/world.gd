@@ -99,6 +99,7 @@ var _spawn_counter := 0
 var _corpses: Array[Node] = []
 var _netlog_t := 0.0
 var _deposit_t := 0.0
+var _hunger_t := 0.0
 
 
 func _ready() -> void:
@@ -167,6 +168,7 @@ func _set_running(on: bool) -> void:
 
 func _process(delta: float) -> void:
 	_tick_deposit(delta)
+	_tick_hunger(delta)
 	if not _netlog or not Net.active:
 		return
 	_netlog_t += delta
@@ -187,6 +189,58 @@ func _process(delta: float) -> void:
 ##
 ## Отдельной кнопки нет намеренно: вклад должен быть очевидным следствием
 ## возвращения на базу, а не ещё одним действием, которое забывают нажать.
+## Кормёжка артели. Раз в FEED_INTERVAL каждый батрак съедает свою долю еды из
+## казны СВОЕЙ СТОРОНЫ.
+##
+## СТОРОНАМИ, А НЕ ПОШТУЧНО: еда лежит в общей казне, и списывать её батрак за
+## батраком значило бы кормить первых и морить последних в случайном порядке.
+## Считаем нужное на всю артель разом; не хватило на всех — не ест никто, и
+## сторона узнаёт об этом одной внятной строкой, а не восемью.
+##
+## ПРЕДОХРАНИТЕЛЬ. Смерть от голода наступает с ТРЕТЬЕГО пропуска, то есть через
+## пятнадцать минут громких предупреждений. Игрок, ушедший воевать, не должен
+## вернуться на пепелище только потому, что играл в другую часть игры.
+func _tick_hunger(delta: float) -> void:
+	if not Net.hosting():
+		return
+	_hunger_t += delta
+	if _hunger_t < RES.FEED_INTERVAL:
+		return
+	_hunger_t = 0.0
+
+	for faction in FACTIONS.COUNT:
+		var crew: Array = labourers_of(faction)
+		if crew.is_empty():
+			continue
+		var wallet: Node = treasury.of(faction)
+		if wallet == null:
+			continue
+		var need := RES.empty()
+		need[RES.Kind.FOOD] = crew.size() * RES.FEED_PER_WORKER
+		if wallet.spend(need):
+			for worker in crew:
+				worker.sync_hunger = 0
+			continue
+
+		var starved := 0
+		for worker in crew:
+			worker.sync_hunger += 1
+			if worker.sync_hunger >= RES.HUNGER_FATAL:
+				starved += 1
+				worker.die_of_hunger()
+		var left: Array = labourers_of(faction)
+		var text := "ГОЛОД: %s — нечем кормить артель (%d ртов, надо %d еды)" % [
+			FACTIONS.name_of(faction), crew.size(), need[RES.Kind.FOOD]]
+		if starved > 0:
+			text += ". Умерло от голода: %d" % starved
+		print("[голод] %s, осталось %d" % [text, left.size()])
+		if objective != null:
+			# Объявлением, а не строкой в логе: свою артель игрок обязан
+			# услышать. Чужой голод он и так не увидит — у каждой стороны
+			# объявление своё, а в логе мир пишет всё.
+			objective.log_event(text)
+
+
 func _tick_deposit(delta: float) -> void:
 	if not Net.hosting():
 		return

@@ -1289,7 +1289,16 @@ func _crew_hint() -> String:
 	var parts := PackedStringArray()
 	for role in LABOURER.ROLE_COUNT:
 		parts.append("%s %s (%d)" % [_role_key(role), LABOURER.ROLE_NAMES[role], counts[role]])
-	var line := "батраки %d/%d: " % [crew.size(), RES.LABOURER_LIMIT] + "   ".join(parts)
+	# ГОЛОДНЫХ ВЫНОСИМ В НАЧАЛО СТРОКИ. Это единственное в артели, что требует
+	# немедленного решения: остальное можно дочитать, а голод — нет.
+	var hungry := 0
+	for worker in crew:
+		if int(worker.sync_hunger) > 0:
+			hungry += 1
+	var head := "батраки %d/%d" % [crew.size(), RES.LABOURER_LIMIT]
+	if hungry > 0:
+		head += "   ГОЛОДНЫХ %d (работают вдвое медленнее, поставь поле — клавиша 6)" % hungry
+	var line := head + ": " + "   ".join(parts)
 	line += "   |   B — нанять (%s)" % RES.format_cost(RES.LABOURER_COST)
 	if carrying > 0:
 		line += "   несут: %d" % carrying

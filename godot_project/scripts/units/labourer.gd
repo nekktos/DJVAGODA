@@ -93,6 +93,9 @@ const FLEE_RADIUS := 18.0
 var load := RES2.empty()
 
 var _work_t := 0.0
+## Сколько кормёжек подряд пропущено. Ведёт ХОСТ, реплицируется ради подписи в
+## HUD: клиент должен видеть, что его артель голодает, а не гадать.
+@export var sync_hunger: int = 0
 var _retarget_t := 0.0
 ## Текущее место работы: источник, стройка или шахта.
 var _site: Node3D = null
@@ -163,7 +166,12 @@ func _idle_destination(delta: float) -> Vector3:
 
 	# Набрал груз — несём на склад. Работа подождёт: батрак, продолжающий рубить
 	# с полными руками, просто теряет время.
-	if carrying() >= LOAD_LIMIT:
+	#
+	# И НЕСЁМ НЕПОЛНОЕ, КОГДА БРАТЬ БОЛЬШЕ НЕЧЕГО. Без этого фермер у пустого
+	# поля стоял с горстью еды и ждал полных рук по две минуты: поле растит
+	# медленно, и «полные руки» наступали позже, чем сторона успевала
+	# проголодаться. То же и с вычерпанной шахтой.
+	if carrying() >= LOAD_LIMIT or (carrying() > 0 and _took_nothing):
 		return _deliver(delta)
 
 	_retarget_t -= delta
@@ -180,7 +188,10 @@ func _idle_destination(delta: float) -> Vector3:
 
 	_work_t -= delta
 	if _work_t <= 0.0:
-		_work_t = WORK_INTERVAL
+		# Голодный работает вдвое медленнее. Беда обязана быть видна делом, а не
+		# только надписью: цифра в углу экрана читается не всеми, а вставшая
+		# добыча — всеми.
+		_work_t = WORK_INTERVAL * (RES2.HUNGER_SLOWDOWN if sync_hunger > 0 else 1.0)
 		_work_on(_site)
 	# Стоим вплотную и работаем.
 	return global_position
@@ -231,6 +242,16 @@ func _deliver(delta: float) -> Vector3:
 	_drop_site = null
 	_work_t = 0.0
 	return global_position
+
+
+## Умереть от голода. Отдельно от боевой смерти: тут нет ни убийцы, ни трупа с
+## оружием, но груз из рук падает так же — он никуда не делся оттого, что
+## хозяин умер не от меча.
+func die_of_hunger() -> void:
+	if not Net.hosting():
+		return
+	print("[голод] батрак стороны «%s» умер" % FACTIONS.name_of(faction))
+	take_damage(9999.0, 0, "torso", global_position, Vector3.FORWARD)
 
 
 ## Гружёный батрак роняет груз. Руки чистим здесь же: боец сейчас исчезнет, но
@@ -323,12 +344,19 @@ func _work_on(site: Node3D) -> void:
 	if site.has_method("take"):
 		# Шахта: берём накопленное, сколько влезет в руки.
 		var taken: PackedInt32Array = site.take(LOAD_LIMIT - carrying())
+		var got := 0
+		for value in taken:
+			got += int(value)
+		_took_nothing = got <= 0
 		var copy := RES2.empty()
 		for kind in RES2.COUNT:
 			copy[kind] = RES2.at(load, kind) + RES2.at(taken, kind)
 		load = copy
 		return
 
+	# Дерево и камень всегда отдают удар: у них запас в самом источнике, и пока
+	# источник существует, он не пуст.
+	_took_nothing = false
 	var kind: int = int(site.get_meta("resource", RES2.Kind.WOOD))
 	var copy := RES2.empty()
 	for i in RES2.COUNT:
@@ -379,6 +407,15 @@ func _find_site() -> Node3D:
 			best_distance = d
 			best = source
 	return best
+
+
+## Дал ли источник хоть что-то в последний заход. Ведёт `_work_on`.
+##
+## СМОТРИМ НА ЗАХОД, А НЕ НА ЗАПАС В КАДРЕ. Первая версия спрашивала у поля,
+## пусто ли оно прямо сейчас, — и «пусто» не наступало никогда: поле отрастает
+## непрерывно, и между двумя ударами на нём успевала появиться единица. Фермер
+## с горстью еды так и стоял у грядки, пока сторона голодала.
+var _took_nothing := false
 
 
 ## Ближайшее ДОСТРОЕННОЕ поле своей стороны. Недостроенное не годится: на нём
