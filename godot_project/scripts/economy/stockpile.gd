@@ -14,11 +14,11 @@ const RES := preload("res://scripts/economy/resources.gd")
 signal changed
 
 ## Реплицируемое состояние: по одному числу на ресурс.
-@export var amounts: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
+@export var amounts: PackedInt32Array = RES.empty()
 ## Потолок хранения. Растёт от построенных складов.
 @export var capacity: int = RES.BASE_CAPACITY
 
-var _seen := PackedInt32Array([0, 0, 0, 0])
+var _seen := RES.empty()
 
 
 func _process(_delta: float) -> void:
@@ -36,7 +36,7 @@ func get_amount(kind: int) -> int:
 ## Хватает ли на покупку. Читать можно где угодно, менять — только на хосте.
 func can_afford(cost: Array) -> bool:
 	for i in RES.COUNT:
-		if get_amount(i) < int(cost[i]):
+		if get_amount(i) < RES.at(cost, i):
 			return false
 	return true
 
@@ -47,7 +47,7 @@ func spend(cost: Array) -> bool:
 		return false
 	var copy := amounts.duplicate()
 	for i in RES.COUNT:
-		copy[i] -= int(cost[i])
+		copy[i] -= RES.at(cost, i)
 	amounts = copy
 	changed.emit()
 	return true

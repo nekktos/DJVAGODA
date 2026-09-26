@@ -134,7 +134,7 @@ func _test_sends_caravan() -> void:
 	# владельца привозила груз в никуда.
 	var wallet: Node = _villain_wallet()
 	var before: int = wallet.get_amount(RES.Kind.IRON)
-	sent.cargo = PackedInt32Array([0, 0, 0, 40])
+	sent.cargo = RES.fit([0, 0, 0, 40])
 	sent._unload_at_home()
 	check(wallet.get_amount(RES.Kind.IRON) > before, "и разгружается в казну СТОРОНЫ",
 		"железо %d -> %d" % [before, wallet.get_amount(RES.Kind.IRON)])

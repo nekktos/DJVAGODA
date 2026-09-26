@@ -97,7 +97,7 @@ signal came_home(horses: int)
 @export var sync_yaw: float = 0.0
 @export var state: int = State.TO_MINE
 @export var health: float = MAX_HEALTH
-@export var cargo: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
+@export var cargo: PackedInt32Array = RES.empty()
 ## Сколько лошадей в упряжке и сколько здоровья у них осталось общим счётом.
 @export var horses := 2
 @export var horse_pool := 120.0
@@ -645,7 +645,7 @@ func _unload_at_home() -> void:
 		delivered += wallet.add_stored(kind, cargo[kind])
 	print("[караван] доставлено стороне «%s»: %d единиц"
 		% [FACTIONS.name_of(faction), delivered])
-	cargo = PackedInt32Array([0, 0, 0, 0])
+	cargo = RES.empty()
 
 
 ## Принять урон. Вызывается ТОЛЬКО хостом — так же, как у персонажей.

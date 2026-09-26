@@ -27,7 +27,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 28
+	expected_host = 32
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -53,6 +53,7 @@ func _run() -> void:
 	await _test_delivers_to_storage(me)
 	_test_harvest_alone_does_not_count(me)
 	await _test_killed_worker_drops_cargo(me)
+	await _test_farm_feeds_the_side(me)
 	await _test_flees(me)
 	finish()
 
@@ -246,7 +247,8 @@ func _test_delivers_to_storage(me: Node3D) -> void:
 		return
 	worker.set_role(LABOURER.Role.LUMBERJACK)
 	worker.global_position = storage.global_position + Vector3(9.0, 0.5, 0.0)
-	worker.load = PackedInt32Array([LABOURER.LOAD_LIMIT, 0, 0, 0])
+	worker.load = RES.empty()
+	worker.load[RES.Kind.WOOD] = LABOURER.LOAD_LIMIT
 	await get_tree().physics_frame
 
 	var wallet: Node = _world.treasury.of(int(me.faction))
@@ -352,7 +354,7 @@ func _test_harvest_alone_does_not_count(me: Node3D) -> void:
 
 	var wallet: Node = _world.treasury.of(int(me.faction))
 	worker.set_role(LABOURER.Role.LUMBERJACK)
-	worker.load = PackedInt32Array([0, 0, 0, 0])
+	worker.load = RES.empty()
 
 	var before: int = wallet.get_amount(RES.Kind.WOOD)
 	worker._work_on(site)
@@ -401,7 +403,9 @@ func _test_killed_worker_drops_cargo(me: Node3D) -> void:
 	# подобрал её раньше, чем мы посмотрим.
 	var spot: Vector3 = FACTIONS.SPAWN[int(me.faction)] + Vector3(0.0, 0.0, 70.0)
 	worker.global_position = spot
-	worker.load = PackedInt32Array([7, 3, 0, 0])
+	worker.load = RES.empty()
+	worker.load[RES.Kind.WOOD] = 7
+	worker.load[RES.Kind.STONE] = 3
 	var carried: PackedInt32Array = worker.load.duplicate()
 	var piles_before := get_tree().get_nodes_in_group("loot").size()
 
@@ -427,3 +431,57 @@ func _test_killed_worker_drops_cargo(me: Node3D) -> void:
 			same = false
 	check(same, "в куче лежит ровно то, что он нёс",
 		"нёс %s, в куче %s" % [carried, dropped.contents])
+
+
+## Поле растит еду, а фермер доносит её до склада.
+##
+## ЗАЧЕМ. Решение автора игры — заняться фермерством. Еда стала пятым ресурсом,
+## поле — шестой постройкой, фермер — пятой ролью батрака.
+##
+## Проверяем всю цепочку и РЕЗУЛЬТАТ на каждом шаге: на недостроенном поле не
+## растёт, на достроенном растёт, фермер уносит, казна прибывает. Поле, которое
+## растит само и никем не убирается, — это не экономика, а счётчик.
+func _test_farm_feeds_the_side(me: Node3D) -> void:
+	var side: int = int(me.faction)
+	var base: Vector3 = FACTIONS.SPAWN[side]
+
+	# НЕДОСТРОЕННОЕ поле не родит: иначе стройка была бы бесплатной.
+	var site: Node3D = _world.spawn_building(RES.Building.FARM,
+		base + Vector3(0.0, 0.0, 34.0), int(me.peer_id), side, false)
+	await get_tree().create_timer(2.0).timeout
+	check(site != null and int(site.grown[RES.Kind.FOOD]) == 0,
+		"на недостроенном поле ничего не растёт",
+		"выросло %d" % (int(site.grown[RES.Kind.FOOD]) if site != null else -1))
+
+	var field: Node3D = _world.spawn_building(RES.Building.FARM,
+		base + Vector3(0.0, 0.0, -34.0), int(me.peer_id), side, true)
+	await get_tree().create_timer(3.0).timeout
+	var ripe: int = int(field.grown[RES.Kind.FOOD]) if field != null else 0
+	check(field != null and ripe > 0, "достроенное поле растит еду",
+		"выросло %d" % ripe)
+
+	# ФЕРМЕР УНОСИТ. Ставим его прямо к полю и ждём круга до склада.
+	var worker: Node3D = null
+	for candidate in _crew(me):
+		worker = candidate
+		break
+	if worker == null:
+		fail("батраков нет")
+		return
+	worker.set_role(LABOURER.Role.FARMER)
+	worker.load = RES.empty()
+	worker.global_position = field.global_position + Vector3(4.0, 0.5, 0.0)
+	await get_tree().create_timer(4.0).timeout
+	check(int(worker.carrying()) > 0, "фермер набирает еду с поля",
+		"в руках %d" % int(worker.carrying()))
+
+	var wallet: Node = _world.treasury.of(side)
+	var before: int = wallet.get_amount(RES.Kind.FOOD)
+	var delivered := false
+	for i in 40:
+		await get_tree().create_timer(1.0).timeout
+		if wallet.get_amount(RES.Kind.FOOD) > before:
+			delivered = true
+			break
+	check(delivered, "еда доносится до склада стороны",
+		"еда %d -> %d" % [before, wallet.get_amount(RES.Kind.FOOD)])

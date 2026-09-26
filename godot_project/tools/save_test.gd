@@ -232,7 +232,7 @@ func _test_round_trip(me: Node3D) -> void:
 
 	# Ставим заметное состояние.
 	objective.palace_owner = FACTIONS.Kind.ELVES
-	wallet.carried.amounts = PackedInt32Array([1, 2, 3, 4])
+	wallet.carried.amounts = RES.fit([1, 2, 3, 4])
 	wallet.stored.capacity = 777
 	# Лошади — имущество стороны, и дорогое: до дюжины по 25 золота и 12 железа.
 	wallet.horses = 9
@@ -254,7 +254,7 @@ func _test_round_trip(me: Node3D) -> void:
 
 	# Портим всё.
 	objective.palace_owner = FACTIONS.Kind.VILLAIN
-	wallet.carried.amounts = PackedInt32Array([0, 0, 0, 0])
+	wallet.carried.amounts = RES.fit([0, 0, 0, 0])
 	wallet.stored.capacity = 0
 	wallet.horses = 0
 	wallet.horses_out = 0

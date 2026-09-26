@@ -143,13 +143,13 @@ func _test_reset(me: Node3D) -> void:
 	_world.spawn_building(RES.Building.STORAGE, Vector3(120.0, 0.0, -40.0), 1, side, true)
 	_world.spawn_labourer(side, Vector3(121.0, 0.5, -40.0), Vector3(120.0, 0.0, -40.0), 0)
 	_world.spawn_labourer(side, Vector3(119.0, 0.5, -40.0), Vector3(120.0, 0.0, -40.0), 2)
-	wallet.carried.amounts = PackedInt32Array([555, 555, 555, 555])
+	wallet.carried.amounts = RES.fit([555, 555, 555, 555])
 	wallet.stored.capacity = 4321
 	wallet.horses = 11
 	objective.palace_owner = FACTIONS.Kind.VILLAIN
 	objective.victors = PackedByteArray([1, 1, 1])
 	objective.leader_down = PackedByteArray([1, 1, 1])
-	_world.mine.stored = PackedInt32Array([300, 300, 300, 300])
+	_world.mine.stored = RES.fit([300, 300, 300, 300])
 	await get_tree().physics_frame
 
 	var path: String = _world.savegame.save_world()
@@ -193,7 +193,7 @@ func _test_reset(me: Node3D) -> void:
 		"%d осталось" % get_tree().get_nodes_in_group("building").size())
 	check(_world.labourers_of(side).is_empty(), "БАТРАКИ распущены",
 		"%d осталось" % _world.labourers_of(side).size())
-	check(wallet.carried.amounts == PackedInt32Array(FACTIONS.STARTING_RESOURCES[side]),
+	check(wallet.carried.amounts == RES.fit(FACTIONS.STARTING_RESOURCES[side]),
 		"казна вернулась к стартовой", str(wallet.carried.amounts))
 	check(int(wallet.stored.capacity) == 0, "потолок склада обнулён",
 		"%d" % int(wallet.stored.capacity))
@@ -204,7 +204,7 @@ func _test_reset(me: Node3D) -> void:
 			and objective.leader_down == PackedByteArray([0, 0, 0]),
 		"исход партии снова не решён",
 		"дворец у «%s»" % FACTIONS.name_of(int(objective.palace_owner)))
-	check(_world.mine.stored == PackedInt32Array([0, 0, 0, 0]), "шахта пуста",
+	check(_world.mine.stored == RES.fit([0, 0, 0, 0]), "шахта пуста",
 		str(_world.mine.stored))
 
 	# 4. И главное: прошлую партию мы НЕ стёрли. Новая игра заводит новый мир, а
@@ -342,11 +342,11 @@ func _test_panel_returns_cursor(me: Node3D) -> void:
 ## за полторы секунды остановленного мира в ней прибавилось хоть что-то, значит
 ## мир идёт — а вместе с ним идёт и всё остальное.
 func _test_frozen_world() -> void:
-	_world.mine.stored = PackedInt32Array([0, 0, 0, 0])
+	_world.mine.stored = RES.fit([0, 0, 0, 0])
 	_world._set_running(false)
 	await get_tree().create_timer(1.5).timeout
 	var frozen: PackedInt32Array = _world.mine.stored.duplicate()
-	check(frozen == PackedInt32Array([0, 0, 0, 0]), "в меню мир СТОИТ", str(frozen))
+	check(frozen == RES.fit([0, 0, 0, 0]), "в меню мир СТОИТ", str(frozen))
 
 	# И обратно: остановленный навсегда мир — это не игра, а картинка.
 	_world._set_running(true)

@@ -67,7 +67,7 @@ func get_amount(kind: int) -> int:
 
 func can_afford(cost: Array) -> bool:
 	for i in RES.COUNT:
-		if get_amount(i) < int(cost[i]):
+		if get_amount(i) < RES.at(cost, i):
 			return false
 	return true
 
@@ -78,7 +78,7 @@ func spend(cost: Array) -> bool:
 	if not Net.hosting() or not can_afford(cost):
 		return false
 	for i in RES.COUNT:
-		var left := int(cost[i])
+		var left := RES.at(cost, i)
 		if left <= 0:
 			continue
 		var from_hand: int = mini(left, carried.get_amount(i))
@@ -112,9 +112,9 @@ func deposit() -> int:
 ## мир высыпал это трупом на землю. Только на хосте.
 func drop_carried() -> PackedInt32Array:
 	if not Net.hosting():
-		return PackedInt32Array([0, 0, 0, 0])
+		return RES.empty()
 	var lost: PackedInt32Array = carried.amounts.duplicate()
-	carried.amounts = PackedInt32Array([0, 0, 0, 0])
+	carried.amounts = RES.empty()
 	changed.emit()
 	return lost
 
@@ -166,12 +166,12 @@ var capacity: int:
 func grant(values: Array) -> void:
 	var biggest := 0
 	for i in RES.COUNT:
-		biggest = maxi(biggest, int(values[i]))
+		biggest = maxi(biggest, RES.at(values, i))
 	# Потолок на ресурс, поэтому равняемся на самый крупный, а не на сумму.
 	carried.capacity = maxi(carried.capacity, biggest)
-	var copy := PackedInt32Array([0, 0, 0, 0])
+	var copy := RES.empty()
 	for i in RES.COUNT:
-		copy[i] = int(values[i])
+		copy[i] = RES.at(values, i)
 	carried.amounts = copy
 	changed.emit()
 

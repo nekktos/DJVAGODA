@@ -57,8 +57,8 @@ func _test_wallet_split(me: Node3D) -> void:
 	check(wallet.stored.capacity == 0, "без склада безопасного запаса нет",
 		"потолок склада %d" % wallet.stored.capacity)
 
-	wallet.carried.amounts = PackedInt32Array([10, 0, 50, 0])
-	wallet.stored.amounts = PackedInt32Array([0, 0, 0, 0])
+	wallet.carried.amounts = RES.fit([10, 0, 50, 0])
+	wallet.stored.amounts = RES.fit([0, 0, 0, 0])
 	await get_tree().physics_frame
 	check(wallet.get_amount(RES.Kind.GOLD) == 50, "видно суммарно", "золота 50")
 	check(wallet.carried_total() == 60, "при себе учитывается отдельно",
@@ -68,7 +68,7 @@ func _test_wallet_split(me: Node3D) -> void:
 ## Смерть роняет всё при себе и купленное снаряжение; поднять может любой.
 func _test_death_drops(me: Node3D) -> void:
 	me.gear_tier = 2
-	me.stock.carried.amounts = PackedInt32Array([0, 0, 90, 20])
+	me.stock.carried.amounts = RES.fit([0, 0, 90, 20])
 	me.teleport.rpc(Vector3(20.0, 2.0, 20.0))
 	await get_tree().physics_frame
 	var where: Vector3 = me.global_position
@@ -126,8 +126,8 @@ func _test_wounds_survive_respawn(me: Node3D) -> void:
 ## У эльфов и стражи склада нет, поэтому у них страховки нет вовсе.
 func _test_storage_is_insurance(me: Node3D) -> void:
 	me.stock.stored.capacity = 500
-	me.stock.stored.amounts = PackedInt32Array([0, 0, 200, 0])
-	me.stock.carried.amounts = PackedInt32Array([0, 0, 40, 0])
+	me.stock.stored.amounts = RES.fit([0, 0, 200, 0])
+	me.stock.carried.amounts = RES.fit([0, 0, 40, 0])
 	await get_tree().physics_frame
 
 	me.take_damage(999.0, 1, "torso", me.global_position, Vector3.FORWARD)

@@ -343,7 +343,7 @@ func _stage_caravan() -> void:
 	var me: Node3D = _world.local_player()
 	if me == null:
 		return
-	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	_world.mine.stored = RES.fit([0, 0, 200, 200])
 	# Маршрут для кадра нарочно короткий и на открытом месте: у настоящей шахты
 	# караван теряется среди 70-метровых скал и в кадр не читается.
 	_world.spawn_caravan(PackedVector3Array([
@@ -493,11 +493,11 @@ func _stage_loot() -> void:
 		return
 	me.teleport.rpc(Vector3(-34.0, 2.0, 37.0))
 	var piles := [
-		PackedInt32Array([40, 0, 0, 0]),
-		PackedInt32Array([0, 40, 0, 0]),
-		PackedInt32Array([0, 0, 40, 0]),
-		PackedInt32Array([0, 0, 0, 40]),
-		PackedInt32Array([20, 20, 0, 0]),
+		RES.fit([40, 0, 0, 0]),
+		RES.fit([0, 40, 0, 0]),
+		RES.fit([0, 0, 40, 0]),
+		RES.fit([0, 0, 0, 40]),
+		RES.fit([20, 20, 0, 0]),
 	]
 	for i in piles.size():
 		_world.spawn_loot_pile(Vector3(-38.0 + float(i) * 2.2, 1.4, 31.0), piles[i])

@@ -30,7 +30,7 @@ const STOCKPILE_CAP := 300
 const PRODUCES := [RES.Kind.STONE, RES.Kind.IRON, RES.Kind.GOLD]
 
 ## Реплицируемое состояние: накопленное по каждому ресурсу.
-@export var stored: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
+@export var stored: PackedInt32Array = RES.empty()
 
 ## Накопленные доли по каждому ресурсу: скорости дробные, а запас целый.
 var _fractions := {}
@@ -57,7 +57,7 @@ func _process(delta: float) -> void:
 ## Забрать до limit единиц каждого ресурса. Только на хосте.
 ## Возвращает то, что реально удалось забрать.
 func take(limit: int) -> PackedInt32Array:
-	var taken := PackedInt32Array([0, 0, 0, 0])
+	var taken := RES.empty()
 	if not Net.hosting():
 		return taken
 	var copy := stored.duplicate()

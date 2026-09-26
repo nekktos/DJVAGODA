@@ -248,9 +248,9 @@ func load_world() -> bool:
 		var key := "treasury/%d" % faction
 		if not cfg.has_section(key):
 			continue
-		wallet.carried.amounts = cfg.get_value(key, "carried", wallet.carried.amounts)
+		wallet.carried.amounts = RES.fit(cfg.get_value(key, "carried", wallet.carried.amounts))
 		wallet.carried.capacity = int(cfg.get_value(key, "carried_cap", wallet.carried.capacity))
-		wallet.stored.amounts = cfg.get_value(key, "stored", wallet.stored.amounts)
+		wallet.stored.amounts = RES.fit(cfg.get_value(key, "stored", wallet.stored.amounts))
 		wallet.stored.capacity = int(cfg.get_value(key, "stored_cap", wallet.stored.capacity))
 		wallet.horses = int(cfg.get_value(key, "horses", wallet.horses))
 		# А вот УВЕДЁННЫХ с обозом лошадей возвращаем в конюшню, а не

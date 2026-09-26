@@ -247,8 +247,8 @@ func _assign_roles(faction: int) -> void:
 			var wallet := _wallet(faction)
 			var cost: Array = RES.BUILDING_COST[kind]
 			need_stone = wallet != null and (
-				wallet.get_amount(RES.Kind.STONE) < int(cost[RES.Kind.STONE])
-				or wallet.get_amount(RES.Kind.IRON) < int(cost[RES.Kind.IRON]))
+				wallet.get_amount(RES.Kind.STONE) < RES.at(cost, RES.Kind.STONE)
+				or wallet.get_amount(RES.Kind.IRON) < RES.at(cost, RES.Kind.IRON))
 		if need_stone:
 			wanted[LABOURER.Role.MINER] = rest - rest / 2
 			wanted[LABOURER.Role.LUMBERJACK] = rest / 2

@@ -28,6 +28,13 @@ signal destroyed_on_server(building: Node3D, killer_id: int)
 
 ## Реплицируемое состояние.
 @export var progress: float = 0.0
+## Что выросло на поле и ещё не унесено. У прочих построек пусто всегда.
+##
+## ПОЛЕ РАСТИТ САМО, как шахта копит руду: за грядками «считается, что следят».
+## Работа фермера — не тяпка, а ДОСТАВКА. Пока он не унёс выросшее, поле стоит
+## полным и больше не родит, и еда подчиняется тому же правилу, что и всё
+## остальное: добытое засчитывается, когда донесено.
+@export var grown: PackedInt32Array = RES.empty()
 @export var health: float = MAX_HEALTH
 
 var kind := 0
@@ -276,10 +283,42 @@ func _process(delta: float) -> void:
 	if Net.hosting() and progress < 1.0:
 		progress = minf(1.0, progress + delta * _build_rate() / float(RES.BUILD_TIME[kind]))
 	_apply_progress()
+	if Net.hosting() and progress >= 1.0 and kind == RES.Building.FARM:
+		_grow(delta)
 	if progress >= 1.0 and not _done:
 		_done = true
 		Sfx.at(Sfx.Kind.BUILD_DONE, global_position, 3.0)
 		completed.emit()
+
+
+## Растить еду. Доли копим отдельно: скорость дробная, а запас целый — тем же
+## способом, что и в шахте.
+var _grain := 0.0
+
+
+func _grow(delta: float) -> void:
+	_grain += RES.FARM_RATE * delta
+	var whole := int(_grain)
+	if whole <= 0:
+		return
+	_grain -= float(whole)
+	var copy := grown.duplicate()
+	copy[RES.Kind.FOOD] = mini(RES.FARM_CAP, copy[RES.Kind.FOOD] + whole)
+	grown = copy
+
+
+## Забрать выросшее. Тот же договор, что у шахты: `take(limit)` отдаёт сколько
+## смог, и батрак уносит это на склад.
+func take(limit: int) -> PackedInt32Array:
+	var taken := RES.empty()
+	if not Net.hosting() or kind != RES.Building.FARM:
+		return taken
+	var copy := grown.duplicate()
+	var amount: int = mini(limit, copy[RES.Kind.FOOD])
+	copy[RES.Kind.FOOD] -= amount
+	taken[RES.Kind.FOOD] = amount
+	grown = copy
+	return taken
 
 
 ## Во сколько раз быстрее идёт стройка. Каждый приставленный строитель добавляет
@@ -315,9 +354,12 @@ func _apply_progress() -> void:
 	if done:
 		return
 	var size: Vector3 = RES.BUILDING_SIZE[kind]
-	var grown: float = maxf(0.05, progress)
-	_mesh.scale = Vector3(1.0, grown, 1.0)
-	_mesh.position = Vector3(0.0, size.y * grown * 0.5, 0.0)
+	# Имя местной переменной — `raised`, а не `grown`: так теперь зовётся поле
+	# с выросшей едой, и две разные вещи под одним именем в одном файле
+	# рано или поздно встретятся.
+	var raised: float = maxf(0.05, progress)
+	_mesh.scale = Vector3(1.0, raised, 1.0)
+	_mesh.position = Vector3(0.0, size.y * raised * 0.5, 0.0)
 
 	var mat: StandardMaterial3D = _mesh.material_override
 	if mat == null:

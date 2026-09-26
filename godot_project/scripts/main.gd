@@ -442,9 +442,10 @@ func _help_text() -> String:
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
 	lines.append("наём, лошади и обоз — у самих построек: подойди и нажми E")
-	lines.append("1 / 2 / 3 / 4 / 5 — строить склад / казарму мечников / казарму лучников / конюшню / дом дружины")
+	lines.append("1..6 — строить: склад, казарма мечников, казарма лучников, конюшня, дом дружины, поле")
 	lines.append("Дом дружины поднимает потолок отряда: без домов держишь только охрану.")
-	lines.append("B — нанять батрака · 6 / 7 / 8 / 9 — лесоруб / шахтёр / ополченец / строитель")
+	lines.append("B — нанять батрака · 7 / 8 / 9 / 0 / F — лесоруб / шахтёр / ополченец / строитель / фермер")
+	lines.append("Поле растит еду само; фермер её уносит на склад — без него поле стоит полным.")
 	lines.append("T / Y — нанять мечника / лучника · N — купить лошадь · F1-F4 — строй")
 	lines.append("G — отряд ко мне · H — отряд с обозом · ПКМ — отряду идти в точку")
 	lines.append("C — рисовать маршрут каравана, Enter — отправить · K — лошадей в упряжку")
@@ -510,6 +511,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_world.set_build_mode(true, RES.Building.HOUSE)
 			get_viewport().set_input_as_handled()
 			return
+		if key == KEY_6:
+			_world.set_build_mode(true, RES.Building.FARM)
+			get_viewport().set_input_as_handled()
+			return
 		if key == KEY_4:
 			_world.set_build_mode(true, RES.Building.STABLE)
 			get_viewport().set_input_as_handled()
@@ -554,10 +559,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		# начинаются сразу после последней. Держать на одной цифре и постройку,
 		# и роль нельзя: человек и так путается, что значат цифры в двух
 		# режимах.
-		if key >= KEY_6 and key <= KEY_9:
+		# 7, 8, 9, 0 и F — по роли на клавишу, в порядке ROLE_NAMES.
+		if (key >= KEY_7 and key <= KEY_9) or key == KEY_0:
 			var chief: Node3D = _world.local_player()
 			if chief != null:
-				chief.ask_set_labourer_role(key - KEY_6)
+				chief.ask_set_labourer_role(3 if key == KEY_0 else key - KEY_7)
+			get_viewport().set_input_as_handled()
+			return
+		# ФЕРМЕР НА БУКВЕ, А НЕ НА ЦИФРЕ, и это вынужденно. Построек стало шесть,
+		# ролей пять — одиннадцать клавиш на десять цифр. Правило «цифры подряд
+		# отданы постройкам» держим, а новую роль выносим на F: роли уже
+		# переезжали дважды, третий переезд дороже одной буквы.
+		if key == KEY_F:
+			var farm_chief: Node3D = _world.local_player()
+			if farm_chief != null:
+				farm_chief.ask_set_labourer_role(LABOURER.Role.FARMER)
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -1245,6 +1261,19 @@ func _build_hint() -> String:
 
 ## Кто чем занят у злодея. Без этой строки батраки — невидимая механика: они
 ## работают где-то на карте, а игрок видит только, что ресурсы прибывают.
+## Какой клавишей ставится эта роль. Держим ОДНИМ местом с обработчиком: подпись
+## уже однажды разошлась с клавишами и показывала 4-7 там, где нажимать надо
+## было 5-8.
+func _role_key(role: int) -> String:
+	match role:
+		LABOURER.Role.LUMBERJACK: return "7"
+		LABOURER.Role.MINER: return "8"
+		LABOURER.Role.MILITIA: return "9"
+		LABOURER.Role.BUILDER: return "0"
+		LABOURER.Role.FARMER: return "F"
+	return "?"
+
+
 func _crew_hint() -> String:
 	var me: Node3D = _world.local_player()
 	if me == null or not FACTIONS.can_build(me.faction):
@@ -1259,7 +1288,7 @@ func _crew_hint() -> String:
 
 	var parts := PackedStringArray()
 	for role in LABOURER.ROLE_COUNT:
-		parts.append("%d %s (%d)" % [role + 6, LABOURER.ROLE_NAMES[role], counts[role]])
+		parts.append("%s %s (%d)" % [_role_key(role), LABOURER.ROLE_NAMES[role], counts[role]])
 	var line := "батраки %d/%d: " % [crew.size(), RES.LABOURER_LIMIT] + "   ".join(parts)
 	line += "   |   B — нанять (%s)" % RES.format_cost(RES.LABOURER_COST)
 	if carrying > 0:

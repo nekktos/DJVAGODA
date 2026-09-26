@@ -124,10 +124,7 @@ func _grant(me: Node3D, amounts: Array) -> void:
 
 
 func _set_stock(me: Node3D, amounts: Array) -> void:
-	var copy := PackedInt32Array([0, 0, 0, 0])
-	for i in RES.COUNT:
-		copy[i] = int(amounts[i])
-	me.stock.grant(copy)
+	me.stock.grant(RES.fit(amounts))
 
 
 ## Клиент: уровень снаряжения хоста доезжает по сети, и подделать свой нельзя —

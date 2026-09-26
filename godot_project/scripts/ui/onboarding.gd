@@ -172,6 +172,8 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return not world.labourers_of(int(me.faction)).is_empty()
 		"barracks":
 			return _has_barracks(world, int(me.faction))
+		"farm":
+			return _has_building(world, int(me.faction), RES.Building.FARM)
 		"house":
 			return world.squad_capacity(int(me.faction)) > RES.SQUAD_BASE
 		"squad":
@@ -236,6 +238,19 @@ func _gear_price() -> String:
 
 ## Есть ли у стороны казарма — любая. Склад не в счёт: он про добычу, а шаг
 ## про то, чтобы было кем воевать.
+## Есть ли у стороны достроенная постройка такого вида.
+func _has_building(world: Node3D, faction: int, kind: int) -> bool:
+	for node in world.get_tree().get_nodes_in_group("building"):
+		if not ("faction" in node) or not ("kind" in node):
+			continue
+		if int(node.faction) != faction or int(node.kind) != kind:
+			continue
+		if float(node.progress) < 1.0:
+			continue
+		return true
+	return false
+
+
 func _has_barracks(world: Node3D, faction: int) -> bool:
 	for node in world.get_tree().get_nodes_in_group("building"):
 		if not ("faction" in node) or not ("kind" in node):
@@ -252,13 +267,13 @@ func _has_barracks(world: Node3D, faction: int) -> bool:
 ## молчания.
 func _build_price(kind: int) -> String:
 	var cost: Array = RES.BUILDING_COST.get(kind, [])
-	if cost.size() < 4:
+	if cost.is_empty():
 		return ""
 	var parts := PackedStringArray()
-	var names := ["дерева", "камня", "золота", "железа"]
-	for i in 4:
-		if int(cost[i]) > 0:
-			parts.append("%d %s" % [int(cost[i]), names[i]])
+	var names := ["дерева", "камня", "золота", "железа", "еды"]
+	for i in RES.COUNT:
+		if RES.at(cost, i) > 0:
+			parts.append("%d %s" % [RES.at(cost, i), names[i]])
 	return ", ".join(parts)
 
 
@@ -315,6 +330,14 @@ func _villain_chain() -> Array:
 			"text": "Найми батраков: они рубят, копают и строят сами",
 			"keys": "сверху: B — нанять, 5 / 6 / 7 / 8 — кем именно",
 			"done": "crew",
+		},
+		{
+			"text": "Поставь поле: еда растёт на нём сама, а фермер уносит её на склад",
+			"keys": "сверху: 6 — поле, нужно %s · F — поставить батрака фермером"
+				% _build_price(RES.Building.FARM),
+			"done": "farm",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
 			"text": "Железа в зоне нет, оно только в шахте. Нарисуй туда маршрут обоза",

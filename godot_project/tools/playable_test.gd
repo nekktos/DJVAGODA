@@ -219,10 +219,10 @@ func _test_first_purchase_affordable() -> void:
 		var enough := true
 		var missing := PackedStringArray()
 		for kind in RES.COUNT:
-			if int(start[kind]) < int(cost[kind]):
+			if RES.at(start, kind) < RES.at(cost, kind):
 				enough = false
 				missing.append("%s не хватает %d" % [
-					RES.SHORT[kind], int(cost[kind]) - int(start[kind])])
+					RES.SHORT[kind], RES.at(cost, kind) - RES.at(start, kind)])
 		check(enough, "на стартовые ресурсы хватает на первую постройку",
 			"склад по карману" if enough else ", ".join(missing))
 	else:

@@ -22,19 +22,24 @@ extends "res://scripts/units/unit.gd"
 
 const RES2 := preload("res://scripts/economy/resources.gd")
 
-enum Role { LUMBERJACK, MINER, MILITIA, BUILDER }
+enum Role { LUMBERJACK, MINER, MILITIA, BUILDER, FARMER }
 
-const ROLE_COUNT := 4
-const ROLE_NAMES := ["лесоруб", "шахтёр", "ополченец", "строитель"]
+const ROLE_COUNT := 5
+const ROLE_NAMES := ["лесоруб", "шахтёр", "ополченец", "строитель", "фермер"]
 
 ## Своя модель и свой инструмент на каждое дело. Батраков на карте бывает
 ## десяток, и все они делают разное: не различив их глазом, хозяин отдаёт
 ## приказы вслепую — а «поставь двоих на стройку» это ровно про глаз.
+## МОДЕЛИ И РОЛИ РАЗЪЕХАЛИСЬ, и это чинится здесь же. Лесоруб был одет
+## крестьянином, а ополченец — лесорубом: таблица писалась, когда порядок ролей
+## был другим, и после перестановки её не поправили. Рядом стоит строка «цвет
+## рубахи говорит о роли столько же, сколько инструмент» — а рубаха врала.
 const ROLE_MODELS := [
-	"res://assets/people/Peasant.glb",
-	"res://assets/people/Miner.glb",
 	"res://assets/people/Woodcutter.glb",
+	"res://assets/people/Miner.glb",
+	"res://assets/people/Swordsman.glb",
 	"res://assets/people/Mason.glb",
+	"res://assets/people/Peasant.glb",
 ]
 ## Топор лесорубу, молот шахтёру и строителю, меч ополченцу. Инструмент в руке
 ## говорит о роли столько же, сколько цвет рубахи, и виден с большего расстояния.
@@ -43,6 +48,7 @@ const ROLE_WEAPONS := [
 	WEAPONS.Kind.HAMMER,
 	WEAPONS.Kind.SWORD,
 	WEAPONS.Kind.HAMMER,
+	WEAPONS.Kind.AXE,
 ]
 
 ## Что ищет каждая роль. Шахтёр берёт и шахту, и камень на поверхности: это одно
@@ -84,7 +90,7 @@ const FLEE_RADIUS := 18.0
 @export var sync_role: int = Role.LUMBERJACK
 
 ## Что несёт с собой. Отдаётся стороне, когда батрак доносит груз до склада.
-var load := PackedInt32Array([0, 0, 0, 0])
+var load := RES2.empty()
 
 var _work_t := 0.0
 var _retarget_t := 0.0
@@ -205,17 +211,22 @@ func _deliver(delta: float) -> Vector3:
 		var wallet: Node = world.treasury.of(faction)
 		if wallet != null:
 			for kind in RES2.COUNT:
-				if load[kind] <= 0:
+				# Читаем груз ТЕРПИМО. Короткий массив в руках — это чужая
+				# ошибка, но платить за неё обрывом сдачи нельзя: однажды так
+				# и вышло — дерево зачислилось, а руки не очистились, потому
+				# что цикл упал за границу на пятом ресурсе.
+				var have: int = RES2.at(load, kind)
+				if have <= 0:
 					continue
 				# Сначала в склад: сложенное там не теряется со смертью. Пока
 				# склада нет, у стороны нет и вместимости склада вовсе — тогда
 				# кладём при себе, ровно туда же, куда кладёт добычу игрок без
 				# склада. Иначе первые батраки сдавали бы груз в никуда: молча,
 				# без отказа и без прибытка.
-				var left: int = load[kind] - wallet.add_stored(kind, load[kind])
+				var left: int = have - wallet.add_stored(kind, have)
 				if left > 0:
 					wallet.add(kind, left)
-	load = PackedInt32Array([0, 0, 0, 0])
+	load = RES2.empty()
 	_drop = Vector3.INF
 	_drop_site = null
 	_work_t = 0.0
@@ -227,7 +238,7 @@ func _deliver(delta: float) -> Vector3:
 ## повторно.
 func _cargo_on_death() -> PackedInt32Array:
 	var dropped := load.duplicate()
-	load = PackedInt32Array([0, 0, 0, 0])
+	load = RES2.empty()
 	return dropped
 
 
@@ -312,14 +323,16 @@ func _work_on(site: Node3D) -> void:
 	if site.has_method("take"):
 		# Шахта: берём накопленное, сколько влезет в руки.
 		var taken: PackedInt32Array = site.take(LOAD_LIMIT - carrying())
-		var copy := load.duplicate()
+		var copy := RES2.empty()
 		for kind in RES2.COUNT:
-			copy[kind] += taken[kind]
+			copy[kind] = RES2.at(load, kind) + RES2.at(taken, kind)
 		load = copy
 		return
 
 	var kind: int = int(site.get_meta("resource", RES2.Kind.WOOD))
-	var copy := load.duplicate()
+	var copy := RES2.empty()
+	for i in RES2.COUNT:
+		copy[i] = RES2.at(load, i)
 	copy[kind] += RES2.YIELD_PER_HIT
 	load = copy
 
@@ -342,6 +355,8 @@ func _work_on(site: Node3D) -> void:
 func _find_site() -> Node3D:
 	if sync_role == Role.BUILDER:
 		return _nearest_site_building()
+	if sync_role == Role.FARMER:
+		return _nearest_farm()
 	var wanted: Array = ROLE_RESOURCES.get(sync_role, [])
 	var best: Node3D = null
 	var best_distance := INF
@@ -363,6 +378,26 @@ func _find_site() -> Node3D:
 		if d < best_distance:
 			best_distance = d
 			best = source
+	return best
+
+
+## Ближайшее ДОСТРОЕННОЕ поле своей стороны. Недостроенное не годится: на нём
+## ещё ничего не растёт, и фермер стоял бы над котлованом.
+func _nearest_farm() -> Node3D:
+	var best: Node3D = null
+	var best_distance := INF
+	for node in get_tree().get_nodes_in_group("building"):
+		var field := node as Node3D
+		if field == null or not ("faction" in field) or not ("kind" in field):
+			continue
+		if int(field.kind) != RES2.Building.FARM or int(field.faction) != faction:
+			continue
+		if float(field.progress) < 1.0:
+			continue
+		var d: float = global_position.distance_to(field.global_position)
+		if d < best_distance:
+			best_distance = d
+			best = field
 	return best
 
 

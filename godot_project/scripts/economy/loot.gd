@@ -17,7 +17,7 @@ const PICKUP_RANGE := 3.5
 ## Сколько лежит, прежде чем исчезнуть.
 const LIFETIME := 240.0
 
-@export var contents: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
+@export var contents: PackedInt32Array = RES.empty()
 ## Уровень снаряжения, выпавший с убитого (Этап 10, шаг 1). 0 — снаряжения в
 ## куче нет, это обычный груз каравана.
 @export var gear: int = 0
@@ -27,7 +27,7 @@ var _taken := false
 
 func setup(data: Dictionary) -> void:
 	position = data["point"]
-	contents = data["contents"]
+	contents = RES.fit(data["contents"])
 	gear = int(data.get("gear", 0))
 
 

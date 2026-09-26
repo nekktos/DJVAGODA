@@ -76,7 +76,7 @@ func _run() -> void:
 	# показывают, зачем мир чистится перед стартом: восстановление кладёт
 	# обратно только записанное, а брошенное прошлой сессией так и осталось бы
 	# стоять посреди загруженной партии, как чужое наследство.
-	_world.spawn_loot_pile(LANDMARK + Vector3(6.0, 0.5, 0.0), PackedInt32Array([5, 0, 0, 0]))
+	_world.spawn_loot_pile(LANDMARK + Vector3(6.0, 0.5, 0.0), RES.fit([5, 0, 0, 0]))
 	_world.spawn_horse(LANDMARK + Vector3(-6.0, 0.5, 0.0))
 	await get_tree().physics_frame
 
@@ -138,9 +138,9 @@ func _run() -> void:
 	# незапущенный обратно он выглядел бы как «вернулся, а всё замерло»: люди
 	# стоят, шахта не копит, ИИ не шевелится. Спрашиваем шахту, а не флаг:
 	# флаг может стоять правильно при остановленном поддереве.
-	_world.mine.stored = PackedInt32Array([0, 0, 0, 0])
+	_world.mine.stored = RES.fit([0, 0, 0, 0])
 	await get_tree().create_timer(1.5).timeout
-	check(_world.mine.stored != PackedInt32Array([0, 0, 0, 0]),
+	check(_world.mine.stored != RES.fit([0, 0, 0, 0]),
 		"и мир снова ИДЁТ, а не замер", str(_world.mine.stored))
 
 	finish()

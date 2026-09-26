@@ -113,7 +113,7 @@ func _build_storage(me: Node3D) -> void:
 
 func _test_delivery(me: Node3D) -> void:
 	# Даём шахте накопить.
-	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	_world.mine.stored = RES.fit([0, 0, 200, 200])
 	await get_tree().process_frame
 
 	var iron_before: int = me.stock.get_amount(RES.Kind.IRON)
@@ -175,7 +175,7 @@ func _test_rides_smoothly(me: Node3D) -> void:
 		if _caravans(me).is_empty():
 			break
 		await get_tree().create_timer(0.5).timeout
-	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	_world.mine.stored = RES.fit([0, 0, 200, 200])
 	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
 	await get_tree().create_timer(0.5).timeout
 	var list: Array = _caravans(me)
@@ -232,7 +232,7 @@ func _test_avoids_buildings(me: Node3D) -> void:
 		if _caravans(me).is_empty():
 			break
 		await get_tree().create_timer(0.5).timeout
-	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	_world.mine.stored = RES.fit([0, 0, 200, 200])
 	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
 	await get_tree().create_timer(0.5).timeout
 	var list: Array = _caravans(me)
@@ -335,7 +335,7 @@ func _outside_by(at: Vector3, box_at: Vector3, size: Vector3) -> float:
 
 
 func _test_raid(me: Node3D) -> void:
-	_world.mine.stored = PackedInt32Array([0, 0, 200, 200])
+	_world.mine.stored = RES.fit([0, 0, 200, 200])
 	me.request_send_caravan(PackedVector3Array([Vector3(-430.0, 0.0, 430.0)]))
 	await get_tree().create_timer(0.5).timeout
 	if _caravans(me).is_empty():
