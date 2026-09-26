@@ -298,6 +298,7 @@ func _refresh_hud() -> void:
 	if curses != "":
 		wounds += "   " + curses
 	_hud.set_vitals(me.health.current, 100.0, note, wounds)
+	_hud.set_stamina(me.sync_stamina / me.STAMINA_MAX)
 	_hud.set_right(right)
 	var magic := ""
 	if FACTIONS.has_abilities(me.faction):
@@ -441,6 +442,7 @@ func _help_text() -> String:
 	lines.append("Tab — вид сверху · V — первое/третье лицо · F10 — в меню · тильда — консоль")
 	lines.append("M — звук выкл/вкл · минус и равно — тише и громче")
 	lines.append("Стрелы и мана КОНЧАЮТСЯ. Стрелы — в лавке, мана копится сама.")
+	lines.append("Бег и прыжок тратят выносливость (полоса под здоровьем). Верхом — не тратят.")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")

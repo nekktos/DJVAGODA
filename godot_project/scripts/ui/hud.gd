@@ -63,6 +63,7 @@ var vitals_box: VBoxContainer
 ## полоса внутри видимой панели оставляет под меню пустой чёрный прямоугольник.
 var vitals_panel: PanelContainer
 var health_bar: ProgressBar
+var stamina_bar: ProgressBar
 var health_text: Label
 var body_text: Label
 var right_box: VBoxContainer
@@ -167,6 +168,27 @@ func _build() -> void:
 	health_bar.show_percentage = false
 	health_bar.max_value = 100.0
 	vitals_box.add_child(health_bar)
+
+	# Выносливость — ПОЛОСОЙ и прямо под здоровьем. Числом её читать некогда:
+	# на неё смотрят в тот момент, когда убегают.
+	stamina_bar = ProgressBar.new()
+	stamina_bar.custom_minimum_size = Vector2(240.0, 13.0)
+	stamina_bar.show_percentage = false
+	stamina_bar.max_value = 100.0
+	# ЦВЕТА ЗАДАЁМ ЯВНО. С умолчаниями движка полоса высотой в десять пикселей
+	# выходила ровно серой: скруглённая заливка съедала всю высоту, и на снимке
+	# полная выносливость выглядела пустой. Заодно янтарный отличает её от
+	# зелёного здоровья — две одинаковые полосы друг под другом читались бы как
+	# одна разорванная.
+	var back := StyleBoxFlat.new()
+	back.bg_color = Color(0.08, 0.08, 0.10, 0.85)
+	back.set_corner_radius_all(3)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = ACCENT
+	fill.set_corner_radius_all(3)
+	stamina_bar.add_theme_stylebox_override("background", back)
+	stamina_bar.add_theme_stylebox_override("fill", fill)
+	vitals_box.add_child(stamina_bar)
 
 	health_text = Label.new()
 	health_text.add_theme_font_size_override("font_size", 16)
@@ -303,6 +325,11 @@ func set_task(step: Dictionary) -> void:
 	task_keys.visible = task_keys.text != ""
 	task_where.text = String(step.get("where", ""))
 	task_where.visible = task_where.text != ""
+
+
+## Выносливость: доля от полной, от нуля до единицы.
+func set_stamina(part: float) -> void:
+	stamina_bar.value = clampf(part, 0.0, 1.0) * 100.0
 
 
 ## Техническая строка: то, что просят приложить к отчёту об ошибке.

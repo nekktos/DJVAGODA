@@ -32,7 +32,7 @@ var _shots := 0
 
 func start(world: Node3D) -> void:
 	tag = "расходники"
-	expected_host = 8
+	expected_host = 13
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -58,6 +58,11 @@ func _run() -> void:
 	await _test_mana_returns(me)
 	_test_arrows_can_be_bought(me)
 	_test_respawn_refills(me)
+	_test_running_costs_stamina(me)
+	_test_winded_cannot_run(me)
+	_test_second_wind_needs_a_floor(me)
+	_test_stamina_returns(me)
+	await _test_jump_costs_stamina(me)
 	finish()
 
 
@@ -154,6 +159,104 @@ func _test_respawn_refills(me: Node3D) -> void:
 		"возрождение возвращает колчан и ману",
 		"стрел %d из %d, маны %d из %d" % [me.arrows, RES.QUIVER_START,
 			int(me.mana), int(me.MANA_MAX)])
+
+
+## Бег ест выносливость.
+func _test_running_costs_stamina(me: Node3D) -> void:
+	me.sync_stamina = me.STAMINA_MAX
+	me._winded = false
+	_run_for(me, 1.0)
+	check(me.sync_stamina < me.STAMINA_MAX and me.sync_running,
+		"бег тратит выносливость",
+		"осталось %d из %d, бежал=%s"
+			% [int(me.sync_stamina), int(me.STAMINA_MAX), me.sync_running])
+
+
+## Выдохся — бег ВЫКЛЮЧАЕТСЯ, даже когда клавиша нажата.
+##
+## Смотрим на РЕЗУЛЬТАТ (`sync_running`), а не на то, что счётчик дошёл до
+## нуля: вопрос в том, бежит ли персонаж.
+func _test_winded_cannot_run(me: Node3D) -> void:
+	me.sync_stamina = 0.0
+	me._winded = true
+	_run_for(me, 0.2)
+	check(not me.sync_running, "выдохшийся не бежит",
+		"sync_running=%s при выносливости %d" % [me.sync_running, int(me.sync_stamina)])
+
+
+## Второе дыхание: с одной капли бежать нельзя, нужен порог.
+##
+## Без этого на нуле выходит дёрганый бег — чуть набралось, сразу потратилось.
+func _test_second_wind_needs_a_floor(me: Node3D) -> void:
+	me.sync_stamina = me.STAMINA_FLOOR * 0.5
+	me._winded = true
+	_run_for(me, 0.2)
+	var still_walking: bool = not me.sync_running
+	me.sync_stamina = me.STAMINA_FLOOR + 5.0
+	me._rest_left = 0.0
+	_run_for(me, 0.2)
+	check(still_walking and me.sync_running,
+		"второе дыхание открывается только с порога",
+		"ниже порога бежал=%s, выше порога бежал=%s"
+			% [not still_walking, me.sync_running])
+
+
+func _test_stamina_returns(me: Node3D) -> void:
+	me.sync_stamina = 10.0
+	me._winded = false
+	me._rest_left = 0.0
+	var before: float = me.sync_stamina
+	for i in 30:
+		me.apply_input({"move": Vector2.ZERO, "jump": false, "run": false}, 0.05)
+	check(me.sync_stamina > before, "выносливость возвращается, когда не бежишь",
+		"было %d, стало %d" % [int(before), int(me.sync_stamina)])
+
+
+## Прыжок стоит сил, и без сил его нет.
+##
+## МЕЖДУ ПРЫЖКАМИ ЖДЁМ ПРИЗЕМЛЕНИЯ, и это не педантизм. Первая версия проверки
+## прыгала дважды подряд, и вторая половина проходила ПО НЕВЕРНОЙ ПРИЧИНЕ: в
+## воздухе прыжок не срабатывает вовсе, потому что нет земли под ногами, а не
+## потому что кончились силы. Проверка была зелёной и не сторожила ничего.
+func _test_jump_costs_stamina(me: Node3D) -> void:
+	me._winded = false
+	await _land(me)
+	me.sync_stamina = me.STAMINA_MAX
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.05)
+	var paid: bool = me.sync_stamina < me.STAMINA_MAX
+
+	await _land(me)
+	me.sync_stamina = me.STAMINA_JUMP * 0.5
+	me.velocity = Vector3.ZERO
+	var grounded: bool = me.is_on_floor()
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.05)
+	var refused: bool = me.velocity.y <= 0.01
+	check(paid and refused and grounded, "прыжок стоит сил, и без сил его нет",
+		"списалось=%s, стоял на земле=%s, без сил прыгнул=%s"
+			% [paid, grounded, not refused])
+
+
+## Дождаться, пока персонаж встанет на землю.
+##
+## Шаги движения делаем САМИ, а не просто ждём кадров: `is_on_floor` меняется
+## только после `move_and_slide`, а его зовёт `apply_input`. Ожидание без
+## шагов висело бы до упора и ничего не меняло.
+func _land(me: Node3D) -> void:
+	for i in 120:
+		if me.is_on_floor():
+			return
+		me.apply_input({"move": Vector2.ZERO, "jump": false, "run": false}, 0.02)
+		await get_tree().physics_frame
+
+
+## Бежать столько-то секунд мелкими шагами: одним большим шагом физика
+## проскочила бы и пол, и расход.
+func _run_for(me: Node3D, seconds: float) -> void:
+	var step := 0.05
+	var left := seconds
+	while left > 0.0:
+		me.apply_input({"move": Vector2(0.0, -1.0), "jump": false, "run": true}, step)
+		left -= step
 
 
 ## Выстрелить прямо сейчас: откат сбрасываем, иначе второй запрос подряд не

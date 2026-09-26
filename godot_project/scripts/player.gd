@@ -70,6 +70,33 @@ const SPEED := 6.0
 ## десять с половиной: карта полтора километра в поперечнике, и дорога от форта
 ## злодея до дворца пешком занимает две минуты в одну сторону.
 const RUN_SCALE := 1.75
+
+## Выносливость: сколько её всего, сколько ест бег и прыжок, сколько
+## возвращается.
+##
+## ЗАЧЕМ. Решение живого игрока — «добавить стамину». До неё бег был бесплатным
+## и бесконечным: ходить шагом не было ни одной причины, и лошадь, дающая те же
+## полтора раза, оказывалась подарком без цены. Выносливость возвращает цену и
+## бегу, и конюшне.
+##
+## ЧИСЛА. Сто единиц, расход десять в секунду — десять секунд непрерывного бега,
+## это около ста метров. Возврат двенадцать в секунду: чуть быстрее расхода, так
+## что бегом проходится примерно половина пути, а не весь.
+##
+## ВТОРОЕ ДЫХАНИЕ (STAMINA_FLOOR). Выдохшись, снова бежать можно не с первой
+## капли, а набрав пятнадцать. Без порога на нуле выходит дёрганый бег: чуть
+## набралось — сразу потратилось, и персонаж мигает шагом-бегом каждые полкадра.
+## Порог превращает это в понятное «отдышись».
+##
+## ЗАДЕРЖКА ПЕРЕД ВОЗВРАТОМ нужна по той же причине: без неё отпускание бега на
+## доли секунды успевало подкачать выносливость, и бег становился бесконечным
+## для того, кто часто моргает клавишей.
+const STAMINA_MAX := 100.0
+const STAMINA_RUN_DRAIN := 10.0
+const STAMINA_JUMP := 12.0
+const STAMINA_REGEN := 12.0
+const STAMINA_FLOOR := 15.0
+const STAMINA_REST := 0.6
 ## Насколько далеко бьёт луч прицеливания. Дальше стрелять всё равно не в кого:
 ## снаряды живут меньше.
 const AIM_RANGE := 300.0
@@ -155,6 +182,14 @@ var profile_id := ""
 ## Бежит ли. Едет по сети отдельно от `sync_moving`: чужой персонаж иначе
 ## переставлял бы ноги шагом, покрывая землю бегом.
 @export var sync_running: bool = false
+## Выносливость. Считает ВЛАДЕЛЕЦ, как и всё движение (Этап 0): она ограничивает
+## его собственный бег, и держать её на хосте значило бы спрашивать разрешения
+## на каждый шаг. Реплицируется, чтобы её видели и остальные.
+@export var sync_stamina: float = STAMINA_MAX
+## Выдохся: бежать нельзя, пока не наберётся STAMINA_FLOOR.
+var _winded := false
+## Сколько ещё не восстанавливаться.
+var _rest_left := 0.0
 
 ## Состояние отряда. Считает и меняет только хост, клиенты читают.
 @export var squad_formation: int = 0
@@ -519,6 +554,19 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 		and not body.is_crawling() \
 		and not body.in_wheelchair \
 		and sync_paralysis <= 0.0
+	# ВЫНОСЛИВОСТЬ. Верхом не тратится: устаёт лошадь, а не всадник, и брать
+	# плату за поездку значило бы отменить конюшню сразу после того, как
+	# подсказка велела её построить.
+	var mounted: bool = riding() != null
+	if running and not mounted:
+		if _winded or sync_stamina <= 0.0:
+			_winded = true
+			running = false
+		else:
+			sync_stamina = maxf(0.0, sync_stamina - STAMINA_RUN_DRAIN * delta)
+			_rest_left = STAMINA_REST
+			if sync_stamina <= 0.0:
+				_winded = true
 	sync_running = running
 
 	var speed: float = body.move_speed(SPEED) * buff_speed_scale() * mount_speed_scale()
@@ -527,10 +575,23 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
 
 	if is_on_floor():
-		if jump and jump_power > 0.0:
+		# Прыжок тоже стоит сил. Прыжковая лестница через полкарты была
+		# способом обойти разом и рельеф, и усталость.
+		if jump and jump_power > 0.0 and (mounted or sync_stamina >= STAMINA_JUMP):
 			velocity.y = jump_power
+			if not mounted:
+				sync_stamina = maxf(0.0, sync_stamina - STAMINA_JUMP)
+				_rest_left = STAMINA_REST
 	else:
 		velocity.y -= _gravity * delta
+
+	# Возврат: не бежим и отдышались — набираем.
+	if not running:
+		_rest_left = maxf(0.0, _rest_left - delta)
+		if _rest_left <= 0.0 and sync_stamina < STAMINA_MAX:
+			sync_stamina = minf(STAMINA_MAX, sync_stamina + STAMINA_REGEN * delta)
+	if _winded and sync_stamina >= STAMINA_FLOOR:
+		_winded = false
 
 	var dir := (transform.basis * Vector3(move.x, 0.0, move.y))
 	dir.y = 0.0
@@ -1350,6 +1411,8 @@ func respawn_at_slot() -> void:
 	# наказание за смерть, а невозможность играть.
 	arrows = RES.QUIVER_START
 	mana = MANA_MAX
+	sync_stamina = STAMINA_MAX
+	_winded = false
 	teleport.rpc(faction_spawn())
 
 
