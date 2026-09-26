@@ -32,7 +32,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "оружие"
-	expected_host = 37
+	expected_host = 40
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -60,6 +60,7 @@ func _run() -> void:
 	_test_swing_is_animated()
 	_test_arrow_cripples_not_severs(me)
 	await _test_splint_at_the_medpoint(me)
+	_test_faction_band(me)
 	finish()
 
 
@@ -428,3 +429,53 @@ func _test_splint_at_the_medpoint(me: Node3D) -> void:
 		"золото %d -> %d" % [gold_before, me.stock.get_amount(RES.Kind.GOLD)])
 	me.global_position = home
 	body.reset()
+
+
+## Сторону видно по перевязи.
+##
+## ЗАЧЕМ. Живой отчёт ответил «НЕТ» на два вопроса подряд: «стороны отличаются с
+## первого взгляда» и «кто есть кто в бою понятно». Причина была в коде, а не во
+## вкусе: модель пешки ОДНА на все стороны и выбирается по роли, так что мечник
+## злодея и мечник стражи совпадали до пикселя.
+##
+## Проверяем не «функция вызвана», а то, что на бойце ЕСТЬ цветная деталь и что
+## её цвет — цвет его стороны.
+func _test_faction_band(me: Node3D) -> void:
+	var mount: Node = me.find_child("FactionBand", true, false)
+	var band: MeshInstance3D = null
+	if mount != null:
+		band = mount.get_node_or_null("Band") as MeshInstance3D
+	check(band != null and band.material_override is StandardMaterial3D,
+		"на бойце есть перевязь стороны",
+		"перевязь найдена: %s" % (band != null))
+	if band == null or not (band.material_override is StandardMaterial3D):
+		check(false, "цвет перевязи — цвет стороны", "перевязи нет")
+		check(false, "цвета сторон не путаются между собой", "перевязи нет")
+		return
+
+	var mine: Color = FACTIONS.color_of(int(me.faction))
+	var worn: Color = (band.material_override as StandardMaterial3D).albedo_color
+	check(_close(worn, mine), "цвет перевязи — цвет стороны",
+		"на бойце %s, у стороны %s" % [worn, mine])
+
+	# РАЗЛИЧАТЬ ИХ ПРИДЁТСЯ В СВАЛКЕ, ИЗДАЛИ И В ТЕНИ. Меряем расстояние между
+	# цветами: похожие оттенки в этих условиях сливаются, и «цвета разные»
+	# по букве кода ничего не стоит.
+	var nearest := INF
+	for a in FACTIONS.COUNT:
+		for b in FACTIONS.COUNT:
+			if a >= b:
+				continue
+			var one: Color = FACTIONS.color_of(a)
+			var two: Color = FACTIONS.color_of(b)
+			var gap: float = sqrt(pow(one.r - two.r, 2.0) + pow(one.g - two.g, 2.0)
+				+ pow(one.b - two.b, 2.0))
+			nearest = minf(nearest, gap)
+	note("ближайшая пара цветов сторон: %.2f" % nearest)
+	check(nearest > 0.5, "цвета сторон не путаются между собой",
+		"самые близкие расходятся всего на %.2f" % nearest)
+
+
+func _close(one: Color, two: Color) -> bool:
+	return (absf(one.r - two.r) < 0.01 and absf(one.g - two.g) < 0.01
+		and absf(one.b - two.b) < 0.01)

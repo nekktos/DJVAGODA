@@ -267,6 +267,57 @@ static func tint(model: Node, color: Color) -> void:
 			mesh.set_surface_override_material(surface, mat)
 
 
+## Опознавательная перевязь стороны: цветная лента через грудь.
+##
+## ЗАЧЕМ. Живой отчёт по playtest-6 ответил «НЕТ» на два вопроса подряд:
+## «стороны отличаются с первого взгляда» и «кто есть кто в бою понятно». И это
+## правда: модель пешки одна на все стороны (`unit.gd::_look_model` выбирает её
+## по РОЛИ — мечник или лучник), так что мечник злодея и мечник стражи
+## выглядели одинаково до пикселя.
+##
+## ПОЧЕМУ НЕ ПЕРЕКРАСКА ЦЕЛИКОМ. `tint` красит модель в один цвет — так сделан
+## распорядитель, и для одного особенного бойца это годится. Перекрасить так все
+## стороны значит стереть с моделей кожу, волосы и одежду: вместо войска выйдут
+## три толпы одноцветных силуэтов.
+##
+## ПОЧЕМУ КОЛЬЦОМ, А НЕ НАКИДКОЙ НА СПИНЕ. Лента видна со ВСЕХ сторон. Накидка
+## читается только со спины, нагрудник только спереди, а в бою противник
+## поворачивается как ему вздумается.
+##
+## Лента крепится к КОСТИ ГРУДИ и потому ездит вместе с телом: на привязанной к
+## корню она оставалась бы висеть в воздухе, когда боец нагибается или падает.
+static func faction_band(skeleton: Skeleton3D, color: Color) -> Node3D:
+	if skeleton == null:
+		return null
+	var idx := bone(skeleton, "Torso")
+	if idx < 0:
+		return null
+	var mount := BoneAttachment3D.new()
+	mount.name = "FactionBand"
+	mount.bone_name = skeleton.get_bone_name(idx)
+	mount.bone_idx = idx
+	skeleton.add_child(mount)
+
+	var ring := CylinderMesh.new()
+	# Чуть шире тела, чтобы лента лежала ПОВЕРХ, а не тонула в груди.
+	ring.top_radius = 0.42
+	ring.bottom_radius = 0.42
+	ring.height = 0.22
+	ring.radial_segments = 10
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	# Без бликов: лента должна читаться цветом, а не отсветом, и на солнце не
+	# выбеливаться до белого пятна.
+	mat.roughness = 1.0
+	mat.metallic = 0.0
+	var band := MeshInstance3D.new()
+	band.name = "Band"
+	band.mesh = ring
+	band.material_override = mat
+	mount.add_child(band)
+	return mount
+
+
 ## Отметить выбитые глаза кровью на лице.
 ##
 ## Накладок на глазницы больше нет и быть не может: у Kenney лицо было отдельным

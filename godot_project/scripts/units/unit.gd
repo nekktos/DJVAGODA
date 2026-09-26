@@ -15,6 +15,7 @@ const FORMATIONS := preload("res://scripts/units/formations.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const BODY := preload("res://scripts/combat/body.gd")
 const RIG := preload("res://scripts/combat/rig.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 ## Виды трофеев — те же цифры, что в `player.gd::Trophy`. Держим их числами, а
 ## не ссылкой на скрипт игрока: боец о игроке знать не должен.
 const TROPHY_ARMS := 0
@@ -376,6 +377,11 @@ func _build_model() -> void:
 	_zones = RIG.build_zones(_skeleton, ZONE_MULTIPLIERS, HITBOX_LAYER)
 	# Меч в руке — свой, а не тот, что положил художник: он меняется по роли.
 	WEAPON_VISUAL.attach_at(RIG.weapon_mount(_skeleton), _hand_weapon(), null, 0)
+	# Опознавательная перевязь стороны. Модель пешки ОДНА на все стороны и
+	# выбирается по роли, так что без ленты мечник злодея и мечник стражи
+	# неотличимы — живой отчёт ответил «нет» и на «стороны отличаются с первого
+	# взгляда», и на «кто есть кто в бою понятно».
+	RIG.faction_band(_skeleton, FACTIONS.color_of(faction))
 	_play("idle")
 
 

@@ -393,6 +393,10 @@ func _build_model(slot: int) -> void:
 	RIG.hide_built_in_weapon(_model)
 	_zones = RIG.build_zones(_skeleton, ZONE_MULTIPLIERS, HITBOX_LAYER)
 	_weapon_mount = RIG.weapon_mount(_skeleton)
+	# Перевязь стороны — и на вожаке тоже. У него модель своя на каждую сторону,
+	# но издали и в свалке отличать его от чужого приходится по тому же
+	# признаку, что и пешек: по цвету, а не по длине ушей.
+	RIG.faction_band(_skeleton, FACTIONS.color_of(faction))
 
 	_refresh_weapon_visual()
 	# Состояние тела могло приехать РАНЬШЕ модели: поздний клиент получает
