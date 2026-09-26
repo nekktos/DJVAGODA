@@ -27,7 +27,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 24
+	expected_host = 26
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -51,6 +51,7 @@ func _run() -> void:
 	await _test_roles(me)
 	await _test_builders(me)
 	await _test_delivers_to_storage(me)
+	_test_harvest_alone_does_not_count(me)
 	await _test_flees(me)
 	finish()
 
@@ -315,3 +316,63 @@ func _count_by_role(me: Node3D) -> PackedInt32Array:
 	for worker in _crew(me):
 		counts[int(worker.sync_role)] += 1
 	return counts
+
+
+## Добытое НЕ засчитывается в момент добычи — только когда донесено.
+##
+## ЗАЧЕМ ОТДЕЛЬНО, когда рядом уже есть «груз донесён в казну стороны». Тот
+## проверяет, что казна В ИТОГЕ растёт, и одинаково зелен при обоих устройствах
+## мира: и когда батрак несёт добычу на склад, и когда она зачисляется прямо у
+## пня. Вопрос же был именно про второе.
+##
+## БЕЗ ЕДИНОГО `await` МЕЖДУ ЗАМЕРАМИ, и это главное в проверке. Рядом работают
+## другие батраки, и любой из них может сдать груз между двумя чтениями казны —
+## тогда проверка покраснеет на исправном мире. Пока управление не отдано
+## движку, ничей `_process` не выполнится, и разница в казне может быть вызвана
+## только тем, что мы сделали сами.
+func _test_harvest_alone_does_not_count(me: Node3D) -> void:
+	var worker: Node3D = null
+	for candidate in _crew(me):
+		worker = candidate
+		break
+	if worker == null:
+		fail("батраков нет")
+		return
+
+	var site: Node3D = null
+	for node in get_tree().get_nodes_in_group("harvestable"):
+		var source := node as Node3D
+		if source != null and int(source.get_meta("resource", -1)) == RES.Kind.WOOD:
+			site = source
+			break
+	if site == null:
+		fail("деревьев на карте нет")
+		return
+
+	var wallet: Node = _world.treasury.of(int(me.faction))
+	worker.set_role(LABOURER.Role.LUMBERJACK)
+	worker.load = PackedInt32Array([0, 0, 0, 0])
+
+	var before: int = wallet.get_amount(RES.Kind.WOOD)
+	worker._work_on(site)
+	var carried: int = int(worker.carrying())
+	var after: int = wallet.get_amount(RES.Kind.WOOD)
+	check(carried > 0 and after == before,
+		"добытое лежит в руках, а не падает в казну",
+		"в руках %d, казна %d -> %d" % [carried, before, after])
+
+	# Вторая половина того же вопроса: донёс — засчиталось. Тоже синхронно.
+	var storage: Node3D = _world.storage_of(int(me.faction))
+	if storage == null:
+		fail("склада стороны нет")
+		return
+	worker.global_position = storage.global_position + Vector3(9.0, 0.5, 0.0)
+	worker._drop = Vector3.INF
+	worker._drop_site = null
+	var stored_before: int = wallet.get_amount(RES.Kind.WOOD)
+	worker._deliver(0.1)
+	var stored_after: int = wallet.get_amount(RES.Kind.WOOD)
+	check(stored_after - stored_before == carried and int(worker.carrying()) == 0,
+		"донесённое засчитывается целиком, и руки пустеют",
+		"нёс %d, казна %d -> %d, в руках осталось %d"
+			% [carried, stored_before, stored_after, int(worker.carrying())])
