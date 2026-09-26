@@ -134,7 +134,7 @@ func _test_mana_returns(me: Node3D) -> void:
 ## Стрелы покупаются в лавке: колчан растёт, деньги уходят.
 func _test_arrows_can_be_bought(me: Node3D) -> void:
 	var home: Vector3 = me.global_position
-	me.global_position = WORLD_BUILDER.TRADER_POS
+	me.global_position = _world.trader_position(int(me.faction))
 	me.arrows = 0
 	me.stock.add(RES.Kind.GOLD, 200)
 	me.stock.add(RES.Kind.IRON, 200)

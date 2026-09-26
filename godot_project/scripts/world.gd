@@ -81,7 +81,6 @@ signal camera_mode_changed(strategy: bool)
 @onready var forest: Node3D = $Forest
 @onready var commander: Node3D = $Commander
 @onready var treasury: Node = $Treasury
-@onready var diplomacy: Node = $Diplomacy
 @onready var savegame: Node = $Save
 @onready var garrison: Node = $Garrison
 ## ÐÐ ÑÐ²Ð¾Ð±Ð¾Ð´Ð½ÑÑ ÑÑÐ¾ÑÐ¾Ð½, ÑÑÑÐ¿ÐµÐ½Ñ Â«Ð±Â»: ÐºÑÐ¾ Ð¸ ÐºÑÐ´Ð° ÑÐ¾Ð´Ð¸Ñ Ð²Ð¾ÐµÐ²Ð°ÑÑ.
@@ -305,7 +304,6 @@ func reset_for_new_game() -> void:
 	_corpses.clear()
 	_spawn_counter = 0
 	treasury.reset()
-	diplomacy.reset()
 	objective.reset()
 	# Шахта копит сама и с потолком, но начинать новую партию с чужой полной
 	# шахтой — это подарок в 300 единиц на ровном месте.
@@ -532,7 +530,6 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
-	diplomacy.on_kill(int(player.faction), faction_of(killer_id), bool(player.is_leader))
 	# Гибель стража может провалить его решающий удар; гибель вожака — засчитать
 	# чужой. Порядок важен: сперва снимаем провал, потом засчитываем победителю.
 	commander.report_guard_death(player)
@@ -635,13 +632,18 @@ func is_at_workbench(point: Vector3) -> bool:
 
 ## Где стоит торговец эльфов. Он в их поселении: чужому туда дойти можно, но
 ## идти придётся через весь лес — торговля намеренно не бесплатна географически.
-func trader_position() -> Vector3:
-	return WORLD_BUILDER.TRADER_POS
+## Где лавка ЭТОЙ стороны. У каждой своя, в её собственной зоне.
+func trader_position(faction: int) -> Vector3:
+	return WORLD_BUILDER.TRADER_POS.get(clampi(faction, 0, FACTIONS.COUNT - 1),
+		WORLD_BUILDER.TRADER_POS[0])
 
 
-func is_at_trader(point: Vector3) -> bool:
-	var flat := Vector3(point.x, 0.0, point.z)
-	return flat.distance_to(trader_position()) <= TRADER_RANGE
+## Стоит ли боец у СВОЕЙ лавки. Чужая не обслуживает вовсе — не по отношениям,
+## как раньше, а по принадлежности: лавка эльфов эльфийская.
+func is_at_trader(point: Vector3, faction: int) -> bool:
+	var at: Vector3 = trader_position(faction)
+	var flat := Vector2(point.x, point.z)
+	return flat.distance_to(Vector2(at.x, at.z)) <= TRADER_RANGE
 
 
 # --- стройка ---------------------------------------------------------------
@@ -676,12 +678,10 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1,
 
 ## Постройка разрушена. Для стражи это половина условия поражения (GDD раздел 7):
 ## сломлена она, только когда пал командир И снесена казарма.
-func _on_building_destroyed(building: Node3D, killer_id: int) -> void:
+func _on_building_destroyed(_building: Node3D, _killer_id: int) -> void:
 	if not Net.hosting():
 		return
 	objective.check_victories()
-	if building != null and "faction" in building:
-		diplomacy.on_building_destroyed(int(building.faction), faction_of(killer_id))
 
 
 ## Достроенный склад поднимает владельцу потолок хранения — по GDD это
@@ -863,7 +863,6 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 	# Приказ стражи «перехватить караван» засчитывается тут же: командир сам
 	# решит, его ли это караван и тот ли игрок его разбил.
 	commander.report_caravan_destroyed(killer_id, caravan_faction)
-	diplomacy.on_caravan_destroyed(caravan_faction, faction_of(killer_id))
 	var total := 0
 	for value in cargo:
 		total += value

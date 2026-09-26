@@ -35,7 +35,7 @@ var _heard := PackedStringArray()
 
 func start(world: Node3D) -> void:
 	tag = "ИИ-отряд"
-	expected_host = 20
+	expected_host = 19
 	expected_client = 3
 	_world = world
 	_world.objective.logged.connect(func(text: String) -> void: _heard.append(text))
@@ -68,7 +68,7 @@ func _run() -> void:
 	await _test_holds_without_target(me)
 	await _test_marches_on_property(me)
 	await _test_formations()
-	await _test_respects_truce(me)
+	_test_everyone_else_is_hostile(me)
 	await _test_retreats_when_spent()
 	# Последней: она создаёт повозку в чужой зоне, и живой отряд, увидев её,
 	# бросает всё и идёт туда. Соседние проверки от этого разваливались.
@@ -244,32 +244,27 @@ func _test_formations() -> void:
 
 
 ## Перемирие обязано что-то значить и для ИИ: с дружелюбной стороной он не воюет.
-func _test_respects_truce(me: Node3D) -> void:
+## ВСЕ ЧУЖИЕ ВРАЖДЕБНЫ. Отдельной проверки на это хватает одной строки: система
+## отношений вырезана по решению автора игры, и «дружелюбной» стороны больше не
+## бывает. Раньше здесь стояло «дружелюбную сторону ИИ не трогает» — проверка
+## правила, которого не осталось.
+func _test_everyone_else_is_hostile(me: Node3D) -> void:
 	var free_side := _side
 	var villain := int(me.faction)
-	var before: bool = _warband()._hostile(free_side, villain)
-	check(before, "до перемирия злодей — враг", "враждебен=%s" % before)
-
-	var was: float = _world.diplomacy.value_of(free_side, villain)
-	_world.diplomacy.shift(free_side, villain, WARBAND.FRIENDLY_ABOVE - was + 5.0)
-	await get_tree().physics_frame
-	check(not _warband()._hostile(free_side, villain), "дружелюбную сторону ИИ не трогает",
-		"отношения %.0f" % _world.diplomacy.value_of(free_side, villain))
-
-	# Возвращаем как было, иначе следующая проверка останется без целей.
-	_world.diplomacy.shift(free_side, villain, was - _world.diplomacy.value_of(free_side, villain))
-	await get_tree().physics_frame
+	check(_warband()._hostile(free_side, villain)
+			and not _warband()._hostile(free_side, free_side),
+		"чужая сторона враждебна, своя — нет",
+		"чужой враждебен=%s, свой враждебен=%s"
+			% [_warband()._hostile(free_side, villain),
+				_warband()._hostile(free_side, free_side)])
 
 
 ## Проредили — отряд уходит домой, а не умирает по одному. И потери в набеге не
 ## восполняются на ходу: иначе отход не сработал бы ни разу.
 func _test_retreats_when_spent() -> void:
 	var free_side := _side
-	# После перемирия отряд вернулся домой, а решения принимаются раз в
-	# THINK_INTERVAL. Дожидаемся, пока он снова выйдет: бить его дома
-	# бессмысленно, там пополнение как раз и должно работать.
-	# Ждать приходится долго: отняв у отряда цель перемирием, мы отправили его
-	# домой, а дорога занимает больше минуты.
+	# Решения принимаются раз в THINK_INTERVAL. Дожидаемся, пока отряд выйдет:
+	# бить его дома бессмысленно, там пополнение как раз и должно работать.
 	for i in 200:
 		if _warband().state_of(free_side) == WARBAND.State.MARCH:
 			break

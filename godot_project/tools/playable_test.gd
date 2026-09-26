@@ -196,8 +196,14 @@ func _test_landmarks_reachable(me: Node3D) -> void:
 		"до верстака (протезы и коляска) можно дойти",
 		"не дошёл %.1f м" % bench if bench >= 0.0 else "пути нет вовсе")
 
-	var trader: float = _walk_gap(from, _world.trader_position())
-	check(trader >= 0.0 and trader < ARRIVED,
+	# Порог до лавки — НЕ шесть метров. Прилавок это навес восемь на пять, а
+	# путь считается для отряда с радиусом в три метра: ближе семи с половиной
+	# к середине навеса навигация не подводит НИКОГДА, по геометрии. Сам игрок
+	# подходит вплотную — его капсула в десять раз тоньше, — и торгует с семи
+	# метров (`world.TRADER_RANGE`). Требовать шесть значит ругаться на
+	# габарит, ровно как это уже было с шахтой.
+	var trader: float = _walk_gap(from, _world.trader_position(_side))
+	check(trader >= 0.0 and trader < NEAR_STRUCTURE,
 		"до лавки можно дойти",
 		"не дошёл %.1f м" % trader if trader >= 0.0 else "пути нет вовсе")
 

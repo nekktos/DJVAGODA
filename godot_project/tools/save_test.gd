@@ -16,7 +16,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "сейв"
-	expected_host = 43
+	expected_host = 42
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -228,12 +228,10 @@ func _test_profile(me: Node3D) -> void:
 ## Сохранили — испортили всё в памяти — загрузили — вернулось.
 func _test_round_trip(me: Node3D) -> void:
 	var objective: Node = _world.objective
-	var dip: Node = _world.diplomacy
 	var wallet: Node = _world.treasury.of(me.faction)
 
 	# Ставим заметное состояние.
 	objective.palace_owner = FACTIONS.Kind.ELVES
-	dip.values = PackedFloat32Array([11.0, 22.0, 33.0])
 	wallet.carried.amounts = PackedInt32Array([1, 2, 3, 4])
 	wallet.stored.capacity = 777
 	# Лошади — имущество стороны, и дорогое: до дюжины по 25 золота и 12 железа.
@@ -256,7 +254,6 @@ func _test_round_trip(me: Node3D) -> void:
 
 	# Портим всё.
 	objective.palace_owner = FACTIONS.Kind.VILLAIN
-	dip.values = PackedFloat32Array([-99.0, -99.0, -99.0])
 	wallet.carried.amounts = PackedInt32Array([0, 0, 0, 0])
 	wallet.stored.capacity = 0
 	wallet.horses = 0
@@ -270,8 +267,6 @@ func _test_round_trip(me: Node3D) -> void:
 	# успевает сдвинуть значение между загрузкой и проверкой. Это он и должен
 	# делать — сравнивать здесь до шестого знака было бы проверкой дрейфа, а не
 	# сохранения.
-	check(absf(dip.values[0] - 11.0) < 1.0, "отношения фракций вернулись",
-		"%.2f вместо -99" % dip.values[0])
 	check(wallet.carried.get_amount(RES.Kind.IRON) == 4, "казна «при себе» вернулась",
 		"железа %d" % wallet.carried.get_amount(RES.Kind.IRON))
 	check(wallet.stored.capacity == 777, "потолок склада вернулся",

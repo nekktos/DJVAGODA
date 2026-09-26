@@ -49,7 +49,23 @@ const MINE_ENTRANCE_AHEAD := 26.0
 
 ## Лавка эльфов: на поляне их поселения. Тратить награбленное можно только
 ## дойдя сюда (GDD раздел 2.1).
-const TRADER_POS := Vector3(-300.0, 0.0, -272.0)
+## Лавки: У КАЖДОЙ СТОРОНЫ СВОЯ, в её собственной зоне.
+##
+## ЗАЧЕМ. Раньше лавка была одна на всю карту и стояла у эльфов, а обслуживала
+## всех по отношениям. Живой игрок за злодея дошёл до неё и написал: «зачем мне
+## туда, не понятно», а потом «меня там сразу убили». Он был прав: путь за
+## снаряжением лежал через пятьсот семьдесят метров чужого леса.
+##
+## Решение автора игры: лавка эльфов остаётся только эльфам, у каждой стороны
+## своя. Торговля перестала быть поводом идти к врагу и стала частью своей базы.
+##
+## Порядок — как в FACTIONS.Kind. Каждая стоит рядом со спавном своей стороны:
+## искать её не нужно, она видна с места, где ты появился.
+const TRADER_POS := {
+	0: Vector3(-300.0, 0.0, 268.0),    # злодей: у форта
+	1: Vector3(-300.0, 0.0, -272.0),   # эльфы: на поляне поселения
+	2: Vector3(300.0, 6.0, -212.0),    # стража: на плато у двора
+}
 
 enum Zone { ELVES, EMPEROR, VILLAIN, HUMANS }
 
@@ -84,7 +100,9 @@ func build(root: Node3D) -> void:
 	# высота у всех должна быть одна и та же.
 	relief = RELIEF.new(WORLD_SIZE, ZONE_CENTERS.values(), [
 		Vector2(MINE_POS.x, MINE_POS.z),
-		Vector2(TRADER_POS.x, TRADER_POS.z),
+		Vector2(TRADER_POS[0].x, TRADER_POS[0].z),
+		Vector2(TRADER_POS[1].x, TRADER_POS[1].z),
+		Vector2(TRADER_POS[2].x, TRADER_POS[2].z),
 		Vector2(WORKBENCH_POS.x, WORKBENCH_POS.z),
 		Vector2.ZERO,
 		# ПЛАТО ИМПЕРАТОРА ЦЕЛИКОМ, А НЕ ТОЛЬКО ЕГО ЦЕНТР.
@@ -316,15 +334,7 @@ func _build_elves(c: Vector2) -> void:
 	# Сам лес строит forest.gd: у него impostor-LOD и адресация по индексу.
 	# Здесь остаётся только поселение.
 
-	# Лавка торговца: навес на столбах у края поляны, чтобы её было видно
-	# издалека и не спутать с домиками.
-	_box(g, TRADER_POS + Vector3(0.0, 1.0, 0.0), Vector3(7.0, 2.0, 4.0), "wood")
-	_box(g, TRADER_POS + Vector3(0.0, 2.3, 0.0), Vector3(8.0, 0.6, 5.0), "stone")
-	for corner in 4:
-		var ox := 3.4 if corner % 2 == 0 else -3.4
-		var oz := 2.0 if corner < 2 else -2.0
-		_cylinder(g, TRADER_POS + Vector3(ox, 3.4, oz), 0.25, 2.2, "wood")
-	_box(g, TRADER_POS + Vector3(0.0, 4.7, 0.0), Vector3(9.0, 0.4, 6.0), "accent")
+	_build_trader(g, TRADER_POS[1])
 
 	# Поселение на сваях.
 	for i in 7:
@@ -340,6 +350,7 @@ func _build_elves(c: Vector2) -> void:
 
 func _build_emperor(c: Vector2) -> void:
 	var g := _group("ZoneEmperor")
+	_build_trader(g, TRADER_POS[2])
 	# Плато, на нём дворец за стеной.
 	_box(g, Vector3(c.x, 3.0, c.y), Vector3(360.0, 6.0, 360.0), "stone")
 	# Пандус на плато: без него 6-метровый уступ непроходим — прыжок берёт 1.5 м.
@@ -387,8 +398,21 @@ func _build_emperor(c: Vector2) -> void:
 	_cone(g, Vector3(c.x, 62.0, c.y), 15.0, 14.0, "accent")
 
 
+## Лавка: навес на столбах. Одинаковый у всех сторон НАМЕРЕННО — это один и тот
+## же предмет мира, и узнавать его надо с первого взгляда в любой зоне.
+func _build_trader(g: Node3D, at: Vector3) -> void:
+	_box(g, at + Vector3(0.0, 1.0, 0.0), Vector3(7.0, 2.0, 4.0), "wood")
+	_box(g, at + Vector3(0.0, 2.3, 0.0), Vector3(8.0, 0.6, 5.0), "stone")
+	for corner in 4:
+		var ox := 3.4 if corner % 2 == 0 else -3.4
+		var oz := 2.0 if corner < 2 else -2.0
+		_cylinder(g, at + Vector3(ox, 3.4, oz), 0.25, 2.2, "wood")
+	_box(g, at + Vector3(0.0, 4.7, 0.0), Vector3(9.0, 0.4, 6.0), "accent")
+
+
 func _build_villain(c: Vector2) -> void:
 	var g := _group("ZoneVillain")
+	_build_trader(g, TRADER_POS[0])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2989
 

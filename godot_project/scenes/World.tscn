@@ -11,7 +11,6 @@
 [ext_resource type="Script" path="res://scripts/economy/treasury.gd" id="9_treasury"]
 [ext_resource type="Script" path="res://scripts/economy/stockpile.gd" id="10_stock"]
 [ext_resource type="Script" path="res://scripts/economy/wallet.gd" id="11_wallet"]
-[ext_resource type="Script" path="res://scripts/diplomacy.gd" id="12_diplomacy"]
 [ext_resource type="Script" path="res://scripts/savegame.gd" id="13_save"]
 [ext_resource type="Script" path="res://scripts/ai/garrison.gd" id="14_garrison"]
 [ext_resource type="Script" path="res://scripts/ai/warband.gd" id="15_warband"]
@@ -38,11 +37,6 @@ properties/4/replication_mode = 1
 properties/5/path = NodePath(".:leader_down")
 properties/5/spawn = true
 properties/5/replication_mode = 1
-
-[sub_resource type="SceneReplicationConfig" id="Repl_diplomacy"]
-properties/0/path = NodePath(".:values")
-properties/0/spawn = true
-properties/0/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="Repl_treasury"]
 properties/0/path = NodePath("0/Carried:amounts")
@@ -171,13 +165,6 @@ script = ExtResource("18_hero")
 
 [node name="Save" type="Node" parent="."]
 script = ExtResource("13_save")
-
-[node name="Diplomacy" type="Node" parent="."]
-script = ExtResource("12_diplomacy")
-
-[node name="Sync" type="MultiplayerSynchronizer" parent="Diplomacy"]
-replication_config = SubResource("Repl_diplomacy")
-replication_interval = 0.5
 
 [node name="Treasury" type="Node" parent="."]
 script = ExtResource("9_treasury")

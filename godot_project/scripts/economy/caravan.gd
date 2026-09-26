@@ -482,21 +482,20 @@ func _enemy_near() -> bool:
 	var world := _world()
 	if world == null:
 		return false
-	var diplomacy: Node = world.get_node_or_null("Diplomacy")
 	var players: Node = world.get_node_or_null("Players")
 	if players != null:
 		for child in players.get_children():
-			if _hostile_to(child, diplomacy) and _flat_gap(child) <= HALT_RANGE:
+			if _hostile_to(child) and _flat_gap(child) <= HALT_RANGE:
 				return true
 	for unit in get_tree().get_nodes_in_group("unit"):
-		if _hostile_to(unit, diplomacy) and _flat_gap(unit) <= HALT_RANGE:
+		if _hostile_to(unit) and _flat_gap(unit) <= HALT_RANGE:
 			return true
 	return false
 
 
 ## Чужой ли. Своя охрана рядом стоять обязана, и останавливаться из-за неё обоз
 ## не должен — иначе он не тронется с места вовсе.
-func _hostile_to(node: Node, diplomacy: Node) -> bool:
+func _hostile_to(node: Node) -> bool:
 	if node == null or not is_instance_valid(node) or not ("faction" in node):
 		return false
 	var other := int(node.faction)
@@ -509,9 +508,7 @@ func _hostile_to(node: Node, diplomacy: Node) -> bool:
 				return false
 		elif hp != null and not hp.alive:
 			return false
-	if diplomacy != null and diplomacy.has_method("value_of"):
-		# Перемирие уважаем: с кем не воюем, от того и не убегаем.
-		return float(diplomacy.value_of(faction, other)) <= 20.0
+	# Чужой — значит опасный. Перемирия больше нет: отношения вырезаны.
 	return true
 
 

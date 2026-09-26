@@ -269,12 +269,6 @@ func report(guard: Node3D) -> String:
 	for i in reward.size():
 		if int(reward[i]) > 0:
 			guard.stock.add(i, int(reward[i]))
-	# Приказы против злодея портят отношения стражи с ним: вред нанесён по
-	# приказу, но нанесён (GDD раздел 9.3).
-	if guard.order_kind in [ORDERS.Kind.SLAY, ORDERS.Kind.INTERCEPT, ORDERS.Kind.RAID]:
-		var dip: Node = get_parent().get_node_or_null("Diplomacy")
-		if dip != null:
-			dip.on_order_against(FACTIONS.Kind.VILLAIN, FACTIONS.Kind.GUARD)
 	guard.orders_done += 1
 	var done_name := ORDERS.name_of(guard.order_kind)
 	_clear_order(guard)

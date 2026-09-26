@@ -53,7 +53,6 @@ SUITES=(
 	"guard:--guardtest:2,0:"
 	"death:--deathtest:1,2:"
 	"victory:--victorytest:2,0:"
-	"dip:--diptest:1,2:"
 	"garrison:--garrisontest:0,1:"
 	"warband:--warbandtest:0,1:"
 	"soak:--soaktest::"

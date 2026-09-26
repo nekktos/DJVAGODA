@@ -680,10 +680,9 @@ func _is_stuck(faction: int, band: Array) -> bool:
 func _hostile(faction: int, other: int) -> bool:
 	if other < 0 or other == faction:
 		return false
-	var diplomacy: Node = get_parent().get_node_or_null("Diplomacy")
-	if diplomacy == null:
-		return true
-	return float(diplomacy.value_of(faction, other)) <= FRIENDLY_ABOVE
+	# ВСЕ ЧУЖИЕ ВРАЖДЕБНЫ. Система отношений вырезана по решению автора игры, и
+	# вместе с ней исчезло единственное, что делало чужую сторону невраждебной.
+	return true
 
 
 ## Проредили ли отряд настолько, что пора домой.

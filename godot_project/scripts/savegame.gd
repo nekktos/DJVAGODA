@@ -108,7 +108,6 @@ func save_world() -> String:
 	cfg.set_value("world", "leader_down", objective.leader_down)
 	cfg.set_value("world", "victors", objective.victors)
 
-	cfg.set_value("diplomacy", "values", world.diplomacy.values)
 
 	# Недостроенное сохраняем вместе с прогрессом: стройка идёт минутами, и
 	# выход из игры посреди неё не должен стоить всей затраченной кучи.
@@ -239,7 +238,6 @@ func load_world() -> bool:
 	objective.leader_down = cfg.get_value("world", "leader_down", objective.leader_down)
 	objective.victors = cfg.get_value("world", "victors", objective.victors)
 
-	world.diplomacy.values = cfg.get_value("diplomacy", "values", world.diplomacy.values)
 	_restore_buildings(world, cfg)
 	_restore_labourers(world, cfg)
 

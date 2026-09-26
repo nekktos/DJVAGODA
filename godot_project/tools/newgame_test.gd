@@ -16,14 +16,13 @@ extends "res://tools/test_base.gd"
 
 const FACTIONS := preload("res://scripts/factions.gd")
 const RES := preload("res://scripts/economy/resources.gd")
-const DIP := preload("res://scripts/diplomacy.gd")
 
 var _world: Node3D
 
 
 func start(world: Node3D) -> void:
 	tag = "новая игра"
-	expected_host = 45
+	expected_host = 47
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -147,7 +146,6 @@ func _test_reset(me: Node3D) -> void:
 	wallet.carried.amounts = PackedInt32Array([555, 555, 555, 555])
 	wallet.stored.capacity = 4321
 	wallet.horses = 11
-	_world.diplomacy.values = PackedFloat32Array([99.0, 99.0, 99.0])
 	objective.palace_owner = FACTIONS.Kind.VILLAIN
 	objective.victors = PackedByteArray([1, 1, 1])
 	objective.leader_down = PackedByteArray([1, 1, 1])
@@ -201,8 +199,6 @@ func _test_reset(me: Node3D) -> void:
 		"%d" % int(wallet.stored.capacity))
 	check(int(wallet.horses) == int(FACTIONS.STARTING_HORSES.get(side, 0)),
 		"лошади вернулись к стартовым", "%d" % int(wallet.horses))
-	check(_world.diplomacy.values[0] < 0.0, "вражда пересчитана заново",
-		"%.1f вместо 99" % _world.diplomacy.values[0])
 	check(int(objective.palace_owner) == FACTIONS.Kind.GUARD
 			and objective.victors == PackedByteArray([0, 0, 0])
 			and objective.leader_down == PackedByteArray([0, 0, 0]),

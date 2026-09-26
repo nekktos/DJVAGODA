@@ -229,7 +229,7 @@ static func _goto(world: Node3D, player: Node3D, args: Array) -> String:
 		"elves": point = FACTIONS.SPAWN[FACTIONS.Kind.ELVES]
 		"guard": point = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
 		"mine": point = world.mine.global_position + Vector3(0.0, 4.0, 34.0)
-		"trader": point = world.trader_position() + Vector3(0.0, 2.0, 4.0)
+		"trader": point = world.trader_position(int(player.faction)) + Vector3(0.0, 2.0, 4.0)
 		"commander": point = world.commander.POSITION + Vector3(0.0, 2.0, 4.0)
 		"palace": point = world.objective.PALACE + Vector3(0.0, 4.0, 0.0)
 		_: return "не знаю точку «%s»" % where

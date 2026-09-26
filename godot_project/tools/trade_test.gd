@@ -57,7 +57,7 @@ func _test_range(me: Node3D) -> void:
 	await get_tree().physics_frame
 	check(me.body.bandages == before, "издалека купить нельзя", "бинтов %d" % me.body.bandages)
 
-	me.teleport.rpc(_world.trader_position() + Vector3(0.0, 2.0, 2.0))
+	me.teleport.rpc(_world.trader_position(int(me.faction)) + Vector3(0.0, 2.0, 2.0))
 	await get_tree().physics_frame
 	check(me.at_trader(), "у лавки торговля открыта", "at_trader=true")
 

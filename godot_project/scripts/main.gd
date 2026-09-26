@@ -369,12 +369,6 @@ func _action_prompt(me: Node3D) -> String:
 		return "E — командир: %s" % _order_hint(me)
 	if me.at_workbench():
 		return "E — верстак: протезы и коляска"
-	var truce: Node3D = me.truce_target()
-	if truce != null:
-		return "Y — перемирие с «%s» (сейчас %s)" % [
-			FACTIONS.name_of(truce.faction),
-			_world.diplomacy.label_of(me.faction, truce.faction),
-		]
 	if me.body.bleeding:
 		var progress: float = me.bandage_progress()
 		if progress > 0.0:
@@ -571,12 +565,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _try_squad_move_order():
 			get_viewport().set_input_as_handled()
 			return
-	if event.is_action_pressed(&"truce") and Net.active and not _world.strategy_mode:
-		var who: Node3D = _world.local_player()
-		if who != null and who.truce_target() != null:
-			who.ask_truce()
-		get_viewport().set_input_as_handled()
-		return
 	# Взаимодействие — только из вида от первого лица. Сверху персонажа не видно
 	# вовсе, и «нажать E» там значит нажать вслепую: до этого из стратегического
 	# режима открывался верстак с протезами, хотя протез ставят себе, а сверху
@@ -923,7 +911,6 @@ const TEST_FLAGS := {
 	"--reentrytest": ["res://tools/reentry_test.gd", true],
 	"--newgametest": ["res://tools/newgame_test.gd", true],
 	"--savetest": ["res://tools/save_test.gd", true],
-	"--diptest": ["res://tools/diplomacy_test.gd", true],
 	"--victorytest": ["res://tools/victory_test.gd", true],
 	"--deathtest": ["res://tools/death_test.gd", true],
 	"--guardtest": ["res://tools/guard_test.gd", true],
@@ -1554,19 +1541,16 @@ func _toggle_trader() -> void:
 
 func _refresh_trader(me: Node3D) -> void:
 	var box := $UI/Trader/Panel/VBox
-	# Отношение к хозяевам лавки показываем прямо здесь: от него зависят и цены,
-	# и то, обслужат ли вообще (GDD раздел 9.2).
-	box.get_node("Stock").text = "склад: %s\nснаряжение: %s   лавка эльфов, отношение: %s" % [
+	# Чья лавка, видно прямо здесь. У каждой стороны она своя и чужих не
+	# обслуживает вовсе: отношения вырезаны, и «обслужат ли» больше не вопрос
+	# торга, а вопрос принадлежности.
+	box.get_node("Stock").text = "склад: %s   снаряжение: %s   лавка стороны «%s»" % [
 		me.stock.summary(), WEAPONS.gear_name(me.gear_tier),
-		_world.diplomacy.label_of(me.faction, me.trader_faction())
+		FACTIONS.name_of(me.trader_faction())
 	]
 
 	var bandages: Button = box.get_node("Bandages")
-	var allowed: bool = me.trade_allowed()
-	if not allowed:
-		bandages.text = "Лавка не обслуживает: война"
-		bandages.disabled = true
-	elif me.body.bandages >= RES.BANDAGE_LIMIT:
+	if me.body.bandages >= RES.BANDAGE_LIMIT:
 		bandages.text = "Бинты — сумка полна (%d)" % RES.BANDAGE_LIMIT
 		bandages.disabled = true
 	else:
@@ -1575,10 +1559,7 @@ func _refresh_trader(me: Node3D) -> void:
 		bandages.disabled = not me.stock.can_afford(cost_b)
 
 	var quiver: Button = box.get_node("Arrows")
-	if not allowed:
-		quiver.text = "Лавка не обслуживает: война"
-		quiver.disabled = true
-	elif me.arrows >= RES.QUIVER_LIMIT:
+	if me.arrows >= RES.QUIVER_LIMIT:
 		quiver.text = "Стрелы — колчан полон (%d)" % RES.QUIVER_LIMIT
 		quiver.disabled = true
 	else:
@@ -1589,10 +1570,7 @@ func _refresh_trader(me: Node3D) -> void:
 
 	var gear: Button = box.get_node("Gear")
 	var cost: Array = me.next_gear_cost()
-	if not allowed:
-		gear.text = "Лавка не обслуживает: война"
-		gear.disabled = true
-	elif cost.is_empty():
+	if cost.is_empty():
 		gear.text = "Снаряжение — лучше нет"
 		gear.disabled = true
 	else:
