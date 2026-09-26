@@ -912,7 +912,38 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 	# ничего, и понять, что здесь было, нельзя.
 	if world != null and world.has_method("place_corpse"):
 		world.place_corpse(global_position, rotation.y, slot, severed)
+	_drop_cargo(world)
 	queue_free()
+
+
+## Рассыпать то, что боец нёс на себе.
+##
+## ЗАЧЕМ. Решение живого игрока: «при убийстве рабочего с него должны выпадать
+## ресурсы, которые он несёт». До этого груз исчезал вместе с телом — батрак с
+## полными руками стоил ровно столько же, сколько порожний, и убивать носильщика
+## на обратном пути не имело смысла. Теперь имеет: перехват гружёного батрака
+## это и потеря для его стороны, и добыча для нападавшего.
+##
+## КУЧЕЙ НА ЗЕМЛЕ, А НЕ ПРЯМО В КАРМАН УБИЙЦЕ — тем же способом, что и разбитый
+## обоз: за добычей надо дойти, и увести её может кто угодно (GDD 2.1).
+##
+## Что именно падает, решает сам вид бойца: у мечника на руках ничего нет.
+func _drop_cargo(world: Node) -> void:
+	if world == null or not world.has_method("spawn_loot_pile"):
+		return
+	var cargo := _cargo_on_death()
+	var total := 0
+	for value in cargo:
+		total += int(value)
+	if total <= 0:
+		return
+	world.spawn_loot_pile(global_position, cargo)
+
+
+## Что боец несёт на себе. У обычного бойца — ничего; переопределяют те, кто
+## носит (`labourer.gd`).
+func _cargo_on_death() -> PackedInt32Array:
+	return PackedInt32Array()
 
 
 ## Копим урон по зонам и отрываем конечность, когда её запас исчерпан.

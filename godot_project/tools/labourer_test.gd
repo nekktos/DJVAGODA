@@ -27,7 +27,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 26
+	expected_host = 28
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -52,6 +52,7 @@ func _run() -> void:
 	await _test_builders(me)
 	await _test_delivers_to_storage(me)
 	_test_harvest_alone_does_not_count(me)
+	await _test_killed_worker_drops_cargo(me)
 	await _test_flees(me)
 	finish()
 
@@ -376,3 +377,53 @@ func _test_harvest_alone_does_not_count(me: Node3D) -> void:
 		"донесённое засчитывается целиком, и руки пустеют",
 		"нёс %d, казна %d -> %d, в руках осталось %d"
 			% [carried, stored_before, stored_after, int(worker.carrying())])
+
+
+## Убитый батрак роняет то, что нёс.
+##
+## ЗАЧЕМ. Решение живого игрока: «при убийстве рабочего с него должны выпадать
+## ресурсы, которые он несёт». До этого груз исчезал вместе с телом, и гружёный
+## батрак стоил ровно столько же, сколько порожний: перехватывать носильщика на
+## обратном пути не имело смысла.
+##
+## Проверяем РЕЗУЛЬТАТ — кучу на земле с тем самым грузом, а не то, что где-то
+## вызвался метод.
+func _test_killed_worker_drops_cargo(me: Node3D) -> void:
+	var worker: Node3D = null
+	for candidate in _crew(me):
+		worker = candidate
+		break
+	if worker == null:
+		fail("батраков нет")
+		return
+
+	# Уносим его в сторону, чтобы куча не смешалась с чужими и чтобы никто не
+	# подобрал её раньше, чем мы посмотрим.
+	var spot: Vector3 = FACTIONS.SPAWN[int(me.faction)] + Vector3(0.0, 0.0, 70.0)
+	worker.global_position = spot
+	worker.load = PackedInt32Array([7, 3, 0, 0])
+	var carried: PackedInt32Array = worker.load.duplicate()
+	var piles_before := get_tree().get_nodes_in_group("loot").size()
+
+	worker.take_damage(999.0, int(me.peer_id), "torso", spot, Vector3.FORWARD)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var dropped: Node = null
+	for node in get_tree().get_nodes_in_group("loot"):
+		var pile := node as Node3D
+		if pile != null and pile.global_position.distance_to(spot) < 12.0:
+			dropped = pile
+	check(get_tree().get_nodes_in_group("loot").size() > piles_before and dropped != null,
+		"убитый батрак оставил кучу на земле",
+		"куч было %d, стало %d" % [piles_before,
+			get_tree().get_nodes_in_group("loot").size()])
+	if dropped == null:
+		check(false, "в куче лежит ровно то, что он нёс", "кучи нет")
+		return
+	var same := true
+	for i in RES.COUNT:
+		if int(dropped.contents[i]) != int(carried[i]):
+			same = false
+	check(same, "в куче лежит ровно то, что он нёс",
+		"нёс %s, в куче %s" % [carried, dropped.contents])
