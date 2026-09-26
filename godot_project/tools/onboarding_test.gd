@@ -354,7 +354,7 @@ func _test_economy_comes_before_the_assault() -> void:
 	var bad := PackedStringArray()
 	if String(chain[last].get("live", "")) != "palace":
 		bad.append("последний шаг не про захват дворца")
-	for rule in ["barracks", "squad", "stable"]:
+	for rule in ["barracks", "house", "squad", "stable"]:
 		if not at.has(rule):
 			bad.append("нет шага «%s»" % rule)
 			continue

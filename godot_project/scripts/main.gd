@@ -447,8 +447,9 @@ func _help_text() -> String:
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
 	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
 	lines.append("наём, лошади и обоз — у самих построек: подойди и нажми E")
-	lines.append("1 / 2 / 3 / 4 — строить склад / казарму мечников / казарму лучников / конюшню")
-	lines.append("B — нанять батрака · 5 / 6 / 7 / 8 — лесоруб / шахтёр / ополченец / строитель")
+	lines.append("1 / 2 / 3 / 4 / 5 — строить склад / казарму мечников / казарму лучников / конюшню / дом дружины")
+	lines.append("Дом дружины поднимает потолок отряда: без домов держишь только охрану.")
+	lines.append("B — нанять батрака · 6 / 7 / 8 / 9 — лесоруб / шахтёр / ополченец / строитель")
 	lines.append("T / Y — нанять мечника / лучника · N — купить лошадь · F1-F4 — строй")
 	lines.append("G — отряд ко мне · H — отряд с обозом · ПКМ — отряду идти в точку")
 	lines.append("C — рисовать маршрут каравана, Enter — отправить · K — лошадей в упряжку")
@@ -510,6 +511,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_world.set_build_mode(true, RES.Building.ARCHER_BARRACKS)
 			get_viewport().set_input_as_handled()
 			return
+		if key == KEY_5:
+			_world.set_build_mode(true, RES.Building.HOUSE)
+			get_viewport().set_input_as_handled()
+			return
 		if key == KEY_4:
 			_world.set_build_mode(true, RES.Building.STABLE)
 			get_viewport().set_input_as_handled()
@@ -545,17 +550,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				boss.ask_hire_labourer()
 			get_viewport().set_input_as_handled()
 			return
-		# 5-8 переводят одного батрака на соответствующее дело. Выбора мышью в
+		# 6-9 переводят одного батрака на соответствующее дело. Выбора мышью в
 		# стратегическом режиме нет, и роль — это и есть «куда его отправить».
 		#
-		# Раньше роли жили на 4-7. Сдвинулись, когда появилась конюшня: цифры
-		# 1-4 теперь целиком отданы постройкам, и держать на четвёрке сразу и
-		# постройку, и роль было бы жестоко — человек и так путается, что значат
-		# цифры в двух режимах.
-		if key >= KEY_5 and key <= KEY_8:
+		# Роли переезжают уже ВТОРОЙ раз, и по тому же правилу. Сперва жили на
+		# 4-7 и сдвинулись, когда появилась конюшня; теперь сдвинулись снова —
+		# из-за дома дружины. Правило: цифры подряд отданы ПОСТРОЙКАМ, роли
+		# начинаются сразу после последней. Держать на одной цифре и постройку,
+		# и роль нельзя: человек и так путается, что значат цифры в двух
+		# режимах.
+		if key >= KEY_6 and key <= KEY_9:
 			var chief: Node3D = _world.local_player()
 			if chief != null:
-				chief.ask_set_labourer_role(key - KEY_5)
+				chief.ask_set_labourer_role(key - KEY_6)
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -1232,7 +1239,7 @@ func _crew_hint() -> String:
 
 	var parts := PackedStringArray()
 	for role in LABOURER.ROLE_COUNT:
-		parts.append("%d %s (%d)" % [role + 4, LABOURER.ROLE_NAMES[role], counts[role]])
+		parts.append("%d %s (%d)" % [role + 6, LABOURER.ROLE_NAMES[role], counts[role]])
 	var line := "батраки %d/%d: " % [crew.size(), RES.LABOURER_LIMIT] + "   ".join(parts)
 	line += "   |   B — нанять (%s)" % RES.format_cost(RES.LABOURER_COST)
 	if carrying > 0:
@@ -1298,7 +1305,7 @@ func _squad_hint() -> String:
 	# подсказка о клавише, которой нет, хуже отсутствия подсказки.
 	return "отряд: %d/%d (мечников %d, лучников %d), %s, %s
 F1-F4 строй, G следовать, ПКМ идти в точку" % [
-		squad.size(), RES.SQUAD_LIMIT, swords, bows, stance,
+		squad.size(), _world.squad_capacity(int(me.faction)), swords, bows, stance,
 		FORMATIONS.describe(me.squad_formation)
 	]
 

@@ -172,6 +172,8 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return not world.labourers_of(int(me.faction)).is_empty()
 		"barracks":
 			return _has_barracks(world, int(me.faction))
+		"house":
+			return world.squad_capacity(int(me.faction)) > RES.SQUAD_BASE
 		"squad":
 			return not world.units_of(int(me.peer_id)).is_empty()
 		"stable":
@@ -326,6 +328,14 @@ func _villain_chain() -> Array:
 			"keys": "сверху: 2 — казарма мечников, 3 — лучников, ЛКМ по земле · нужно %s"
 				% _build_price(RES.Building.SWORD_BARRACKS),
 			"done": "barracks",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
+		},
+		{
+			"text": "Поставь дом дружины: без него сторона держит только охрану, а не войско",
+			"keys": "сверху: 5 — дом дружины, нужно %s · каждый дом даёт ещё %d бойцов"
+				% [_build_price(RES.Building.HOUSE), RES.HOUSE_SLOTS],
+			"done": "house",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},

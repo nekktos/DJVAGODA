@@ -768,6 +768,28 @@ func storage_of(faction: int) -> Node3D:
 	return null
 
 
+## Сколько бойцов сторона может держать. База плюс по слоту за каждый
+## достроенный дом дружины, но не выше жёсткого потолка.
+##
+## СЧИТАЕМ ПО СТОРОНЕ, а не по владельцу: дом, построенный ИИ, тоже дом. Ровно
+## та же ошибка уже была со складом — он поднимал потолок владельцу-персонажу,
+## и склад свободной стороны оставался украшением.
+func squad_capacity(faction: int) -> int:
+	var houses := 0
+	for node in get_tree().get_nodes_in_group("building"):
+		var building := node as Node3D
+		if building == null:
+			continue
+		if int(building.kind) != RES.Building.HOUSE:
+			continue
+		if int(building.faction) != faction:
+			continue
+		if float(building.progress) < 1.0:
+			continue
+		houses += 1
+	return mini(RES.SQUAD_LIMIT, RES.SQUAD_BASE + houses * RES.HOUSE_SLOTS)
+
+
 ## Отправить караван. Только на хосте: маршрут сюда попадает уже проверенным
 ## (см. player.gd::request_send_caravan).
 func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1,

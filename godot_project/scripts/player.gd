@@ -2496,8 +2496,12 @@ func request_train_unit(archer: bool = false) -> void:
 			_refuse("подойди к постройке «%s» — нанимают там" % RES.BUILDING_NAMES[kind])
 		return
 	var squad: Array = world.units_of(peer_id)
-	if squad.size() >= RES.SQUAD_LIMIT:
-		_refuse("отряд уже полон")
+	# ВМЕСТИМОСТЬ — ОТ ПОСТРОЕК, а не от константы. Дом дружины на то и дом:
+	# без него сторона держит только охрану.
+	var room: int = world.squad_capacity(int(faction))
+	if squad.size() >= room:
+		_refuse("отряд полон: %d из %d — построй дом дружины (клавиша 5), он даёт ещё %d"
+			% [squad.size(), room, RES.HOUSE_SLOTS])
 		return
 	var cost: Array = RES.ARCHER_COST if archer else RES.UNIT_COST
 	if not stock.spend(cost):

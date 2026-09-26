@@ -43,6 +43,14 @@ var _rows: VBoxContainer
 var _refresh_t := 0.0
 
 
+## Сколько бойцов сторона может держать сейчас: зависит от построенных домов.
+func _room() -> int:
+	var me: Node3D = _world.local_player() if _world != null else null
+	if me == null or _world == null or not _world.has_method("squad_capacity"):
+		return RES.SQUAD_LIMIT
+	return _world.squad_capacity(int(me.faction))
+
+
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -157,11 +165,11 @@ func _fill_barracks(archer: bool) -> void:
 		if is_instance_valid(node) and not bool(node.is_beast):
 			alive += 1
 	_note.text = "В отряде %d из %d. Отряд идёт за вами и слушает приказы сверху." % [
-		alive, RES.SQUAD_LIMIT
+		alive, _room()
 	]
 	var who := "лучника" if archer else "мечника"
 	var hire := _button("Нанять %s — %s" % [who, RES.format_cost(cost)])
-	hire.disabled = alive >= RES.SQUAD_LIMIT
+	hire.disabled = alive >= _room()
 	hire.pressed.connect(func() -> void: _player.ask_train_unit(archer))
 	_line("В казну: %s" % _purse_text())
 

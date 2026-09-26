@@ -10,6 +10,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 const UNIT := preload("res://scripts/units/unit.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 
@@ -18,7 +19,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "отряд-тест"
-	expected_host = 28
+	expected_host = 33
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -76,6 +77,13 @@ func _test_hiring(me: Node3D) -> void:
 	check(me.building_at_hand(RES.Building.SWORD_BARRACKS) != null,
 		"персонаж стоит у казармы", "рядом")
 
+	# СНАЧАЛА ДОМА, потом бойцы. Отряд больше охраны требует построенного жилья
+	# (RES.SQUAD_BASE и HOUSE_SLOTS): проверка, нанимавшая восьмерых на пустом
+	# месте, охраняла порядок, которого больше нет.
+	await _make_room_for(me, 8)
+	check(_world.squad_capacity(int(me.faction)) >= 8,
+		"домов построено под восьмерых", "мест %d" % _world.squad_capacity(int(me.faction)))
+
 	var gold_before: int = me.stock.get_amount(RES.Kind.GOLD)
 	for i in 8:
 		me.request_train_unit()
@@ -91,6 +99,7 @@ func _test_hiring(me: Node3D) -> void:
 		await get_tree().create_timer(0.1).timeout
 	check(_units(me).size() <= RES.SQUAD_LIMIT, "потолок отряда соблюдён",
 		"бойцов %d при потолке %d" % [_units(me).size(), RES.SQUAD_LIMIT])
+	await _test_houses_give_room(me)
 
 
 ## Ширина и глубина строя по фактическим позициям слотов.
@@ -345,3 +354,77 @@ func _test_spacing_and_animation(me: Node3D) -> void:
 	check(walking > 0, "на марше играет анимация ходьбы", "идут с анимацией: %d" % walking)
 	check(looping == squad.size(), "анимация ходьбы зациклена",
 		"зациклено у %d из %d" % [looping, squad.size()])
+
+
+## Вместимость отряда даётся ПОСТРОЙКАМИ, а не константой.
+##
+## ЗАЧЕМ. Решение живого игрока: «чтобы получить армию, нужно сделать для них
+## дом». До этого отряд упирался в число в файле: строить было незачем, армия
+## росла из одной казны, и вся стройка сводилась к складу.
+##
+## Проверяем РЕЗУЛЬТАТ на каждом шаге: сколько мест сторона имеет и сколько
+## бойцов реально встало в строй, а не то, что где-то посчиталась сумма.
+func _test_houses_give_room(me: Node3D) -> void:
+	var side: int = int(me.faction)
+	var base: Vector3 = FACTIONS.SPAWN[side]
+
+	# Сносим то, что есть, чтобы считать с чистого листа: предыдущие проверки
+	# могли настроить домов.
+	for node in get_tree().get_nodes_in_group("building"):
+		if node is Node3D and int(node.kind) == RES.Building.HOUSE:
+			node.queue_free()
+	await get_tree().physics_frame
+	check(_world.squad_capacity(side) == RES.SQUAD_BASE,
+		"без домов сторона держит только охрану",
+		"мест %d, ждали %d" % [_world.squad_capacity(side), RES.SQUAD_BASE])
+
+	# НЕДОСТРОЕННЫЙ дом мест не даёт: иначе дом был бы бесплатным — поставил
+	# призрак и уже командуешь войском.
+	var site: Node3D = _world.spawn_building(RES.Building.HOUSE,
+		base + Vector3(30.0, 0.0, 0.0), int(me.peer_id), side, false)
+	await get_tree().physics_frame
+	check(site != null and _world.squad_capacity(side) == RES.SQUAD_BASE,
+		"недостроенный дом мест не даёт",
+		"мест %d при стройке" % _world.squad_capacity(side))
+
+	var done: Node3D = _world.spawn_building(RES.Building.HOUSE,
+		base + Vector3(-30.0, 0.0, 0.0), int(me.peer_id), side, true)
+	await get_tree().physics_frame
+	check(done != null and _world.squad_capacity(side) == RES.SQUAD_BASE + RES.HOUSE_SLOTS,
+		"достроенный дом поднимает потолок",
+		"мест %d, ждали %d" % [_world.squad_capacity(side),
+			RES.SQUAD_BASE + RES.HOUSE_SLOTS])
+
+	# И самое главное: сверх вместимости НЕ НАБИРАЕТСЯ.
+	#
+	# Меряем ПРИРОСТ, а не итог. Первая версия требовала «бойцов не больше
+	# мест» и упала на девяти бойцах при шести местах — но это исправное
+	# поведение: снесённый дом не убивает тех, кто уже в строю, он лишь
+	# закрывает набор. Требование «итог не больше мест» означало бы, что
+	# потеря дома распускает дружину.
+	var room: int = _world.squad_capacity(side)
+	var before: int = _units(me).size()
+	me.stock.grant([999, 999, 999, 999])
+	for i in 5:
+		me.request_train_unit()
+		await get_tree().create_timer(0.05).timeout
+	var grew: int = _units(me).size() - before
+	check(grew == 0 or _units(me).size() <= room,
+		"сверх вместимости бойцов не набрать",
+		"было %d при %d местах, прибавилось %d" % [before, room, grew])
+
+
+## Построить столько домов, чтобы в отряд влезло нужное число бойцов.
+func _make_room_for(me: Node3D, wanted: int) -> void:
+	var side: int = int(me.faction)
+	var base: Vector3 = FACTIONS.SPAWN[side]
+	var placed := 0
+	while _world.squad_capacity(side) < wanted and placed < 8:
+		# Разносим по дуге: дома с одинаковой точкой встают друг в друга и
+		# постройка отменяется.
+		var angle: float = TAU * float(placed) / 8.0
+		_world.spawn_building(RES.Building.HOUSE,
+			base + Vector3(cos(angle), 0.0, sin(angle)) * 45.0,
+			int(me.peer_id), side, true)
+		placed += 1
+		await get_tree().physics_frame

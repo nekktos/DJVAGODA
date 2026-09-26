@@ -88,6 +88,10 @@ static func build(kind: int, size: Vector3) -> Node3D:
 ## Казармы деревянные, склад и конюшня каменные. Дерево у казарм не случайно:
 ## их сносят чаще всего, и вид «сарай, который не жалко» тут к месту.
 static func _wooden(kind: int) -> bool:
+	# Дом дружины тоже деревянный: он и строится из дерева с камнем, и должен
+	# читаться жильём, а не укреплением.
+	if kind == RES.Building.HOUSE:
+		return true
 	return kind == RES.Building.SWORD_BARRACKS or kind == RES.Building.ARCHER_BARRACKS
 
 
