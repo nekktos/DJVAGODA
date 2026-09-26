@@ -158,6 +158,7 @@ func _ready() -> void:
 	bench.get_node("Master").pressed.connect(_on_bench_prosthetic.bind(3))
 	bench.get_node("Necrotic").pressed.connect(_on_bench_prosthetic.bind(BODY.NECROTIC_TIER))
 	bench.get_node("Eye").pressed.connect(_on_bench_eye)
+	bench.get_node("Splint").pressed.connect(_on_bench_splint)
 	bench.get_node("Chair").pressed.connect(_on_bench_chair)
 	bench.get_node("Close").pressed.connect(_close_bench)
 
@@ -1130,8 +1131,15 @@ func _toggle_bench() -> void:
 	# Панель открывается ГДЕ УГОДНО: деревянный протез крафтится в поле, и без
 	# этого раненому пришлось бы ползти через полкарты к верстаку.
 	# Кованый и мастерский по-прежнему только у верстака.
-	var at_bench: bool = me.at_workbench()
 	_bench.visible = true
+	_refresh_bench(me)
+
+
+## Наполнить панель верстака. Отдельно от `_toggle_bench`, потому что после
+## вправления её надо ПЕРЕРИСОВАТЬ, не закрывая: перебитых костей бывает
+## несколько, а `_toggle_bench` на открытой панели её закроет.
+func _refresh_bench(me: Node3D) -> void:
+	var at_bench: bool = me.at_workbench()
 	_bench_chair.text = "Встать из коляски" if me.body.in_wheelchair else "Сесть в коляску"
 	_bench_chair.disabled = not at_bench
 	var box := $UI/Bench/Panel/VBox
@@ -1157,6 +1165,18 @@ func _toggle_bench() -> void:
 		BODY.NECROTIC_PRICE, arms, legs
 	]
 	necro.disabled = not at_bench or (arms < BODY.NECROTIC_PRICE and legs < BODY.NECROTIC_PRICE)
+	# Вправление — отдельной кнопкой и ТОЛЬКО у верстака: перебитое лечит
+	# лекарь, а в поле крафтят разве что деревянный протез.
+	var splint: Button = box.get_node("Splint")
+	var hurt: int = me.body.crippled_count()
+	if hurt <= 0:
+		splint.text = "Вправлять нечего: перебитых костей нет"
+		splint.disabled = true
+	else:
+		splint.text = "Вправить перебитое (%d шт) — %s за одну" % [
+			hurt, RES.format_cost(RES.SPLINT_COST)]
+		splint.disabled = not at_bench or not me.stock.can_afford(RES.SPLINT_COST)
+
 	var eye_btn: Button = box.get_node("Eye")
 	eye_btn.text = "Некротический глаз — %d чужих глаз (есть %d)" % [BODY.NECROTIC_PRICE, eyes]
 	eye_btn.disabled = (not at_bench or eyes < BODY.NECROTIC_PRICE
@@ -1175,6 +1195,19 @@ func _on_bench_prosthetic(tier: int) -> void:
 	if me != null:
 		me.ask_prosthetic(tier)
 	_close_bench()
+
+
+## Вправление НЕ закрывает панель: перебитых костей бывает несколько, и по
+## одной за открытие — это шесть подходов к верстаку. Протез закрывает, потому
+## что ставится на всё сразу.
+func _on_bench_splint() -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.ask_splint()
+	await get_tree().create_timer(0.25).timeout
+	if _bench.visible and is_instance_valid(me):
+		_refresh_bench(me)
 
 
 func _on_bench_eye() -> void:

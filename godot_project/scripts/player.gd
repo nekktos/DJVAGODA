@@ -1063,6 +1063,14 @@ func _server_cast_heal() -> bool:
 		if target.body.bleeding:
 			target.body.bleeding = false
 			restored = true
+		# ЛЕЧЕНИЕ ВПРАВЛЯЕТ ОДНУ ПЕРЕБИТУЮ КОСТЬ. Заклинание называется
+		# лечением, а до сих пор не лечило ровно того, что лечится: кость,
+		# перебитую стрелой. Одну за каст — чтобы это было помощью в бою, а не
+		# заменой медпункта: у медпункта своя цена и своё место на карте.
+		for limb in target.body.LIMB_KEYS.size():
+			if target.body.heal_limb(limb):
+				restored = true
+				break
 		if restored:
 			healed += 1
 	return healed > 0
@@ -1585,6 +1593,15 @@ func ask_prosthetic(new_tier: int) -> void:
 		request_prosthetic.rpc_id(1, new_tier)
 
 
+## Вправить одну перебитую конечность. Лечит только МЕДПУНКТ: лубок в поле не
+## накладывают, для этого и нужен лекарь.
+func ask_splint() -> void:
+	if Net.hosting():
+		request_splint()
+	else:
+		request_splint.rpc_id(1)
+
+
 func ask_wheelchair(on: bool) -> void:
 	if Net.hosting():
 		request_wheelchair(on)
@@ -1596,6 +1613,39 @@ func ask_wheelchair(on: bool) -> void:
 ##
 ## Оплата ресурсами (Этап 4): деревянный крафтится из древесины, кованый и
 ## мастерский стоят золота и железа. Цена — за комплект, а не за конечность.
+@rpc("any_peer", "reliable")
+func request_splint() -> void:
+	if not Net.hosting():
+		return
+	if not _sender_is_owner():
+		return
+	if not health.alive:
+		return
+	if not at_workbench():
+		_refuse("вправить кость можно только в медпункте на перекрёстке")
+		return
+	# Ищем, что лечить, ДО списания: платить за пустой заказ нельзя. Та же
+	# осторожность, что и у протеза.
+	var hurt := -1
+	for limb in body.LIMB_KEYS.size():
+		if body.is_crippled(limb) and not body.is_severed(limb):
+			hurt = limb
+			break
+	if hurt < 0:
+		_refuse("нечего вправлять: перебитых костей нет")
+		return
+	if not stock.spend(RES.SPLINT_COST):
+		_refuse("не хватает на лубок — нужно %s%s"
+			% [RES.format_cost(RES.SPLINT_COST),
+				RES.shortfall_hint(RES.SPLINT_COST, stock)])
+		return
+	if not body.heal_limb(hurt):
+		# Не сложилось — деньги назад. Списание раньше действия тем и опасно.
+		stock.grant(RES.SPLINT_COST)
+		return
+	print("[медпункт] игрок %d вправил %s" % [peer_id, body.LIMB_KEYS[hurt]])
+
+
 @rpc("any_peer", "reliable")
 func request_prosthetic(new_tier: int) -> void:
 	if not Net.hosting():

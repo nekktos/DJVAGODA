@@ -32,7 +32,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "оружие"
-	expected_host = 34
+	expected_host = 37
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -59,6 +59,7 @@ func _run() -> void:
 	_test_weapon_sits_in_hand()
 	_test_swing_is_animated()
 	_test_arrow_cripples_not_severs(me)
+	await _test_splint_at_the_medpoint(me)
 	finish()
 
 
@@ -385,3 +386,45 @@ func _enemy_of(faction: int) -> int:
 		if other != faction:
 			return other
 	return 0
+
+
+## Перебитое лечится В ИГРЕ, а не только вызовом из проверки.
+##
+## ЗАЧЕМ ОТДЕЛЬНО от «перебитая рука лечится и снова работает». Та проверка
+## зовёт `body.heal_limb` напрямую и говорит лишь о том, что тело умеет
+## заживать. А в игре это умение НИКТО НЕ ВЫЗЫВАЛ: единственным местом, где
+## встречался `heal_limb`, была сама проверка. Стрела калечила навсегда —
+## механика без выхода.
+##
+## Проверяем весь путь: не у медпункта не лечит, у медпункта лечит и берёт
+## деньги.
+func _test_splint_at_the_medpoint(me: Node3D) -> void:
+	var body: Node = me.body
+	var home: Vector3 = me.global_position
+	body.reset()
+	for i in 8:
+		body.register_hit("leg_r", 12.0, WEAPONS.Kind.BOW)
+	if not body.is_crippled(3):
+		fail("ногу перебить не удалось, проверять нечего")
+		me.global_position = home
+		return
+
+	# В ПОЛЕ не лечат. Уводим подальше от верстака.
+	me.global_position = home + Vector3(0.0, 0.0, 160.0)
+	await get_tree().physics_frame
+	me.stock.grant([999, 999, 999, 999])
+	me.request_splint()
+	check(body.is_crippled(3), "в поле кость не вправляют",
+		"в поле вылечилось: %s" % body.summary())
+
+	# У МЕДПУНКТА лечат, и это стоит денег.
+	me.global_position = _world.workbench_position() + Vector3(2.0, 0.5, 0.0)
+	await get_tree().physics_frame
+	var gold_before: int = me.stock.get_amount(RES.Kind.GOLD)
+	me.request_splint()
+	check(not body.is_crippled(3), "у медпункта кость вправляют", body.summary())
+	check(me.stock.get_amount(RES.Kind.GOLD) < gold_before,
+		"вправление стоит денег",
+		"золото %d -> %d" % [gold_before, me.stock.get_amount(RES.Kind.GOLD)])
+	me.global_position = home
+	body.reset()

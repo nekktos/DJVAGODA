@@ -10,6 +10,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const UNIT := preload("res://scripts/units/unit.gd")
 
@@ -18,7 +19,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "эльфы"
-	expected_host = 21
+	expected_host = 22
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -39,6 +40,7 @@ func _run() -> void:
 
 	_test_faction_access(me)
 	await _test_heal(me)
+	_test_heal_mends_a_broken_bone(me)
 	await _test_rally(me)
 	await _test_summon(me)
 	await _test_cheat_guard(me)
@@ -232,3 +234,30 @@ func _run_client(me: Node3D) -> void:
 	check(host_player.sync_ability_cd[ABILITIES.Kind.RALLY] > 0.0,
 		"откат хоста доехал до клиента",
 		"клич на откате %.1f с" % host_player.sync_ability_cd[ABILITIES.Kind.RALLY])
+
+
+## Лечение вправляет перебитую кость.
+##
+## ЗАЧЕМ. Заклинание называется лечением, а не лечило ровно того, что лечится:
+## кость, перебитую стрелой. Перебитое до сих пор не заживало в игре вообще —
+## `heal_limb` вызывался только из проверок.
+##
+## ОДНУ КОСТЬ ЗА КАСТ, и это решение, а не недоделка: лечение должно помогать в
+## бою, а не заменять медпункт, у которого своя цена и своё место на карте.
+func _test_heal_mends_a_broken_bone(me: Node3D) -> void:
+	var body: Node = me.body
+	body.reset()
+	for i in 8:
+		body.register_hit("leg_r", 12.0, WEAPONS.Kind.BOW)
+	for i in 8:
+		body.register_hit("arm_r", 12.0, WEAPONS.Kind.BOW)
+	var hurt_before: int = body.crippled_count()
+	me.mana = me.MANA_MAX
+	me.health.current = 50.0
+	me.sync_ability_cd[ABILITIES.Kind.HEAL] = 0.0
+	me.request_ability(ABILITIES.Kind.HEAL)
+	var hurt_after: int = body.crippled_count()
+	body.reset()
+	check(hurt_before == 2 and hurt_after == 1,
+		"лечение вправляет одну кость за каст",
+		"перебито было %d, стало %d" % [hurt_before, hurt_after])
