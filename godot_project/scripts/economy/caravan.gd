@@ -12,6 +12,7 @@ extends Node3D
 ##
 
 const RES := preload("res://scripts/economy/resources.gd")
+const PROGRESS := preload("res://scripts/progression.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
@@ -645,6 +646,11 @@ func _unload_at_home() -> void:
 		delivered += wallet.add_stored(kind, cargo[kind])
 	print("[караван] доставлено стороне «%s»: %d единиц"
 		% [FACTIONS.name_of(faction), delivered])
+	# ОПЫТ ЗА ДОЕХАВШИЙ ОБОЗ. Дорого намеренно: обоз идёт через полкарты, его
+	# можно потерять, и довести его — отдельная работа, а не побочный итог.
+	var here: Node = _world()
+	if here != null and here.has_method("award_faction_xp"):
+		here.award_faction_xp(faction, PROGRESS.XP_CARAVAN, "обоз")
 	cargo = RES.empty()
 
 

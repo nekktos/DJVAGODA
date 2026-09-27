@@ -217,6 +217,7 @@ func _deliver(delta: float) -> Vector3:
 	if _flat_to(_drop) > _work_reach(_drop_site if is_instance_valid(_drop_site) else null):
 		return _drop
 
+	var brought := 0
 	var world := get_parent().get_parent()
 	if world != null and "treasury" in world:
 		var wallet: Node = world.treasury.of(faction)
@@ -237,6 +238,11 @@ func _deliver(delta: float) -> Vector3:
 				var left: int = have - wallet.add_stored(kind, have)
 				if left > 0:
 					wallet.add(kind, left)
+				brought += have
+	# ОПЫТ ЗА ДОНЕСЁННОЕ, а не за добытое: по тому же правилу, по которому
+	# растёт и казна. Иначе опыт капал бы за удары по дереву.
+	if brought > 0 and world != null and world.has_method("award_faction_resources"):
+		world.award_faction_resources(faction, brought)
 	load = RES2.empty()
 	_drop = Vector3.INF
 	_drop_site = null

@@ -78,6 +78,56 @@ placeholder_text = "команда, Enter — выполнить"
 [node name="Building" type="Control" parent="UI"]
 script = ExtResource("91_building")
 
+[node name="Upgrade" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="Panel" type="PanelContainer" parent="UI/Upgrade"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -240.0
+offset_top = -170.0
+offset_right = 240.0
+offset_bottom = 170.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="UI/Upgrade/Panel"]
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Upgrade/Panel/VBox"]
+horizontal_alignment = 1
+text = "Прокачка"
+
+[node name="Note" type="Label" parent="UI/Upgrade/Panel/VBox"]
+autowrap_mode = 3
+text = "Опыт даётся за донесённую добычу, убийства и доехавшие обозы."
+
+[node name="Stat0" type="Button" parent="UI/Upgrade/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "здоровье"
+
+[node name="Stat1" type="Button" parent="UI/Upgrade/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "выносливость"
+
+[node name="Stat2" type="Button" parent="UI/Upgrade/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "бег"
+
+[node name="Stat3" type="Button" parent="UI/Upgrade/Panel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "мана"
+
+[node name="Close" type="Button" parent="UI/Upgrade/Panel/VBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Закрыть"
+
 [node name="Bench" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0

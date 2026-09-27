@@ -63,6 +63,7 @@ const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
+const PROGRESS := preload("res://scripts/progression.gd")
 const ORDERS := preload("res://scripts/orders.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
 const ONBOARDING := preload("res://scripts/ui/onboarding.gd")
@@ -122,6 +123,7 @@ var _muted := false
 @onready var _blind_right: ColorRect = $UI/Blind/Right
 @onready var _building_ui: Control = $UI/Building
 @onready var _bench: Control = $UI/Bench
+@onready var _upgrade: Control = $UI/Upgrade
 @onready var _bench_chair: Button = $UI/Bench/Panel/VBox/Chair
 @onready var _trader: Control = $UI/Trader
 @onready var _commander_ui: Control = $UI/Commander
@@ -161,6 +163,11 @@ func _ready() -> void:
 	bench.get_node("Splint").pressed.connect(_on_bench_splint)
 	bench.get_node("Chair").pressed.connect(_on_bench_chair)
 	bench.get_node("Close").pressed.connect(_close_bench)
+
+	var up := $UI/Upgrade/Panel/VBox
+	for stat in PROGRESS.COUNT:
+		up.get_node("Stat%d" % stat).pressed.connect(_on_upgrade.bind(stat))
+	up.get_node("Close").pressed.connect(_close_upgrade)
 
 	var trader := $UI/Trader/Panel/VBox
 	trader.get_node("Bandages").pressed.connect(_on_trade.bind(RES.Trade.BANDAGES))
@@ -287,8 +294,8 @@ func _refresh_hud() -> void:
 
 	# Стрелы показываем ВСЕГДА, а не только с луком в руках: колчан — это то,
 	# что планируют заранее, и узнавать о пустоте в момент выстрела поздно.
-	var note := "%s · стрел %d · бинтов %d" % [
-		WEAPONS.NAMES[me.sync_weapon], me.arrows, me.body.bandages]
+	var note := "%s · стрел %d · бинтов %d · опыт %d" % [
+		WEAPONS.NAMES[me.sync_weapon], me.arrows, me.body.bandages, int(me.experience)]
 	# Трофеи показываем только когда они есть: пустая строчка «рук 0, ног 0»
 	# висела бы у всех и всегда, а нужна она одному злодею с топором.
 	var haul: int = me.trophies[0] + me.trophies[1] + me.trophies[2]
@@ -435,7 +442,8 @@ func _help_text() -> String:
 	lines.append("E — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь")
 	lines.append("у постройки: наём у казарм, лошади в конюшне, обоз у склада · Y — перемирие")
 	lines.append("Tab — вид сверху · V — первое/третье лицо · F10 — в меню · тильда — консоль")
-	lines.append("M — звук выкл/вкл · минус и равно — тише и громче")
+	lines.append("M — звук выкл/вкл · минус и равно — тише и громче · P — прокачка")
+	lines.append("Опыт: за донесённую добычу, за убийства, за доехавшие обозы.")
 	lines.append("Стрелы и мана КОНЧАЮТСЯ. Стрелы — в лавке, мана копится сама.")
 	lines.append("Бег и прыжок тратят выносливость (полоса под здоровьем). Верхом — не тратят.")
 	lines.append("")
@@ -463,6 +471,14 @@ func _help_text() -> String:
 func _unhandled_input(event: InputEvent) -> void:
 	# F1 — полный список клавиш. Работает в любом режиме: справку ищут именно
 	# тогда, когда не понимают, где находятся.
+	# ПРОКАЧКА ПО P. Панель открывается ГДЕ УГОДНО и в любом режиме: опыт —
+	# это про самого вожака, а не про место на карте, и гонять игрока к
+	# верстаку ради собственных мышц незачем.
+	if (event is InputEventKey and event.pressed and not event.echo
+			and event.physical_keycode == KEY_P and Net.active and not _console.visible):
+		_toggle_upgrade()
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
 		_hud.toggle_help()
 		get_viewport().set_input_as_handled()
@@ -944,6 +960,7 @@ const TEST_FLAGS := {
 	"--playabletest": ["res://tools/playable_test.gd", true],
 	"--onboardingtest": ["res://tools/onboarding_test.gd", true],
 	"--ammotest": ["res://tools/ammo_test.gd", true],
+	"--progresstest": ["res://tools/progress_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1185,6 +1202,53 @@ func _refresh_bench(me: Node3D) -> void:
 	eye_btn.disabled = (not at_bench or eyes < BODY.NECROTIC_PRICE
 		or me.body.eyes_missing() <= 0)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _toggle_upgrade() -> void:
+	if _upgrade.visible:
+		_close_upgrade()
+		return
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	_upgrade.visible = true
+	_refresh_upgrade(me)
+
+
+func _refresh_upgrade(me: Node3D) -> void:
+	var box := $UI/Upgrade/Panel/VBox
+	box.get_node("Title").text = "Прокачка — опыта %d" % int(me.experience)
+	for stat in PROGRESS.COUNT:
+		var btn: Button = box.get_node("Stat%d" % stat)
+		var level: int = me.level_of(stat)
+		var price: int = PROGRESS.cost_of(level)
+		if price < 0:
+			btn.text = "%s — предел (%d из %d)" % [
+				PROGRESS.name_of(stat), level, PROGRESS.MAX_LEVEL]
+			btn.disabled = true
+			continue
+		btn.text = "%s %d/%d — %d опыта" % [
+			PROGRESS.name_of(stat), level, PROGRESS.MAX_LEVEL, price]
+		btn.disabled = int(me.experience) < price
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_upgrade() -> void:
+	_upgrade.visible = false
+	if Net.active and not _world.strategy_mode:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Панель НЕ закрывается после покупки: уровней несколько, и закрывать её на
+## каждом значило бы жать P пять раз подряд.
+func _on_upgrade(stat: int) -> void:
+	var me: Node3D = _world.local_player()
+	if me == null:
+		return
+	me.ask_upgrade(stat)
+	await get_tree().create_timer(0.25).timeout
+	if _upgrade.visible and is_instance_valid(me):
+		_refresh_upgrade(me)
 
 
 func _close_bench() -> void:

@@ -23,6 +23,7 @@ const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const MODEL_ANIM := preload("res://scripts/model_anim.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const PROGRESS := preload("res://scripts/progression.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const RIG := preload("res://scripts/combat/rig.gd")
@@ -153,6 +154,14 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 ## ОДНО заклинание, а не колдуна: имея шесть штук с разными откатами, злодей
 ## колдовал непрерывно, чередуя их. Мана — общий кошелёк на все шесть.
 @export var mana: float = MANA_MAX
+
+## Опыт и уровни прокачки. Ведёт ХОСТ: опыт начисляется за события мира, а их
+## считает он же. Клиент только показывает и просит.
+@export var experience: int = 0
+@export var upgrades: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
+## Хвост недобранного опыта за ресурсы: доносят по четыре единицы, а очко даётся
+## за RESOURCE_PER_POINT, и без хвоста мелкие доставки не давали бы ничего.
+var _res_tail := 0
 ## Приказ командира (Этап 9). Ведёт ХОСТ, клиент только показывает.
 ## -1 — приказа нет.
 @export var order_kind: int = -1
@@ -182,6 +191,28 @@ var profile_id := ""
 ## Бежит ли. Едет по сети отдельно от `sync_moving`: чужой персонаж иначе
 ## переставлял бы ноги шагом, покрывая землю бегом.
 @export var sync_running: bool = false
+## Уровень прокачки по шкале. Отдельной функцией, потому что массив может
+## приехать короче — старое сохранение не знает о новых шкалах.
+func level_of(stat: int) -> int:
+	if stat < 0 or stat >= upgrades.size():
+		return 0
+	return int(upgrades[stat])
+
+
+## ПРИБАВКИ ПОВЕРХ БАЗЫ. База остаётся константой: к ней привязаны и решения, и
+## проверки, и менять её значило бы менять игру для всех разом.
+func stamina_max() -> float:
+	return STAMINA_MAX + PROGRESS.STEP_STAMINA * float(level_of(PROGRESS.Stat.STAMINA))
+
+
+func mana_max() -> float:
+	return MANA_MAX + PROGRESS.STEP_MANA * float(level_of(PROGRESS.Stat.MANA))
+
+
+func run_scale() -> float:
+	return RUN_SCALE + PROGRESS.STEP_SPEED * float(level_of(PROGRESS.Stat.SPEED))
+
+
 ## Выносливость. Считает ВЛАДЕЛЕЦ, как и всё движение (Этап 0): она ограничивает
 ## его собственный бег, и держать её на хосте значило бы спрашивать разрешения
 ## на каждый шаг. Реплицируется, чтобы её видели и остальные.
@@ -575,7 +606,7 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 
 	var speed: float = body.move_speed(SPEED) * buff_speed_scale() * mount_speed_scale()
 	if running:
-		speed *= RUN_SCALE
+		speed *= run_scale()
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
 
 	if is_on_floor():
@@ -592,8 +623,8 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 	# Возврат: не бежим и отдышались — набираем.
 	if not running:
 		_rest_left = maxf(0.0, _rest_left - delta)
-		if _rest_left <= 0.0 and sync_stamina < STAMINA_MAX:
-			sync_stamina = minf(STAMINA_MAX, sync_stamina + STAMINA_REGEN * delta)
+		if _rest_left <= 0.0 and sync_stamina < stamina_max():
+			sync_stamina = minf(stamina_max(), sync_stamina + STAMINA_REGEN * delta)
 	if _winded and sync_stamina >= STAMINA_FLOOR:
 		_winded = false
 
@@ -799,8 +830,8 @@ func _tick_curses(delta: float) -> void:
 	# Мана возвращается всегда, даже в бою: она и так медленная, а «вне боя» на
 	# этой карте означает «убеги на двести метров», и получилось бы наказание
 	# за то, что дерёшься.
-	if mana < MANA_MAX:
-		mana = minf(MANA_MAX, mana + MANA_REGEN * delta)
+	if mana < mana_max():
+		mana = minf(mana_max(), mana + MANA_REGEN * delta)
 
 	if _cast_left > 0.0:
 		_cast_left -= delta
@@ -951,6 +982,70 @@ func _finish_cast(kind: int) -> void:
 
 
 ## Списать ману за сработавшее заклинание.
+## Начислить опыт. Только на хосте — он один знает, что в мире случилось.
+##
+## ЗА ЧТО ИМЕННО — решение автора игры: за донесённые ресурсы (еда с поля в их
+## числе), за убийства и за доехавшие обозы.
+func award_xp(amount: int, why: String) -> void:
+	if not Net.hosting() or amount <= 0 or not health.alive:
+		return
+	experience += amount
+	print("[опыт] игрок %d: +%d за %s, всего %d" % [peer_id, amount, why, experience])
+
+
+## Опыт за донесённые до склада ресурсы. Хвост копим: доносят по нескольку
+## единиц, а очко стоит RESOURCE_PER_POINT, и без хвоста мелкие доставки не
+## давали бы ничего вовсе.
+func award_xp_for_resources(units: int) -> void:
+	if not Net.hosting() or units <= 0:
+		return
+	_res_tail += units
+	var points: int = _res_tail / PROGRESS.RESOURCE_PER_POINT
+	if points <= 0:
+		return
+	_res_tail -= points * PROGRESS.RESOURCE_PER_POINT
+	award_xp(points, "добычу")
+
+
+## Купить уровень по шкале. Считает ХОСТ.
+@rpc("any_peer", "reliable")
+func request_upgrade(stat: int) -> void:
+	if not Net.hosting():
+		return
+	if not _sender_is_owner() or not health.alive:
+		return
+	if stat < 0 or stat >= PROGRESS.COUNT:
+		return
+	var level: int = level_of(stat)
+	var price: int = PROGRESS.cost_of(level)
+	if price < 0:
+		_refuse("%s уже на пределе" % PROGRESS.name_of(stat))
+		return
+	if experience < price:
+		_refuse("не хватает опыта: нужно %d, есть %d" % [price, experience])
+		return
+	experience -= price
+	var copy := upgrades.duplicate()
+	while copy.size() < PROGRESS.COUNT:
+		copy.append(0)
+	copy[stat] += 1
+	upgrades = copy
+	# Прибавку к здоровью отдаём телу сразу: полоса обязана вырасти в тот же
+	# миг, а не после смерти и возрождения.
+	if stat == PROGRESS.Stat.HEALTH:
+		health.bonus = PROGRESS.STEP_HEALTH * float(level_of(stat))
+		health.current = minf(health.maximum(), health.current + PROGRESS.STEP_HEALTH)
+	print("[прокачка] игрок %d поднял «%s» до %d за %d опыта"
+		% [peer_id, PROGRESS.name_of(stat), level_of(stat), price])
+
+
+func ask_upgrade(stat: int) -> void:
+	if Net.hosting():
+		request_upgrade(stat)
+	else:
+		request_upgrade.rpc_id(1, stat)
+
+
 func _pay_mana(kind: int) -> void:
 	mana = maxf(0.0, mana - ABILITIES.mana_cost(kind))
 
@@ -1058,9 +1153,9 @@ func _server_cast_heal() -> bool:
 	var healed := 0
 	for target in _allies_in_range(ABILITIES.range_of(ABILITIES.Kind.HEAL)):
 		var restored := false
-		if target.health.current < target.health.MAX_HEALTH:
+		if target.health.current < target.health.maximum():
 			target.health.current = minf(
-				target.health.MAX_HEALTH,
+				target.health.maximum(),
 				target.health.current + ABILITIES.HEAL_AMOUNT
 			)
 			restored = true
@@ -1422,8 +1517,8 @@ func respawn_at_slot() -> void:
 	# (GDD 6), но выйти в мир без единой стрелы и без капли маны — это не
 	# наказание за смерть, а невозможность играть.
 	arrows = RES.QUIVER_START
-	mana = MANA_MAX
-	sync_stamina = STAMINA_MAX
+	mana = mana_max()
+	sync_stamina = stamina_max()
 	_winded = false
 	teleport.rpc(faction_spawn())
 

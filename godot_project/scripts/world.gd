@@ -33,6 +33,7 @@ const LABOURER := preload("res://scripts/units/labourer.gd")
 ## Сколько батраков у злодея в начале партии.
 const STARTING_LABOURERS := 2
 const RES := preload("res://scripts/economy/resources.gd")
+const PROGRESS := preload("res://scripts/progression.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 
 ## Казарма стражи стоит во дворце с начала партии: по GDD раздел 2.2 во дворце
@@ -262,6 +263,8 @@ func _tick_deposit(delta: float) -> void:
 		var moved: int = child.stock.deposit()
 		if moved > 0:
 			print("[склад] игрок %d сложил %d единиц" % [int(child.peer_id), moved])
+			# Свою добычу игрок несёт сам — и опыт за неё его, а не вожака.
+			child.award_xp_for_resources(moved)
 
 
 # --- камера ----------------------------------------------------------------
@@ -584,6 +587,7 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
+	_award_kill_xp(killer_id, int(player.faction), bool(player.is_leader))
 	# Гибель стража может провалить его решающий удар; гибель вожака — засчитать
 	# чужой. Порядок важен: сперва снимаем провал, потом засчитываем победителю.
 	commander.report_guard_death(player)
@@ -937,6 +941,57 @@ func report_unit_kill(killer_id: int, victim_faction: int) -> void:
 	if not Net.hosting():
 		return
 	commander.report_kill(killer_id, victim_faction)
+	_award_kill_xp(killer_id, victim_faction, false)
+
+
+## Опыт за убийство — тому, кто убил.
+##
+## ЗА СВОИХ НЕ ДАЁМ. Иначе выгоднее всего было бы резать собственный гарнизон:
+## он рядом, он не сопротивляется, и он бесконечно возобновляем.
+func _award_kill_xp(killer_id: int, victim_faction: int, leader: bool) -> void:
+	if not Net.hosting() or killer_id <= 0:
+		return
+	var killer: Node3D = _player_by_peer(killer_id)
+	if killer == null or int(killer.faction) == victim_faction:
+		return
+	killer.award_xp(PROGRESS.XP_LEADER_KILL if leader else PROGRESS.XP_UNIT_KILL,
+		"убийство вожака" if leader else "убийство")
+
+
+## Вожак стороны: живой игрок, а если стороной правит ИИ — его герой.
+##
+## Опыт за ОБЩЕЕ (донесённые батраками ресурсы, доехавшие обозы) идёт вожаку:
+## хозяйство — его дело. Опыт за личное (убийства) идёт тому, кто это сделал.
+func leader_of(faction: int) -> Node3D:
+	for player in players_of(faction):
+		if player != null and player.health.alive:
+			return player
+	return ai_hero_of(faction)
+
+
+## Опыт стороне за хозяйственное событие.
+func award_faction_xp(faction: int, amount: int, why: String) -> void:
+	if not Net.hosting() or amount <= 0:
+		return
+	var boss: Node3D = leader_of(faction)
+	if boss != null:
+		boss.award_xp(amount, why)
+
+
+## Опыт стороне за донесённые до склада ресурсы.
+func award_faction_resources(faction: int, units: int) -> void:
+	if not Net.hosting() or units <= 0:
+		return
+	var boss: Node3D = leader_of(faction)
+	if boss != null:
+		boss.award_xp_for_resources(units)
+
+
+func _player_by_peer(peer: int) -> Node3D:
+	for child in _players.get_children():
+		if "peer_id" in child and int(child.peer_id) == peer:
+			return child
+	return null
 
 
 ## Нанять батрака. Считает и спавнит ТОЛЬКО хост.

@@ -113,6 +113,15 @@ properties/28/replication_mode = 1
 properties/29/path = NodePath(".:sync_stamina")
 properties/29/spawn = true
 properties/29/replication_mode = 1
+properties/30/path = NodePath(".:experience")
+properties/30/spawn = true
+properties/30/replication_mode = 1
+properties/31/path = NodePath(".:upgrades")
+properties/31/spawn = true
+properties/31/replication_mode = 1
+properties/32/path = NodePath("Health:bonus")
+properties/32/spawn = true
+properties/32/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
