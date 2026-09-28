@@ -799,6 +799,49 @@ func _build_bars() -> void:
 	_hotbar.visible = false
 	# Меню паузы должно остаться поверх полос: переносим его в конец.
 	$UI.move_child(_settings, -1)
+	_dress_panels()
+	_icons.changed.connect(_dress_panels)
+	_building_ui.icons = _icons
+
+
+## Картинки на кнопках окон лавки, верстака, прокачки и командира.
+##
+## Окна собраны в сцене готовыми кнопками, и переделывать их в карточки
+## незачем: у кнопки Godot есть своя картинка. Здесь же им общий вид с новыми
+## меню — рамка Kenney, тёмные кнопки с золотой обводкой при наведении.
+const PANEL_ICONS := {
+	"Trader": {"Bandages": "bandage", "Arrows": "arrows", "Gear": "wpn_0"},
+	"Bench": {"Wooden": "res_0", "Iron": "res_3", "Master": "res_2", "Necrotic": "abl_4",
+		"Eye": "abl_5", "Splint": "bandage", "Chair": "cart"},
+	"Upgrade": {"Stat0": "heart", "Stat1": "stamina", "Stat2": "horse", "Stat3": "mana"},
+	"Commander": {"Report": "guard", "Promote": "xp"},
+}
+
+
+func _dress_panels() -> void:
+	for window in PANEL_ICONS:
+		var panel: PanelContainer = get_node("UI/%s/Panel" % window)
+		var frame := STYLE.panel(18.0)
+		panel.add_theme_stylebox_override("panel", frame.get_theme_stylebox("panel"))
+		frame.free()
+		var box: Node = panel.get_node("VBox")
+		for child in box.get_children():
+			if child is Button:
+				var button: Button = child
+				var styled := STYLE.button(button.text, 16)
+				for state in ["normal", "hover", "pressed", "disabled"]:
+					button.add_theme_stylebox_override(state, styled.get_theme_stylebox(state))
+				for colour in ["font_color", "font_hover_color", "font_disabled_color"]:
+					button.add_theme_color_override(colour, styled.get_theme_color(colour))
+				styled.free()
+				button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				button.add_theme_constant_override("icon_max_width", 36)
+				button.add_theme_constant_override("h_separation", 10)
+				var key: String = PANEL_ICONS[window].get(String(button.name), "")
+				if key != "":
+					button.icon = _icons.icon(key)
+			elif child is Label and String(child.name) == "Title":
+				child.add_theme_color_override("font_color", STYLE.ACCENT)
 
 
 ## Раз в кадр: полосы и подсветка нехватки.
@@ -1832,9 +1875,10 @@ func _refresh_trader(me: Node3D) -> void:
 	# Чья лавка, видно прямо здесь. У каждой стороны она своя и чужих не
 	# обслуживает вовсе: отношения вырезаны, и «обслужат ли» больше не вопрос
 	# торга, а вопрос принадлежности.
-	box.get_node("Stock").text = "склад: %s   снаряжение: %s   лавка стороны «%s»" % [
-		me.stock.summary(), WEAPONS.gear_name(me.gear_tier),
-		FACTIONS.name_of(me.trader_faction())
+	# Запасы здесь больше не пишем: они картинками в полосе вверху, и та же
+	# строка в окне лавки была третьей копией одних и тех же чисел.
+	box.get_node("Stock").text = "снаряжение: %s · лавка стороны «%s»" % [
+		WEAPONS.gear_name(me.gear_tier), FACTIONS.name_of(me.trader_faction())
 	]
 
 	var bandages: Button = box.get_node("Bandages")

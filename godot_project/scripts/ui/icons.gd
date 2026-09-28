@@ -25,7 +25,7 @@ const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
 
 ## Мелочь для боевой полосы: стрелы, бинт, опыт, мана.
-const TRINKETS := ["arrows", "bandage", "xp", "mana"]
+const TRINKETS := ["arrows", "bandage", "xp", "mana", "heart", "stamina"]
 
 ## Размер снимка. Иконки в меню от 24 до 80 пикселей, и 128 хватает с запасом:
 ## уменьшенная картинка читается лучше увеличенной.
@@ -354,6 +354,28 @@ func _trinket(key: String) -> Node3D:
 			var drop := _sphere(0.4, Color(0.35, 0.55, 1.0))
 			drop.material_override = _glow(Color(0.35, 0.55, 1.0))
 			root.add_child(drop)
+		"heart":
+			# Сердце: два шара и ромб под ними.
+			var red := Color(0.90, 0.20, 0.22)
+			for side in [-0.2, 0.2]:
+				var lobe := _sphere(0.26, red)
+				lobe.material_override = _glow(red)
+				lobe.position = Vector3(side, 0.12, 0.0)
+				root.add_child(lobe)
+			var point := _glow_box(Vector3(0.42, 0.42, 0.3), red)
+			point.position = Vector3(0.0, -0.14, 0.0)
+			point.rotation = Vector3(0.0, 0.0, deg_to_rad(45.0))
+			root.add_child(point)
+		"stamina":
+			# Молния: три наклонённых бруска зигзагом.
+			var amber := Color(0.98, 0.78, 0.35)
+			var parts := [[Vector3(0.1, 0.35, 0.0), 25.0], [Vector3(0.0, 0.0, 0.0), -55.0],
+				[Vector3(-0.1, -0.35, 0.0), 25.0]]
+			for part in parts:
+				var bolt := _glow_box(Vector3(0.14, 0.5, 0.14), amber)
+				bolt.position = part[0]
+				bolt.rotation = Vector3(0.0, 0.0, deg_to_rad(part[1]))
+				root.add_child(bolt)
 	return root
 
 

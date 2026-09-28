@@ -20,6 +20,10 @@ extends Control
 
 const RES := preload("res://scripts/economy/resources.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
+const STYLE := preload("res://scripts/ui/style.gd")
+
+## Иконки интерфейса. Отдаёт главный скрипт; пусто — кнопки без картинок.
+var icons: Node = null
 
 ## Как часто пересчитываем строки состояния. Каждый кадр незачем: обоз едет
 ## восемь метров в секунду, и цифра «осталось метров» на глаз не меняется.
@@ -38,6 +42,7 @@ var _world: Node3D
 var _player: Node3D
 var _building: Node3D
 var _title: Label
+var _picture: TextureRect
 var _note: Label
 var _rows: VBoxContainer
 var _refresh_t := 0.0
@@ -52,14 +57,18 @@ func _room() -> int:
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# ПРИВЯЗКА И ОТСТУПЫ РАЗОМ. `set_anchors_preset` без второго аргумента
+	# сохраняет текущий размер, а узел в сцене заведён нулевым — и окно
+	# постройки всю дорогу открывалось в левом верхнем углу экрана, а не по
+	# центру. Нашлось на снимке окна конюшни.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
 	_build()
 
 
 func _build() -> void:
-	var panel := PanelContainer.new()
+	var panel := STYLE.panel(18.0)
 	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.offset_left = -240.0
 	panel.offset_top = -170.0
@@ -73,10 +82,21 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
 
+	# Шапка: картинка постройки и её название.
+	var head := HBoxContainer.new()
+	head.alignment = BoxContainer.ALIGNMENT_CENTER
+	head.add_theme_constant_override("separation", 10)
+	box.add_child(head)
+	_picture = TextureRect.new()
+	_picture.custom_minimum_size = Vector2(56.0, 56.0)
+	_picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(_picture)
 	_title = Label.new()
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", 22)
-	box.add_child(_title)
+	_title.add_theme_color_override("font_color", STYLE.ACCENT)
+	head.add_child(_title)
 
 	_note = Label.new()
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -86,8 +106,7 @@ func _build() -> void:
 	_rows.add_theme_constant_override("separation", 6)
 	box.add_child(_rows)
 
-	var close := Button.new()
-	close.text = "Закрыть (E)"
+	var close := STYLE.button("Закрыть", 16)
 	close.custom_minimum_size = Vector2(0.0, 40.0)
 	close.pressed.connect(close_panel)
 	box.add_child(close)
@@ -144,6 +163,7 @@ func _fill() -> void:
 		child.queue_free()
 	var kind: int = int(_building.kind)
 	_title.text = RES.BUILDING_NAMES[kind]
+	_picture.texture = icons.icon("bld_%d" % kind) if icons != null else null
 	match kind:
 		RES.Building.SWORD_BARRACKS:
 			_fill_barracks(false)
@@ -168,10 +188,10 @@ func _fill_barracks(archer: bool) -> void:
 		alive, _room()
 	]
 	var who := "лучника" if archer else "мечника"
-	var hire := _button("Нанять %s — %s" % [who, RES.format_cost(cost)])
+	var hire := _button("Нанять %s — %s" % [who, RES.format_cost(cost)],
+		"unit_archer" if archer else "unit_sword")
 	hire.disabled = alive >= _room()
 	hire.pressed.connect(func() -> void: _player.ask_train_unit(archer))
-	_line("В казну: %s" % _purse_text())
 
 
 func _fill_stable() -> void:
@@ -181,7 +201,7 @@ func _fill_stable() -> void:
 	_note.text = "Лошадей: %d свободно из %d. Больше %d конюшня не держит." % [
 		wallet.horses_free(), int(wallet.horses), RES.HORSE_LIMIT
 	]
-	var buy := _button("Купить лошадь — %s" % RES.format_cost(RES.HORSE_COST))
+	var buy := _button("Купить лошадь — %s" % RES.format_cost(RES.HORSE_COST), "horse")
 	buy.disabled = int(wallet.horses) >= RES.HORSE_LIMIT
 	buy.pressed.connect(func() -> void: _player.ask_hire_horse())
 
@@ -190,8 +210,7 @@ func _fill_stable() -> void:
 	row.add_theme_constant_override("separation", 6)
 	_rows.add_child(row)
 	for step in [-1, 1]:
-		var button := Button.new()
-		button.text = "−1 лошадь" if step < 0 else "+1 лошадь"
+		var button := STYLE.button("−1 лошадь" if step < 0 else "+1 лошадь", 15)
 		button.custom_minimum_size = Vector2(0.0, 36.0)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var next: int = clampi(int(_player.harness_size) + step,
@@ -199,7 +218,6 @@ func _fill_stable() -> void:
 		button.disabled = next == int(_player.harness_size)
 		button.pressed.connect(func() -> void: _player.ask_set_harness(next))
 		row.add_child(button)
-	_line("В казну: %s" % _purse_text())
 
 
 func _fill_storage() -> void:
@@ -212,7 +230,7 @@ func _fill_storage() -> void:
 		wallet.horses_free() if wallet != null else 0
 	])
 
-	var route := _button("Проложить маршрут и отправить обоз")
+	var route := _button("Проложить маршрут и отправить обоз", "cart")
 	route.pressed.connect(func() -> void:
 		close_panel()
 		route_requested.emit())
@@ -247,13 +265,6 @@ static func _path_length(path: PackedVector3Array) -> float:
 	return total
 
 
-func _purse_text() -> String:
-	var parts := PackedStringArray()
-	for kind in RES.Kind.values():
-		parts.append("%s %d" % [RES.SHORT[kind], _player.stock.get_amount(kind)])
-	return " ".join(parts)
-
-
 func _stored_text(wallet: Node) -> String:
 	var parts := PackedStringArray()
 	for kind in RES.Kind.values():
@@ -261,10 +272,14 @@ func _stored_text(wallet: Node) -> String:
 	return " ".join(parts)
 
 
-func _button(text: String) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size = Vector2(0.0, 40.0)
+func _button(text: String, icon_key := "") -> Button:
+	var button := STYLE.button(text, 16)
+	button.custom_minimum_size = Vector2(0.0, 44.0)
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.add_theme_constant_override("icon_max_width", 36)
+	button.add_theme_constant_override("h_separation", 10)
+	if icon_key != "" and icons != null:
+		button.icon = icons.icon(icon_key)
 	_rows.add_child(button)
 	return button
 

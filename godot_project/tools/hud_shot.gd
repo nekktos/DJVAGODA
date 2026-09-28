@@ -62,6 +62,23 @@ func _run() -> void:
 	main._settings.show_pause()
 	await get_tree().create_timer(0.3).timeout
 	await _shot("05_пауза")
+	main._settings.close()
+	main._trader.visible = true
+	main._refresh_trader(me)
+	await get_tree().create_timer(0.3).timeout
+	await _shot("06_лавка")
+	main._trader.visible = false
+	main._bench.visible = true
+	main._refresh_bench(me)
+	await get_tree().create_timer(0.3).timeout
+	await _shot("07_верстак")
+	main._bench.visible = false
+	var stable: Node3D = _world.spawn_building(RES.Building.STABLE,
+		me.global_position + Vector3(9.0, 0.0, 0.0), 0, int(me.faction), true)
+	await get_tree().create_timer(0.5).timeout
+	main._building_ui.open_for(_world, me, stable)
+	await get_tree().create_timer(0.3).timeout
+	await _shot("08_конюшня")
 	print("[снимки интерфейса] готово: %s" % out_dir)
 	get_tree().quit()
 

@@ -32,7 +32,7 @@ var _main: Node
 
 func start(world: Node3D) -> void:
 	tag = "интерфейс"
-	expected_host = 17
+	expected_host = 18
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -62,6 +62,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	await _test_hotbar(me)
 	await _test_action_row(me)
+	await _test_panel_pictures(me)
 
 	KEYMAP.reset_all()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
@@ -298,6 +299,29 @@ func _test_action_row(me: Node3D) -> void:
 			near, hud.action_row.visible, cap_text, hud.action_icon.texture != null])
 	if is_instance_valid(horse):
 		horse.queue_free()
+
+
+## У кнопок окон — лавки, верстака, прокачки, командира и постройки — есть
+## картинки.
+func _test_panel_pictures(me: Node3D) -> void:
+	var bare := PackedStringArray()
+	for window in _main.PANEL_ICONS:
+		for button_name in _main.PANEL_ICONS[window]:
+			var button: Button = _main.get_node("UI/%s/Panel/VBox/%s" % [window, button_name])
+			if button.icon == null:
+				bare.append("%s/%s" % [window, button_name])
+	var stable: Node3D = _world.spawn_building(RES.Building.STABLE,
+		me.global_position + Vector3(9.0, 0.0, 0.0), 0, int(me.faction), true)
+	await get_tree().create_timer(0.3).timeout
+	_main._building_ui.open_for(_world, me, stable)
+	var buy_icon := false
+	for node in _main._building_ui.find_children("*", "Button", true, false):
+		if String((node as Button).text).begins_with("Купить лошадь") and node.icon != null:
+			buy_icon = true
+	_main._building_ui.close_panel()
+	if not buy_icon:
+		bare.append("конюшня/купить лошадь")
+	check(bare.is_empty(), "у кнопок окон есть картинки", "без картинки: %s" % ", ".join(bare))
 
 
 ## Строка действия поднимается над панелью: иначе «СТРОЙКА: ЛКМ поставить»
