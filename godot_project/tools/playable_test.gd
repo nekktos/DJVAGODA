@@ -67,10 +67,9 @@ func _run() -> void:
 		finish()
 		return
 	_side = int(me.faction)
-	# У ЗЛОДЕЯ ПРОВЕРОК НА ОДНУ БОЛЬШЕ, и это не мелочь учёта. Дворец — условие
-	# победы ТОЛЬКО злодея (GDD 7): эльф может взять точку и не получить за это
-	# ничего, у него условие другое. Первая версия требовала «победа осталась»
-	# со всех сторон и честно упала на эльфах числом victors=0.
+	# У ЗЛОДЕЯ ПРОВЕРОК НА ОДНУ БОЛЬШЕ, и это не мелочь учёта. Дворец значит
+	# что-то ТОЛЬКО для злодея (GDD 9a: стража переходит к нему): эльф может
+	# взять точку и не получить за это ничего.
 	expected_host = 10 if _side == FACTIONS.Kind.VILLAIN else 9
 	print("[проходимость] сторона: %s" % FACTIONS.name_of(_side))
 
@@ -131,14 +130,19 @@ func _test_victory_can_actually_be_taken(me: Node3D) -> void:
 		note("дворец взят, но победа этой стороны не в нём (GDD 7): %s"
 			% OBJECTIVE.VICTORY_TEXT[mine])
 		return
+	# С 28.09 (GDD 9a) взятый дворец — не победа, а стража: она переходит к
+	# злодею вместе с землями людей, и это НАВСЕГДА. Отнимаем дворец обратно и
+	# требуем, чтобы стража осталась у злодея, — «держать дворец» по-прежнему
+	# незачем.
 	if owner_after == mine:
 		objective.palace_owner = owner_before
 		objective.check_victories()
-		check(int(objective.victors[mine]) == 1,
-			"победа объявлена навсегда: дворец отняли, победа осталась",
-			"victors[%s]=%d" % [FACTIONS.name_of(mine), int(objective.victors[mine])])
+		check(bool(objective.guard_absorbed) and int(objective.out[FACTIONS.Kind.GUARD]) == 1,
+			"взятый дворец отдаёт злодею стражу навсегда: дворец отняли, стража осталась его",
+			"стража поглощена %s, выбыла %d" % [objective.guard_absorbed,
+				int(objective.out[FACTIONS.Kind.GUARD])])
 	else:
-		check(false, "победа объявлена навсегда: дворец отняли, победа осталась",
+		check(false, "взятый дворец отдаёт злодею стражу навсегда: дворец отняли, стража осталась его",
 			"дворец не был взят, проверять нечего")
 
 

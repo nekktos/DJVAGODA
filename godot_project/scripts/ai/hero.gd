@@ -331,7 +331,7 @@ func _enemies_near(faction: int, point: Vector3) -> Array:
 		var body := node as Node3D
 		if body == null or not ("faction" in body):
 			continue
-		if int(body.faction) == faction:
+		if not FACTIONS.hostile(faction, int(body.faction)):
 			continue
 		if not _alive(body):
 			continue

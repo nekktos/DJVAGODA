@@ -12,6 +12,7 @@ extends "res://tools/test_base.gd"
 ##   2. Клиент НЕ может снять здоровье в обход хоста.
 ##
 
+const FACTIONS := preload("res://scripts/factions.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 
 var _world: Node3D
@@ -64,6 +65,12 @@ func _run_host(mine: Node3D, other: Node3D) -> void:
 			await get_tree().create_timer(0.5).timeout
 			waited += 0.5
 		other.health.revive()
+		# Цель — на открытое место её стороны. Эльф с 28.09 возрождается у
+		# своего ДОМА (GDD 9a), и стрелок, поставленный в двадцати метрах к
+		# югу, оказывался по другую сторону дома: стрела и шар честно
+		# упирались в стену. Проверяется оружие, а не то, где стоят дома.
+		other.teleport.rpc(FACTIONS.SPAWN[int(other.faction)])
+		await get_tree().process_frame
 		await get_tree().process_frame
 
 		var distance := 2.0 if kind == WEAPONS.Kind.SWORD else 20.0

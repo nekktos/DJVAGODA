@@ -361,6 +361,7 @@ func _on_session_started() -> void:
 		# отменять снос, а это половина условия поражения стражи.
 		if not savegame.restored_buildings:
 			_spawn_guard_barracks()
+			_spawn_elf_houses()
 		_spawn_starting_labourers()
 		_spawn_player(1, Net.chosen_faction, Net.profile_id)
 	else:
@@ -418,6 +419,69 @@ func _spawn_starting_labourers() -> void:
 
 ## Казарма стражи во дворце. Ставится один раз на старте сессии и принадлежит
 ## СТОРОНЕ, а не игроку: она переживает уход любого конкретного стражника.
+## Стартовые дома эльфов: три в кольце поселения, где стояли хижины. Два места
+## под пятерых — строить сверх этого эльфы начинают сами.
+const ELF_HOUSES_START := [
+	Vector3(-255.0, 0.0, -300.0),
+	Vector3(-340.4, 0.0, -280.3),
+	Vector3(-310.0, 0.0, -343.9),
+]
+
+
+func _spawn_elf_houses() -> void:
+	for point in ELF_HOUSES_START:
+		spawn_building(RES.Building.ELF_HOUSE, point, 0, FACTIONS.Kind.ELVES, true)
+
+
+## Дома эльфов: все (стоящие и строящиеся) или только достроенные.
+func elf_houses(done_only := false) -> Array:
+	var found := []
+	for node in get_tree().get_nodes_in_group("building"):
+		if not ("kind" in node) or not (int(node.kind) in RES.ELF_HOUSES):
+			continue
+		if int(node.faction) != FACTIONS.Kind.ELVES:
+			continue
+		if done_only and float(node.progress) < 1.0:
+			continue
+		found.append(node)
+	return found
+
+
+## Сколько домов могут держать эльфы: пять на своего игрока (не меньше, чем
+## на одного — за пустую сторону держит ИИ).
+func elf_house_limit() -> int:
+	return RES.ELF_HOUSES_PER_PLAYER * maxi(1, players_of(FACTIONS.Kind.ELVES).size())
+
+
+## Где возрождается эльф: у ближайшего ДОСТРОЕННОГО дома. Нет домов — нигде.
+func elf_respawn_point(near: Vector3) -> Vector3:
+	var best := Vector3.INF
+	var best_distance := INF
+	for house in elf_houses(true):
+		var d: float = near.distance_to(house.global_position)
+		if d < best_distance:
+			best_distance = d
+			best = house.global_position
+	if best == Vector3.INF:
+		return best
+	# Рядом с домом, а не в нём: дом стоит на сваях, и под ним — коробка. С
+	# СЕВЕРНОЙ стороны: персонаж встаёт лицом на север (-Z), и с южной он
+	# смотрел бы в стену своего же дома — первый рывок упирался в неё.
+	return best + Vector3(0.0, 1.0, -(RES.BUILDING_SIZE[RES.Building.ELF_HOUSE].z * 0.5 + 3.0))
+
+
+## Живые эльфы: игроки и бойцы.
+func living_elves() -> int:
+	var count := 0
+	for player in players_of(FACTIONS.Kind.ELVES):
+		if player.health.alive:
+			count += 1
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if "faction" in unit and int(unit.faction) == FACTIONS.Kind.ELVES and float(unit.health) > 0.0:
+			count += 1
+	return count
+
+
 func _spawn_guard_barracks() -> void:
 	for node in get_tree().get_nodes_in_group("building"):
 		if "faction" in node and int(node.faction) == FACTIONS.Kind.GUARD:
@@ -646,6 +710,15 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	await get_tree().create_timer(RESPAWN_DELAY).timeout
 	if not is_instance_valid(player):
 		return
+	# ЭЛЬФ ВСТАЁТ У ДОМА, а домов может не быть (GDD 9a). Тогда ждём, пока
+	# живые отстроят новый: павшему негде возродиться. Эльфы проигрывают, когда
+	# домов нет и в живых никого — ждать тогда уже некого.
+	while int(player.faction) == FACTIONS.Kind.ELVES and elf_houses(true).is_empty():
+		if objective.out[FACTIONS.Kind.ELVES] == 1:
+			return
+		await get_tree().create_timer(2.0).timeout
+		if not is_instance_valid(player):
+			return
 	# Здоровье возвращаем, РАНЕНИЯ — НЕТ (GDD раздел 4.1). Раньше здесь стоял
 	# body.reset(), и это подрывало весь Этап 3: умереть и встать целым было
 	# дешевле и быстрее, чем идти за протезом.
@@ -802,6 +875,16 @@ func _on_place_requested(kind: int, point: Vector3) -> void:
 	build_controller.set_active(false)
 
 
+## Стройка эльфа — из боевого вида: вида сверху у эльфов нет (GDD 9a).
+## `kind` < 0 снимает режим.
+func set_elf_build(kind: int) -> void:
+	if kind < 0:
+		build_controller.set_active(false)
+		return
+	build_controller.select(kind)
+	build_controller.set_active(true)
+
+
 ## Стройка живёт только в стратегической камере.
 func set_build_mode(on: bool, kind: int = -1) -> void:
 	if on and not strategy_mode:
@@ -949,6 +1032,58 @@ func intercept_caravan(cart: Node3D, player: Node3D) -> bool:
 	return true
 
 
+## Стража переходит к злодею: захвачен дворец (GDD 9a, ответ автора от 28.09 —
+## «захват дворца злодеем отдаёт ему контроль над всеми землями людей и стражу
+## записывает на его сторону»). Только хост.
+##
+## ЧТО ПЕРЕХОДИТ ЗЛОДЕЮ ЦЕЛИКОМ: постройки (склад, поля, дом, конюшня,
+## казармы), бойцы стражи, её обозы, казна и лошади.
+##
+## ЧТО НЕТ: стражники-ИГРОКИ. Они остаются стражей — со своим оружием и без
+## магии злодея, — но становятся его союзниками (`FACTIONS.hostile`) и теряют
+## командование: вожак на стороне один. Перекрасить живого игрока в злодея
+## значило бы выдать ему чужое снаряжение и чужую магию посреди боя.
+func absorb_guard() -> void:
+	if not Net.hosting():
+		return
+	var guard := FACTIONS.Kind.GUARD
+	var villain := FACTIONS.Kind.VILLAIN
+	for node in get_tree().get_nodes_in_group("building"):
+		if "faction" in node and int(node.faction) == guard:
+			node.set_side.rpc(villain)
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if "faction" in unit and int(unit.faction) == guard and unit.has_method("set_side"):
+			unit.set_side.rpc(villain)
+	for cart in caravans_of(0):
+		if int(cart.faction) == guard:
+			cart.faction = villain
+	var from: Node = treasury.of(guard)
+	var into: Node = treasury.of(villain)
+	if from != null and into != null:
+		# Казна стражи лежит в основном «при себе» (стартовые запасы), а склада
+		# у злодея может не быть вовсе. Кладём в склад, сколько влезет, остаток —
+		# при себе, как ложится любая добыча. Потолок поднимаем на склад стражи:
+		# он теперь злодеев.
+		into.raise_capacity(int(from.stored.capacity))
+		for kind in RES.COUNT:
+			var amount: int = int(from.get_amount(kind))
+			if amount <= 0:
+				continue
+			var left: int = amount - int(into.add_stored(kind, amount))
+			if left > 0:
+				into.carried.capacity = maxi(int(into.carried.capacity),
+					int(into.carried.get_amount(kind)) + left)
+				into.add(kind, left)
+		into.horses = int(into.horses) + int(from.horses)
+		into.horses_out = int(into.horses_out) + int(from.horses_out)
+		from.grant(RES.empty())
+		from.horses = 0
+		from.horses_out = 0
+	for player in players_of(guard):
+		player.is_leader = false
+	print("[цель] стража перешла к злодею: постройки, бойцы, обозы, казна")
+
+
 ## Обоз доехал: лошади снова свободны и годятся хоть в упряжку, хоть под седло.
 func _on_caravan_home(horses: int, faction: int) -> void:
 	var wallet: Node = treasury.of(faction)
@@ -1029,7 +1164,7 @@ func _award_kill_xp(killer_id: int, victim_faction: int, leader: bool) -> void:
 	if not Net.hosting() or killer_id <= 0:
 		return
 	var killer: Node3D = _player_by_peer(killer_id)
-	if killer == null or int(killer.faction) == victim_faction:
+	if killer == null or not FACTIONS.hostile(int(killer.faction), victim_faction):
 		return
 	killer.award_xp(PROGRESS.XP_LEADER_KILL if leader else PROGRESS.XP_UNIT_KILL,
 		"убийство вожака" if leader else "убийство")

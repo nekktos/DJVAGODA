@@ -295,7 +295,7 @@ func _threat_nearby() -> Node3D:
 	if world == null:
 		return null
 	for other in world.get_node("Players").get_children():
-		if not ("faction" in other) or int(other.faction) == faction:
+		if not ("faction" in other) or not FACTIONS.hostile(faction, int(other.faction)):
 			continue
 		if not other.health.alive:
 			continue
@@ -304,7 +304,7 @@ func _threat_nearby() -> Node3D:
 	for unit in get_tree().get_nodes_in_group("unit"):
 		if not is_instance_valid(unit) or not ("faction" in unit):
 			continue
-		if int(unit.faction) == faction:
+		if not FACTIONS.hostile(faction, int(unit.faction)):
 			continue
 		if _flat_to(unit.global_position) <= FLEE_RADIUS:
 			return unit

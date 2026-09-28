@@ -668,7 +668,7 @@ func _find_target() -> Node3D:
 		# В Players может лежать не только персонаж, поэтому проверяем, а не верим.
 		if not ("peer_id" in player) or not player.has_method("take_damage"):
 			continue
-		if not ("faction" in player) or int(player.faction) == faction:
+		if not ("faction" in player) or not FACTIONS.hostile(faction, int(player.faction)):
 			continue
 		if not player.health.alive:
 			continue
@@ -682,7 +682,7 @@ func _find_target() -> Node3D:
 			continue
 		# У каравана стороны нет, поэтому спрашиваем её у мира по владельцу.
 		var other_faction := _faction_of(other)
-		if other_faction < 0 or other_faction == faction:
+		if other_faction < 0 or not FACTIONS.hostile(faction, other_faction):
 			continue
 		var d: float = global_position.distance_to(other.global_position)
 		if d < best_distance:
@@ -890,6 +890,17 @@ func defensive_scale(aoe: bool = false) -> float:
 
 ## Принять урон. Только на хосте. Построение режет или усиливает входящий урон
 ## (DESIGN_ANSWERS.md, пункт 16).
+## Сменить сторону. Только хост присылает: так бойцы стражи переходят к
+## злодею при захвате дворца (GDD 9a). Сторона бойца по сети сама не ездит —
+## она приходит пакетом спавна, — поэтому смена идёт отдельным вызовом.
+@rpc("any_peer", "call_local", "reliable")
+func set_side(side: int) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != 1:
+		return
+	faction = side
+
+
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
 		aoe := false, weapon := -1) -> void:
 	if not Net.hosting() or not _alive:

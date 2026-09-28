@@ -325,10 +325,10 @@ func _living_hostiles() -> Array:
 	var players: Node = world.get_node_or_null("Players")
 	if players != null:
 		for child in players.get_children():
-			if "faction" in child and int(child.faction) != FACTIONS.Kind.GUARD and _alive(child):
+			if "faction" in child and FACTIONS.hostile(FACTIONS.Kind.GUARD, int(child.faction)) and _alive(child):
 				found.append(child)
 	for unit in get_tree().get_nodes_in_group("unit"):
-		if "faction" in unit and int(unit.faction) != FACTIONS.Kind.GUARD and "health" in unit and _alive(unit):
+		if "faction" in unit and FACTIONS.hostile(FACTIONS.Kind.GUARD, int(unit.faction)) and "health" in unit and _alive(unit):
 			found.append(unit)
 	return found
 

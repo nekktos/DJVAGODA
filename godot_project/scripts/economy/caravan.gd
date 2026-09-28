@@ -516,7 +516,7 @@ func _hostile_to(node: Node) -> bool:
 	if node == null or not is_instance_valid(node) or not ("faction" in node):
 		return false
 	var other := int(node.faction)
-	if other == faction:
+	if not FACTIONS.hostile(faction, other):
 		return false
 	if "health" in node:
 		var hp = node.health

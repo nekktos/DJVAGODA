@@ -57,6 +57,8 @@ const ACTIONS := [
 	["ability_1", "заклинание 1", Group.COMBAT, [KEY_4]],
 	["ability_2", "заклинание 2", Group.COMBAT, [KEY_5]],
 	["ability_3", "заклинание 3", Group.COMBAT, [KEY_6]],
+	# Эльфы строят дома из боевого вида: вида сверху у них нет (GDD 9a).
+	["build_elf_house", "эльфы: построить дом", Group.COMBAT, [KEY_N]],
 
 	["cam_rotate_left", "поворот камеры влево", Group.STRATEGY, [KEY_Q]],
 	["cam_rotate_right", "поворот камеры вправо", Group.STRATEGY, [KEY_E]],

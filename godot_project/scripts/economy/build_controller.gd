@@ -77,7 +77,7 @@ func _process(_delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
 		return
-	var mouse := get_viewport().get_mouse_position()
+	var mouse := _aim()
 	var from := camera.project_ray_origin(mouse)
 	var to := from + camera.project_ray_normal(mouse) * PICK_DISTANCE
 
@@ -179,6 +179,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
+## Куда целится игрок: курсор, а в боевом виде (мышь захвачена) — середина
+## экрана, где прицел. Так эльф ставит дом туда, куда смотрит (GDD 9a: вида
+## сверху у эльфов нет).
+func _aim() -> Vector2:
+	return _aim_of(self)
+
+
+static func _aim_of(context: Node) -> Vector2:
+	var viewport := context.get_viewport()
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		return viewport.get_visible_rect().size * 0.5
+	return viewport.get_mouse_position()
+
+
 ## Точка на земле под курсором. Общий помощник: им пользуются и призрак здания,
 ## и прокладка маршрута, и приказ отряду — чтобы все три брали одну и ту же
 ## точку и не расходились в мелочах.
@@ -186,7 +200,7 @@ static func pick_ground(context: Node3D) -> Dictionary:
 	var camera := context.get_viewport().get_camera_3d()
 	if camera == null:
 		return {}
-	var mouse := context.get_viewport().get_mouse_position()
+	var mouse := _aim_of(context)
 	var query := PhysicsRayQueryParameters3D.create(
 		camera.project_ray_origin(mouse),
 		camera.project_ray_origin(mouse) + camera.project_ray_normal(mouse) * PICK_DISTANCE

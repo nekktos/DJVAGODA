@@ -91,6 +91,12 @@ func _reinforce(faction: int) -> void:
 		return
 
 	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
+	# Эльфы приходят из своих домов (GDD 9a). Домов нет — пополняться неоткуда:
+	# иначе снести дома значило бы ничего, лес выставлял бы бойцов из воздуха.
+	if faction == FACTIONS.Kind.ELVES and world.has_method("elf_houses"):
+		if world.elf_houses(true).is_empty():
+			_garrisons[faction] = kept
+			return
 	while kept.size() < SIZE:
 		var index := kept.size()
 		# Разводим по кольцу: спавн в одну точку заклинивает капсулы друг в друге.

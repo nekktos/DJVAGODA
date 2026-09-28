@@ -776,6 +776,11 @@ func _update_attack(delta: float) -> void:
 	var wants: bool = scripted_input.get("attack", false)
 	if not wants and not ai_led and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		wants = Input.is_action_pressed("attack")
+		# Эльф ставит дом той же ЛКМ, что бьёт: пока выбран дом, удара нет —
+		# иначе каждый поставленный дом стоил бы взмаха мечом в воздух.
+		var world_here := get_parent().get_parent()
+		if wants and world_here != null and world_here.build_controller.active:
+			wants = false
 	if not wants or _cooldown_left > 0.0:
 		return
 	if not _weapon_allowed(sync_weapon):
@@ -1189,7 +1194,7 @@ func _nearest_enemy(radius: float) -> Node3D:
 	var best: Node3D = null
 	var best_distance := radius
 	for other in get_parent().get_children():
-		if other == self or not ("faction" in other) or int(other.faction) == int(faction):
+		if other == self or not ("faction" in other) or not FACTIONS.hostile(int(faction), int(other.faction)):
 			continue
 		if not other.health.alive:
 			continue
@@ -1200,7 +1205,7 @@ func _nearest_enemy(radius: float) -> Node3D:
 	for unit in get_tree().get_nodes_in_group("unit"):
 		if not is_instance_valid(unit) or not ("faction" in unit):
 			continue
-		if int(unit.faction) == int(faction):
+		if not FACTIONS.hostile(int(faction), int(unit.faction)):
 			continue
 		var d: float = global_position.distance_to(unit.global_position)
 		if d < best_distance:
@@ -1588,7 +1593,7 @@ func respawn_at_slot() -> void:
 	mana = mana_max()
 	sync_stamina = stamina_max()
 	_winded = false
-	teleport.rpc(faction_spawn())
+	teleport.rpc(faction_spawn(true))
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -2138,6 +2143,20 @@ func request_build(building_kind: int, point: Vector3) -> void:
 		return
 	if not RES.BUILDING_COST.has(building_kind):
 		return
+	if not FACTIONS.may_build(int(faction), building_kind, bool(is_leader)):
+		_refuse("%s вашей стороне не строить" % RES.BUILDING_NAMES[building_kind])
+		return
+	var world_now := get_parent().get_parent()
+	# Дом ставят рядом с собой: эльф строит руками, а не сверху, и дом за
+	# полкарты от строителя был бы стройкой без строителя.
+	if building_kind in RES.ELF_HOUSES and Vector2(point.x, point.z).distance_to(
+			Vector2(global_position.x, global_position.z)) > ELF_BUILD_REACH:
+		_refuse("дом ставят рядом с собой: не дальше %d м" % int(ELF_BUILD_REACH))
+		return
+	if building_kind in RES.ELF_HOUSES and world_now.elf_houses().size() >= world_now.elf_house_limit():
+		_refuse("домов уже %d из %d: больше эльфы не держат" % [
+			world_now.elf_houses().size(), world_now.elf_house_limit()])
+		return
 
 	var cost: Array = RES.BUILDING_COST[building_kind]
 	if not stock.can_afford(cost):
@@ -2157,6 +2176,10 @@ func request_build(building_kind: int, point: Vector3) -> void:
 
 
 # --- караван и подбор груза -----------------------------------------------
+
+## Насколько далеко от себя эльф может поставить дом.
+const ELF_BUILD_REACH := 40.0
+
 
 ## Сколько караванов игрок может держать в пути одновременно.
 const MAX_CARAVANS := 2
@@ -2745,8 +2768,17 @@ func request_train_unit(archer: bool = false) -> void:
 
 ## Где сторона появляется. Слот разводит нескольких игроков одной стороны,
 ## хотя в срезе стороны в сессии уникальны.
-func faction_spawn() -> Vector3:
+func faction_spawn(respawn := false) -> Vector3:
 	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
+	# Эльф ВОЗРОЖДАЕТСЯ у ближайшего своего дома (GDD 9a: дома — места
+	# возрождения). В партию он входит, как и все, в точке своей стороны —
+	# посреди поселения.
+	if respawn and int(faction) == FACTIONS.Kind.ELVES:
+		var world := get_parent().get_parent()
+		if world != null and world.has_method("elf_respawn_point"):
+			var at: Vector3 = world.elf_respawn_point(global_position)
+			if at != Vector3.INF:
+				return at + Vector3(float(spawn_slot) * 2.0, 0.0, 0.0)
 	return base + Vector3(float(spawn_slot) * 3.0, 0.0, 0.0)
 
 

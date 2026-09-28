@@ -91,9 +91,13 @@ func _test_death_drops(me: Node3D) -> void:
 	await get_tree().create_timer(6.0).timeout
 	check(not me.is_leader, "рядовой боец не вожак", "is_leader=false")
 	check(me.health.alive, "персонаж вернулся в мир", "жив")
+	# Эльф возрождается у своего ДОМА (GDD 9a: дома — места возрождения), прочие
+	# — в точке своей стороны.
 	var base: Vector3 = FACTIONS.SPAWN[int(me.faction)]
+	if int(me.faction) == FACTIONS.Kind.ELVES:
+		base = _world.elf_respawn_point(me.global_position)
 	check(me.global_position.distance_to(base) < 12.0, "респавн на базе своей стороны",
-		"в %.0f м от точки базы" % me.global_position.distance_to(base))
+		"в %.0f м от точки возрождения" % me.global_position.distance_to(base))
 
 	me.teleport.rpc(pile.global_position + Vector3.UP)
 	await get_tree().physics_frame

@@ -389,16 +389,11 @@ func _build_elves(c: Vector2) -> void:
 
 	_build_trader(g, TRADER_POS[1])
 
-	# Поселение на сваях.
-	for i in 7:
-		var a := TAU * i / 7.0
-		var p := c + Vector2(cos(a), sin(a)) * 45.0
-		for leg in 4:
-			var ox := 6.0 if leg % 2 == 0 else -6.0
-			var oz := 6.0 if leg < 2 else -6.0
-			_cylinder(g, Vector3(p.x + ox, 3.0, p.y + oz), 0.6, 6.0, "wood")
-		_box(g, Vector3(p.x, 7.5, p.y), Vector3(16.0, 3.0, 16.0), "wood")
-		_cone(g, Vector3(p.x, 11.5, p.y), 12.0, 6.0, "foliage")
+	# ХИЖИН-ДЕКОРАЦИЙ БОЛЬШЕ НЕТ. Здесь стояли семь хижин на сваях, которые
+	# ничего не значили. С 28.09 (GDD 9a) дома эльфов — настоящие постройки:
+	# места возрождения, их строят и сносят (`world.gd::ELF_HOUSES_START`).
+	# Хижина, которая выглядит домом, а домом не является, путала бы и эльфа
+	# («почему я не возродился у этой?»), и того, кто пришёл их жечь.
 
 
 func _build_emperor(c: Vector2) -> void:

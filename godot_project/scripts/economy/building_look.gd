@@ -60,6 +60,9 @@ const ROOF_RIDGE_OVERLAP := 1.0
 static func build(kind: int, size: Vector3) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Look"
+	if kind in RES.ELF_HOUSES:
+		_elf_house(root, size, kind == RES.Building.ELF_STONE_HOUSE)
+		return root
 
 	var set_name := WOOD if _wooden(kind) else STONE
 	var floors := maxi(1, int(round(size.y / FLOOR_HEIGHT)))
@@ -83,6 +86,45 @@ static func build(kind: int, size: Vector3) -> Node3D:
 	_roof(root, size)
 	_trim(root, kind, size)
 	return root
+
+
+## Дом эльфов: на сваях, как хижины их поселения, под острой крышей цвета
+## листвы. Каменный — на каменном цоколе и с каменными стенами: прочность по
+## материалу должна читаться глазом, а не только числом.
+static func _elf_house(root: Node3D, size: Vector3, stone: bool) -> void:
+	var wall_mat: StandardMaterial3D = TEXTURES.of("stone" if stone else "wood")
+	var leg_mat: StandardMaterial3D = TEXTURES.of("stone" if stone else "wood")
+	var lift := size.y * 0.45
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var leg := MeshInstance3D.new()
+			var pole := CylinderMesh.new()
+			pole.top_radius = 0.7 if stone else 0.35
+			pole.bottom_radius = pole.top_radius
+			pole.height = lift
+			leg.mesh = pole
+			leg.material_override = leg_mat
+			leg.position = Vector3(sx * size.x * 0.38, lift * 0.5, sz * size.z * 0.38)
+			root.add_child(leg)
+	var body := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(size.x * 0.9, size.y - lift, size.z * 0.9)
+	body.mesh = box
+	body.material_override = wall_mat
+	body.position = Vector3(0.0, lift + box.size.y * 0.5, 0.0)
+	root.add_child(body)
+	var roof := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = size.x * 0.72
+	cone.height = size.y * 0.6
+	roof.mesh = cone
+	var leaves := StandardMaterial3D.new()
+	leaves.albedo_color = Color(0.24, 0.44, 0.24)
+	leaves.roughness = 0.9
+	roof.material_override = leaves
+	roof.position = Vector3(0.0, size.y + cone.height * 0.5 - 0.2, 0.0)
+	root.add_child(roof)
 
 
 ## Казармы деревянные, склад и конюшня каменные. Дерево у казарм не случайно:

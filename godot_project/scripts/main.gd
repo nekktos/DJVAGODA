@@ -392,6 +392,12 @@ func _action_prompt(me: Node3D) -> Dictionary:
 	var refusal: String = _refusal_line().strip_edges()
 	if refusal != "":
 		return {"text": refusal}
+	if _world.build_controller.active:
+		var kind: int = int(_world.build_controller.kind)
+		return {"key": &"build_elf_house", "icon": "bld_%d" % kind,
+			"text": "%s (%s) — ЛКМ поставить, ПКМ отмена · домов %d из %d" % [
+				RES.BUILDING_NAMES[kind], RES.format_cost(RES.BUILDING_COST[kind]),
+				_world.elf_houses().size(), _world.elf_house_limit()]}
 	var cart: Node3D = me.caravan_to_rob()
 	if cart != null and me.riding() == null:
 		match me.caravan_action(cart):
@@ -524,6 +530,8 @@ func _help_text() -> String:
 	if me != null and FACTIONS.has_abilities(me.faction):
 		lines.append("заклинания: %s" % _keys([&"ability_1", &"ability_2", &"ability_3"]))
 	lines.append("%s — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь" % _k(&"interact"))
+	if me != null and int(me.faction) == FACTIONS.Kind.ELVES:
+		lines.append("ЭЛЬФ: %s — дом (ещё раз — каменный, ещё раз — снять), ЛКМ — поставить. Дома — места возрождения" % _k(&"build_elf_house"))
 	lines.append("%s — вид сверху · %s — первое/третье лицо · %s — в меню · %s — консоль" % [
 		_k(&"toggle_camera"), _k(&"toggle_view"), _k(&"leave"), _k(&"console")])
 	lines.append("%s — звук · %s и %s — тише и громче · %s — прокачка · Esc — пауза и клавиши" % [
@@ -621,6 +629,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		# Стройка и прокладка маршрута перехватывают ПКМ раньше — там это отмена.
 		if _try_squad_move_order():
+			get_viewport().set_input_as_handled()
+			return
+	# ДОМ ЭЛЬФОВ (GDD 9a): N — деревянный, ещё раз N — каменный, ещё раз —
+	# снять. Строят из боевого вида: вида сверху у эльфов нет.
+	if event.is_action_pressed(&"build_elf_house") and Net.active and not _world.strategy_mode:
+		var elf: Node3D = _world.local_player()
+		if elf != null and int(elf.faction) == FACTIONS.Kind.ELVES:
+			var controller: Node3D = _world.build_controller
+			if not controller.active:
+				_world.set_elf_build(RES.Building.ELF_HOUSE)
+			elif int(controller.kind) == RES.Building.ELF_HOUSE:
+				_world.set_elf_build(RES.Building.ELF_STONE_HOUSE)
+			else:
+				_world.set_elf_build(-1)
 			get_viewport().set_input_as_handled()
 			return
 	# Взаимодействие — только из вида от первого лица. Сверху персонажа не видно
@@ -1230,6 +1252,8 @@ const TEST_FLAGS := {
 	"--hudtest": ["res://tools/hud_test.gd", true],
 	"--intercepttest": ["res://tools/intercept_test.gd", true],
 	"--servicetest": ["res://tools/service_test.gd", true],
+	"--endgametest": ["res://tools/endgame_test.gd", true],
+	"--elvestest": ["res://tools/elves_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 

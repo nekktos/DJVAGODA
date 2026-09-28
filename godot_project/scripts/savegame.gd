@@ -107,6 +107,8 @@ func save_world() -> String:
 	cfg.set_value("world", "palace_owner", int(objective.palace_owner))
 	cfg.set_value("world", "leader_down", objective.leader_down)
 	cfg.set_value("world", "victors", objective.victors)
+	cfg.set_value("world", "out", objective.out)
+	cfg.set_value("world", "guard_absorbed", bool(objective.guard_absorbed))
 
 
 	# Недостроенное сохраняем вместе с прогрессом: стройка идёт минутами, и
@@ -237,6 +239,8 @@ func load_world() -> bool:
 	objective.palace_owner = int(cfg.get_value("world", "palace_owner", objective.palace_owner))
 	objective.leader_down = cfg.get_value("world", "leader_down", objective.leader_down)
 	objective.victors = cfg.get_value("world", "victors", objective.victors)
+	objective.out = cfg.get_value("world", "out", objective.out)
+	objective.guard_absorbed = bool(cfg.get_value("world", "guard_absorbed", false))
 
 	_restore_buildings(world, cfg)
 	_restore_labourers(world, cfg)

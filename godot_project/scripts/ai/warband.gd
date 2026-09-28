@@ -521,6 +521,8 @@ func _pick_target(faction: int) -> Vector3:
 			continue
 		if not _hostile(faction, int(building.faction)):
 			continue
+		if not _elves_fair_game(faction, int(building.faction)):
+			continue
 		if base.distance_to(building.global_position) > RAID_RANGE:
 			continue
 		var d: float = here.distance_to(building.global_position)
@@ -678,11 +680,26 @@ func _is_stuck(faction: int, band: Array) -> bool:
 
 
 func _hostile(faction: int, other: int) -> bool:
-	if other < 0 or other == faction:
-		return false
-	# ВСЕ ЧУЖИЕ ВРАЖДЕБНЫ. Система отношений вырезана по решению автора игры, и
-	# вместе с ней исчезло единственное, что делало чужую сторону невраждебной.
-	return true
+	# ВСЕ ЧУЖИЕ ВРАЖДЕБНЫ — кроме союзников: после захвата дворца стража
+	# служит злодею (GDD 9a, `FACTIONS.hostile`).
+	return FACTIONS.hostile(faction, other)
+
+
+## Можно ли ИИ этой стороны идти жечь дома эльфов.
+##
+## ТОЛЬКО КОГДА ДРУГОГО СОПЕРНИКА НЕ ОСТАЛОСЬ. Цели сторон по ответу автора
+## (GDD 9a): злодей сперва берёт дворец и лишь потом вырезает эльфов; стража
+## воюет с обоими. Дома эльфов лежат в шестистах метрах и от форта, и от
+## дворца, и без этого правила отряды злодея и стражи с первой минуты уходили
+## жечь лес — а ИИ за пустую сторону эльфов дома не отстраивает, и партия
+## кончалась бы, не начавшись.
+func _elves_fair_game(faction: int, target_side: int) -> bool:
+	if target_side != FACTIONS.Kind.ELVES or faction == FACTIONS.Kind.ELVES:
+		return true
+	var objective: Node = get_parent().get_node_or_null("Objective")
+	if objective == null:
+		return true
+	return objective.sides_left() <= 2
 
 
 ## Проредили ли отряд настолько, что пора домой.
@@ -694,7 +711,7 @@ func _spent(band: Array) -> bool:
 func _enemy_near(faction: int, point: Vector3) -> bool:
 	var world := get_parent()
 	for player in world.get_node("Players").get_children():
-		if not ("faction" in player) or int(player.faction) == faction:
+		if not ("faction" in player) or not FACTIONS.hostile(faction, int(player.faction)):
 			continue
 		if not player.health.alive:
 			continue
@@ -703,7 +720,7 @@ func _enemy_near(faction: int, point: Vector3) -> bool:
 	for unit in get_tree().get_nodes_in_group("unit"):
 		if not is_instance_valid(unit) or not ("faction" in unit):
 			continue
-		if int(unit.faction) == faction:
+		if not FACTIONS.hostile(faction, int(unit.faction)):
 			continue
 		if point.distance_to(unit.global_position) <= FIGHT_RADIUS:
 			return true

@@ -70,6 +70,8 @@ SUITES=(
 	"hud:--hudtest:0:"
 	"intercept:--intercepttest:0:"
 	"service:--servicetest:2:"
+	"endgame:--endgametest:0:"
+	"elves:--elvestest:1:"
 	"playable0:--playabletest:0:"
 	"playable1:--playabletest:1:"
 	"playable2:--playabletest:2:"

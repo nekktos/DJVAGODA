@@ -91,6 +91,10 @@ func _ready() -> void:
 	_mesh.material_override = _material()
 	add_child(_mesh)
 
+	# Прочность — по виду (дома эльфов — по материалу). Только хост: у клиента
+	# здоровье приезжает синхронизатором.
+	if Net.hosting() and is_equal_approx(health, MAX_HEALTH):
+		health = RES.building_health(kind)
 	_look = LOOK.build(kind, size)
 	_look.visible = false
 	add_child(_look)
@@ -247,6 +251,16 @@ func _build_hit_zone(size: Vector3) -> void:
 ## Принять урон. Только на хосте — как и весь остальной урон в игре.
 ##
 ## Недостроенное здание бьётся так же: это и есть способ сорвать стройку.
+## Сменить хозяина постройки. Только хост присылает: так постройки стражи
+## переходят к злодею при захвате дворца (GDD 9a).
+@rpc("any_peer", "call_local", "reliable")
+func set_side(side: int) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != 1:
+		return
+	faction = side
+
+
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
 		_aoe := false, _weapon := -1) -> void:
 	if not Net.hosting() or health <= 0.0:

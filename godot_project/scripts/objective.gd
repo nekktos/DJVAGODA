@@ -23,12 +23,30 @@ const CAPTURE_SECONDS := 20.0
 ## Насколько быстро прогресс откатывается, когда точку бросили.
 const DECAY_PER_SECOND := 0.06
 
-## Чем именно победила сторона (GDD раздел 7). Порядок — как в FACTIONS.Kind.
+## ПАРТИЯ ИДЁТ ДО ПОСЛЕДНЕЙ СТОРОНЫ (GDD 9a, ответ автора от 28.09 —
+## заменяет раздел 7). Цели сторон:
+## - злодей: сперва взять дворец — стража и земли людей переходят к нему, —
+##   потом вырезать эльфов;
+## - стража: уничтожить и злодея, и эльфов;
+## - эльфы: вернуть древние земли — уничтожить и стражу, и злодея.
+##
+## «ПОБЕДА» объявляется одна и только когда на карте осталась одна сторона.
+## Выбывшую сторону объявляем отдельно, в миг выбывания.
+## Порядок — как в FACTIONS.Kind.
 const VICTORY_TEXT := [
-	"дворец захвачен",
-	"злодей и стража сломлены",
-	"злодей убит",
+	"дворец взят, эльфы вырезаны",
+	"древние земли вернулись к эльфам",
+	"злодей и эльфы уничтожены",
 ]
+## Как сторона выбыла — для объявления.
+const OUT_TEXT := [
+	"вожак злодея пал",
+	"эльфов больше нет",
+	"стража сломлена",
+]
+## Как часто пересматривать, кто выбыл. Смерть ИИ-вожака, опустевшая сторона
+## и прочее не присылают события — их надо заметить.
+const CHECK_INTERVAL := 2.0
 
 signal announced(text: String)
 ## Событие мира — в ЛОГ, а не на экран.
@@ -56,8 +74,14 @@ signal logged(text: String)
 ## Пал ли вожак стороны. Вожак — злодей по рождению и повышенный командир
 ## стражи; их смерть окончательна.
 @export var leader_down: PackedByteArray = PackedByteArray([0, 0, 0])
+## Кто выбыл из партии. Байт на сторону. Выбывание окончательно.
+@export var out: PackedByteArray = PackedByteArray([0, 0, 0])
+## Стража перешла к злодею: дворец взят (GDD 9a). Едет по сети, и по нему
+## каждый пир выставляет союз в `FACTIONS.overlord`.
+@export var guard_absorbed := false
 
 var _seen_owner := FACTIONS.Kind.GUARD
+var _check_t := 0.0
 
 
 func _ready() -> void:
@@ -75,16 +99,29 @@ func reset() -> void:
 	claimant = -1
 	victors = PackedByteArray([0, 0, 0])
 	leader_down = PackedByteArray([0, 0, 0])
+	out = PackedByteArray([0, 0, 0])
+	guard_absorbed = false
 	_seen_owner = palace_owner
+	_apply_alliances()
 
 
 func _process(delta: float) -> void:
 	# Объявление идёт ТОЛЬКО по RPC. Раньше здесь дублировалась ещё и реакция на
 	# смену реплицированного владельца, и клиенты получали баннер дважды.
 	_seen_owner = palace_owner
+	_apply_alliances()
 	if not Net.hosting():
 		return
 	_server_tick(delta)
+	_check_t += delta
+	if _check_t >= CHECK_INTERVAL:
+		_check_t = 0.0
+		check_victories()
+
+
+## Союз стражи со злодеем — на КАЖДОМ пире, по реплицированному признаку.
+func _apply_alliances() -> void:
+	FACTIONS.overlord[FACTIONS.Kind.GUARD] = FACTIONS.Kind.VILLAIN if guard_absorbed else -1
 
 
 func _server_tick(delta: float) -> void:
@@ -120,6 +157,15 @@ func _capture(faction: int) -> void:
 	var text := "Дворец захвачен: %s" % FACTIONS.name_of(faction)
 	print("[цель] %s" % text)
 	announce.rpc(text)
+	# Злодей взял дворец — стража и земли людей переходят к нему. Однажды:
+	# поглощённой стражи больше нет, и отбить дворец обратно ей некем.
+	if faction == FACTIONS.Kind.VILLAIN and not guard_absorbed:
+		guard_absorbed = true
+		_apply_alliances()
+		var world := get_parent()
+		if world != null and world.has_method("absorb_guard"):
+			world.absorb_guard()
+		announce.rpc("Земли людей и стража теперь под рукой злодея")
 	check_victories()
 
 
@@ -165,8 +211,12 @@ func faction_is_broken(faction: int) -> bool:
 	var world := get_parent()
 	var players: Array = world.players_of(faction)
 	if players.is_empty():
+		# Сторона, у которой ИИ-вожака ЕЩЁ НЕТ, не выбыла: он появляется не в
+		# первый кадр партии. С проверкой раз в две секунды (GDD 9a: партия до
+		# последней стороны) прежнее «нет вожака — сломлена» выкидывало бы все
+		# пустые стороны на старте и объявляло победу первому вошедшему.
 		var hero: Node3D = world.ai_hero_of(faction)
-		if hero == null or not hero.health.alive:
+		if hero != null and not hero.health.alive:
 			return true
 	if not leader_is_down(faction):
 		return false
@@ -193,24 +243,60 @@ func _has_barracks(faction: int) -> bool:
 	return false
 
 
-## Проверить условия победы всех сторон. Только на хосте.
+## Выбыла ли сторона — окончательно.
 ##
-## Победа НЕ обрывает партию (GDD раздел 7): она объявляется всем, и дальше
-## сессия живёт как песочница — злодей после захвата дворца может добивать
-## эльфов, и наоборот.
+## - злодей: пал его вожак (или за пустую сторону пал ИИ-вожак);
+## - стража: перешла к злодею с дворцом — или сломлена: пал командир И
+##   снесены казармы;
+## - эльфы: снесены ВСЕ их дома, даже строящиеся, И в живых нет ни одного
+##   эльфа (ответ автора: «при разрушении последней постройки эльфы
+##   проигрывают, только если в живых нет никого: им негде возрождаться»).
+func side_out(faction: int) -> bool:
+	if faction == FACTIONS.Kind.GUARD and guard_absorbed:
+		return true
+	if faction == FACTIONS.Kind.ELVES:
+		var world := get_parent()
+		if world != null and world.has_method("elf_houses"):
+			return world.elf_houses().is_empty() and world.living_elves() == 0
+	return faction_is_broken(faction)
+
+
+## Пересмотреть, кто выбыл, и объявить победу, если осталась одна сторона.
+## Только на хосте.
+##
+## Выбывание окончательно: вернувшийся на пустую сторону игрок её не
+## воскрешает — партия ушла дальше.
 func check_victories() -> void:
 	if not Net.hosting():
 		return
-	_maybe_declare(FACTIONS.Kind.VILLAIN, palace_owner == FACTIONS.Kind.VILLAIN)
-	_maybe_declare(FACTIONS.Kind.GUARD, leader_is_down(FACTIONS.Kind.VILLAIN))
-	_maybe_declare(
-		FACTIONS.Kind.ELVES,
-		leader_is_down(FACTIONS.Kind.VILLAIN) and faction_is_broken(FACTIONS.Kind.GUARD)
-	)
+	for faction in FACTIONS.COUNT:
+		if out[faction] == 1 or not side_out(faction):
+			continue
+		out[faction] = 1
+		var gone := "%s выбывает из партии: %s" % [FACTIONS.name_of(faction), OUT_TEXT[faction]]
+		if faction == FACTIONS.Kind.GUARD and guard_absorbed:
+			gone = "%s больше не сторона: она служит злодею" % FACTIONS.name_of(faction)
+		print("[цель] %s" % gone)
+		announce.rpc(gone)
+	var left := []
+	for faction in FACTIONS.COUNT:
+		if out[faction] == 0:
+			left.append(faction)
+	if left.size() == 1:
+		_declare(int(left[0]))
 
 
-func _maybe_declare(faction: int, condition_met: bool) -> void:
-	if not condition_met or victors[faction] == 1:
+## Сколько сторон ещё в партии.
+func sides_left() -> int:
+	var count := 0
+	for faction in FACTIONS.COUNT:
+		if out[faction] == 0:
+			count += 1
+	return count
+
+
+func _declare(faction: int) -> void:
+	if victors[faction] == 1:
 		return
 	victors[faction] = 1
 	var text := "ПОБЕДА: %s — %s" % [FACTIONS.name_of(faction), VICTORY_TEXT[faction]]
@@ -232,7 +318,9 @@ func _factions_inside() -> Array:
 		var flat := Vector3(child.global_position.x, PALACE.y, child.global_position.z)
 		if flat.distance_to(PALACE) > RADIUS:
 			continue
-		var faction: int = int(child.faction)
+		# Союзник стоит за сюзерена: страж, служащий злодею, захвату злодея
+		# не мешает и своего не начинает.
+		var faction: int = FACTIONS._root(int(child.faction))
 		if not found.has(faction):
 			found.append(faction)
 	return found
@@ -259,6 +347,12 @@ func log_event(text: String) -> void:
 
 func status_text() -> String:
 	var line := "дворец: %s" % FACTIONS.name_of(palace_owner)
+	var gone := PackedStringArray()
+	for faction in FACTIONS.COUNT:
+		if out[faction] == 1:
+			gone.append(FACTIONS.name_of(faction))
+	if not gone.is_empty():
+		line += "   выбыли: %s" % ", ".join(gone)
 	if contested:
 		return line + "   ТОЧКА ОСПАРИВАЕТСЯ"
 	if claimant >= 0 and capture_progress > 0.0:

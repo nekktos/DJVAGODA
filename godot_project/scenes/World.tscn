@@ -37,6 +37,12 @@ properties/4/replication_mode = 1
 properties/5/path = NodePath(".:leader_down")
 properties/5/spawn = true
 properties/5/replication_mode = 1
+properties/6/path = NodePath(".:out")
+properties/6/spawn = true
+properties/6/replication_mode = 1
+properties/7/path = NodePath(".:guard_absorbed")
+properties/7/spawn = true
+properties/7/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="Repl_treasury"]
 properties/0/path = NodePath("0/Carried:amounts")

@@ -203,6 +203,51 @@ static func total_slots() -> int:
 	return sum
 
 
+## СОЮЗЫ (GDD 9a, ответ автора от 28.09): «захват дворца злодеем отдаёт ему
+## контроль над всеми землями людей и стражу записывает на его сторону».
+##
+## Кто кому подчинён: `overlord[сторона]` — сюзерен или -1. После захвата
+## дворца стража — вассал злодея: её люди больше не враги ему, а он им.
+##
+## Состояние живёт у цели партии (`objective.gd::guard_absorbed`) и едет по
+## сети оттуда; здесь только его копия, которую объектив выставляет на каждом
+## пире, — чтобы спросить «враг ли» мог любой код без ссылки на мир.
+static var overlord: Array = [-1, -1, -1]
+
+
+## Враги ли две стороны. Одно правило для всех, кто выбирает цель: бойцы,
+## отряды, вожаки ИИ, батраки, обозы.
+static func hostile(a: int, b: int) -> bool:
+	if a == b:
+		return false
+	# Неизвестная сторона (-1) — чужая, как и было до союзов: мишени в
+	# проверках и безвладельческое не должны разом стать «своими».
+	if a < 0 or b < 0:
+		return true
+	return _root(a) != _root(b)
+
+
+static func _root(side: int) -> int:
+	if side < 0 or side >= overlord.size():
+		return side
+	var top: int = int(overlord[side])
+	return top if top >= 0 else side
+
+
+## Что сторона вправе строить. Злодей и командир стражи — хозяйство; эльфы —
+## только свои дома, зато любой эльф, без вида сверху и без командира.
+##
+## До 28.09 запрос на стройку сторону не проверял вовсе: ограничивало лишь то,
+## что у эльфов не было клавиш стройки.
+static func may_build(faction: int, kind: int, leader: bool) -> bool:
+	var elf_house: bool = kind in [6, 7]
+	if faction == Kind.ELVES:
+		return elf_house
+	if elf_house:
+		return false
+	return can_build(faction) or leader
+
+
 static func has_strategy(faction: int) -> bool:
 	return HAS_STRATEGY[clampi(faction, 0, COUNT - 1)]
 

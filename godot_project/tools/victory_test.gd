@@ -113,8 +113,12 @@ func _test_villain_death_is_final(me: Node3D) -> void:
 	await get_tree().create_timer(1.0).timeout
 	check(_world.objective.leader_is_down(FACTIONS.Kind.VILLAIN), "гибель вожака засчитана",
 		"leader_down=true")
-	check(_heard.any(func(t: String) -> bool: return t.contains("ПОБЕДА") and t.contains("Охрана")),
-		"объявлена победа стражи", "объявлений: %d" % _heard.size())
+	# ПАРТИЯ ИДЁТ ДО ПОСЛЕДНЕЙ СТОРОНЫ (GDD 9a): смерть злодея — это его
+	# выбывание, а не победа стражи. Победит страж, когда не станет и эльфов.
+	check(_heard.any(func(t: String) -> bool: return t.contains("Злодей выбывает"))
+			and not _heard.any(func(t: String) -> bool: return t.contains("ПОБЕДА")),
+		"гибель злодея объявлена его выбыванием, победы ещё нет — эльфы в партии",
+		"объявлено: %s" % " | ".join(_heard))
 
 	# Ждём дольше обычного респавна: злодей возвращаться не должен.
 	await get_tree().create_timer(8.0).timeout
