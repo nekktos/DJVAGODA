@@ -963,6 +963,8 @@ const TEST_FLAGS := {
 	"--onboardingtest": ["res://tools/onboarding_test.gd", true],
 	"--ammotest": ["res://tools/ammo_test.gd", true],
 	"--progresstest": ["res://tools/progress_test.gd", true],
+	"--starttest": ["res://tools/start_test.gd", true],
+	"--bootstraptest": ["res://tools/bootstrap_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 

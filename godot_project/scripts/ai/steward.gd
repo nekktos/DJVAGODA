@@ -36,15 +36,29 @@ const THINK_INTERVAL := 4.0
 
 ## Что и в каком порядке строить. Склад первым не по привычке: без него у
 ## стороны нет безопасного запаса вовсе, и всё добытое теряется с первой смертью.
+##
+## ПОРЯДОК ПЕРЕСОБРАН ПОД НОВЫЙ СТАРТ (GDD 9a). Злодей начинает с нуля, и ИИ
+## обязан пройти тот же путь, что и живой игрок: склад, поле, конюшня — это
+## путь до первого обоза; дом и казармы — развитие, за них платит обоз.
+##
+## Конюшня раньше стояла ПОСЛЕДНЕЙ с пометкой «без неё обоз всё равно ходит
+## парой лошадей». Лошадей на старте больше нет, и без конюшни обоз не выедет
+## никогда, а без обоза не будет ни железа, ни камня на всё остальное. Поле —
+## сразу за складом: батраки теперь едят, и без еды артель вымирает.
 const BUILD_ORDER := [
 	RES.Building.STORAGE,
+	RES.Building.FARM,
+	RES.Building.STABLE,
+	RES.Building.HOUSE,
 	RES.Building.SWORD_BARRACKS,
 	RES.Building.ARCHER_BARRACKS,
-	# Конюшня последней: без неё обоз всё равно ходит парой лошадей, а вот без
-	# казарм сторона не воюет вовсе. Порядок здесь — это порядок нужды, а не
-	# порядок появления в коде.
-	RES.Building.STABLE,
 ]
+
+## Сколько батраков ИИ нанимает, пока нет ни одной лошади. Золото микро-шахты —
+## это двое батраков и лошадь ЛИБО трое батраков; нанять третьего значит не
+## купить лошадь и не отправить ни одного обоза. Живой игрок выбирает сам, ИИ
+## выбирает обоз.
+const CREW_BEFORE_HORSE := 2
 
 ## Сколько лошадей ИИ держит в конюшне и сколько запрягает.
 ##
@@ -138,6 +152,8 @@ func _hire(faction: int) -> void:
 	if crew.size() >= RES.LABOURER_LIMIT:
 		return
 	var wallet := _wallet(faction)
+	if wallet != null and int(wallet.horses) <= 0 and crew.size() >= CREW_BEFORE_HORSE:
+		return
 	if wallet == null or not wallet.spend(RES.LABOURER_COST):
 		return
 	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
@@ -239,6 +255,13 @@ func _assign_roles(faction: int) -> void:
 		wanted[LABOURER.Role.BUILDER] = mini(BUILDERS_WANTED, crew.size())
 
 	var rest: int = crew.size() - wanted[LABOURER.Role.BUILDER]
+	# ФЕРМЕР — ПЕРВЫМ из оставшихся. Батраки едят (раз в пять минут), и поле без
+	# фермера стоит полным: еда на нём есть, а до склада не доходит. Одного на
+	# поле: одно поле кормит примерно пятерых, и больше рук ему не надо.
+	if rest > 0:
+		var fields: int = _count_ready(faction, RES.Building.FARM)
+		wanted[LABOURER.Role.FARMER] = mini(fields, rest)
+		rest -= wanted[LABOURER.Role.FARMER]
 	if rest > 0:
 		# Чего не хватает на следующую постройку — тем и займёмся.
 		var kind := _next_building(faction)
@@ -281,6 +304,19 @@ func _apply_roles(crew: Array, wanted: PackedInt32Array) -> void:
 					break
 			if not moved:
 				return
+
+
+## Сколько достроенных построек такого вида у стороны.
+func _count_ready(faction: int, kind: int) -> int:
+	var found := 0
+	for node in get_tree().get_nodes_in_group("building"):
+		if not ("faction" in node) or not ("kind" in node):
+			continue
+		if int(node.faction) != faction or int(node.kind) != kind:
+			continue
+		if float(node.progress) >= 1.0:
+			found += 1
+	return found
 
 
 ## У кого забрать пару рук: у роли, где их больше, чем нужно.
@@ -382,7 +418,11 @@ func _guard_caravan(faction: int, cart: Node) -> void:
 ## набег вместе с гарнизоном — второй системы командования ИИ не заводим.
 func _train(faction: int) -> void:
 	var world := get_parent()
-	if world.warband._band(faction).size() >= SQUAD_WANTED:
+	# ВМЕСТИМОСТЬ ОТ ДОМОВ — и для ИИ тоже. Дом дружины я ввёл, ограничив им
+	# только игрока, и ИИ продолжал набирать по своему SQUAD_WANTED, будто
+	# домов не существует. Набор «хозяйство» это и поймал: «8 при потолке 6».
+	var room: int = mini(SQUAD_WANTED, world.squad_capacity(faction))
+	if world.warband._band(faction).size() >= room:
 		return
 	var archer := _ready_building(faction, RES.Building.ARCHER_BARRACKS) != null
 	if not archer and _ready_building(faction, RES.Building.SWORD_BARRACKS) == null:

@@ -68,7 +68,8 @@ func _test_only_villain() -> void:
 ## запаса вовсе.
 func _test_hires_and_builds() -> void:
 	var crew_before: int = _world.labourers_of(FACTIONS.Kind.VILLAIN).size()
-	check(crew_before >= 2, "партия началась с двух рук", "%d" % crew_before)
+	# С НУЛЯ: батраков на старте нет (GDD 9a), и ИИ их нанимает сам.
+	check(crew_before == 0, "партия началась без батраков", "%d" % crew_before)
 
 	# Даём стороне запас: проверяем решения, а не скорость лесоруба.
 	_villain_wallet().grant([600, 600, 600, 600])

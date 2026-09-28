@@ -174,6 +174,11 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return _has_barracks(world, int(me.faction))
 		"farm":
 			return _has_building(world, int(me.faction), RES.Building.FARM)
+		"afford_storage":
+			return (me.stock.can_afford(RES.BUILDING_COST[RES.Building.STORAGE])
+				or _has_building(world, int(me.faction), RES.Building.STORAGE))
+		"horse":
+			return int(me.stock.horses) > 0
 		"house":
 			return world.squad_capacity(int(me.faction)) > RES.SQUAD_BASE
 		"squad":
@@ -315,6 +320,17 @@ func _villain_chain() -> Array:
 			"done": "moved",
 		},
 		{
+			# ЗЛОДЕЙ НАЧИНАЕТ С НУЛЯ (GDD 9a), и строить ему пока не на что.
+			# Первое дело — набрать самому: камень и золото в микро-шахте у
+			# форта, дерево в роще. Без этого шага цепочка начиналась бы с
+			# «поставь склад», который поставить невозможно.
+			"text": "Строить пока не на что. Набери сам: камень и золото — в микро-шахте у форта, дерево — в роще",
+			"keys": "7 — молот, им камень бьётся вдвое · ЛКМ по залежи или дереву",
+			"done": "afford_storage",
+			"place": "микро-шахта",
+			"at": WORLD_BUILDER.MICRO_MINE_POS,
+		},
+		{
 			"text": "Строят и командуют СВЕРХУ. Открой вид сверху",
 			"keys": "Tab",
 			"done": "strategy",
@@ -328,7 +344,7 @@ func _villain_chain() -> Array:
 		},
 		{
 			"text": "Найми батраков: они рубят, копают и строят сами",
-			"keys": "сверху: B — нанять, 5 / 6 / 7 / 8 — кем именно",
+			"keys": "сверху: B — нанять, 7 / 8 / 9 / 0 / F — кем именно",
 			"done": "crew",
 		},
 		{
@@ -336,6 +352,17 @@ func _villain_chain() -> Array:
 			"keys": "сверху: 6 — поле, нужно %s · F — поставить батрака фермером"
 				% _build_price(RES.Building.FARM),
 			"done": "farm",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
+		},
+		{
+			# КОНЮШНЯ ДО ОБОЗА, а не в конце. Лошадей на старте у злодея нет
+			# (GDD 9a), а без лошади обоз не выедет: шаг «нарисуй маршрут»
+			# раньше этого был бы невыполним.
+			"text": "Обозу нужна лошадь, а лошадь продают в конюшне. Поставь её и купи первую",
+			"keys": "сверху: 4 — конюшня, нужно %s · у конюшни E — купить лошадь"
+				% _build_price(RES.Building.STABLE),
+			"done": "horse",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
@@ -366,14 +393,6 @@ func _villain_chain() -> Array:
 			"text": "Найми бойцов. Они пойдут за тобой — один ты дворец не возьмёшь",
 			"keys": "подойди к казарме и нажми E · сверху T — мечник, Y — лучник · отряд виден справа внизу",
 			"done": "squad",
-			"place": "своя база",
-			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
-		},
-		{
-			"text": "Поставь конюшню. Лошади тянут обозы, а верхом ты быстрее в полтора раза",
-			"keys": "сверху: 4 — конюшня, нужно %s · N — купить лошадь · K — впрячь в обоз"
-				% _build_price(RES.Building.STABLE),
-			"done": "stable",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},

@@ -39,6 +39,13 @@ func _run() -> void:
 		finish()
 		return
 
+	# Набор проверяет ОБОЗЫ, а не подъём с нуля — для подъёма есть набор
+	# «старт». Злодей теперь начинает без ресурсов и без лошадей (GDD 9a), и
+	# здесь мы даём ему то, что он заработал бы сам к первому обозу.
+	var wallet: Node = _world.treasury.of(int(me.faction))
+	wallet.grant(RES.fit([200, 200, 200, 200]))
+	wallet.horses = 6
+
 	_test_mine_is_fair_game()
 	await _test_needs_storage(me)
 	await _build_storage(me)

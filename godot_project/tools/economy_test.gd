@@ -306,7 +306,10 @@ func _test_treasury(me: Node3D) -> void:
 	check(others == FACTIONS.COUNT - 1, "у каждой стороны своя казна",
 		"чужих казн: %d" % others)
 
-	# Трата персонажа уходит из казны фракции, а не из воздуха.
+	# Трата персонажа уходит из казны фракции, а не из воздуха. Кладём, что
+	# тратить: злодей начинает с нуля (GDD 9a), и списывать с пустой казны
+	# значит проверить только то, что пустое не уходит в минус.
+	mine.grant(RES.fit([50, 0, 0, 0]))
 	var before: int = mine.get_amount(RES.Kind.WOOD)
 	me.stock.spend([5, 0, 0, 0])
 	check(mine.get_amount(RES.Kind.WOOD) == before - 5, "трата уходит из казны стороны",

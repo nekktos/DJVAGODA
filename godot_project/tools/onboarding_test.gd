@@ -173,19 +173,30 @@ func _test_step_never_goes_back(me: Node3D) -> void:
 
 
 ## Открыл вид сверху — шаг засчитан.
+##
+## ШАГ ИЩЕМ ПО СМЫСЛУ, а не по номеру. Первая версия ждала его вторым — и
+## упала, когда перед ним встал шаг «набери руками» (злодей теперь начинает с
+## нуля, GDD 9a). Номер шага — это место в цепочке, а проверяется правило.
 func _test_strategy_step_counts(me: Node3D) -> void:
-	if not FACTIONS.can_build(int(me.faction)) :
+	if not FACTIONS.can_build(int(me.faction)):
 		note("сторона без стройки: шага «вид сверху» в её цепочке нет")
 		check(true, "шаг «вид сверху» проверяется только у строящей стороны", "")
 		return
 	var guide := ONBOARDING.new()
-	var home: Vector3 = me.global_position
 	guide.current(_world, me)
-	me.global_position = home + Vector3(ONBOARDING.LOOKED_AROUND + 20.0, 0.0, 0.0)
+	var chain: Array = guide.chain_of(int(me.faction))
+	var at := -1
+	for i in chain.size():
+		if String(chain[i].get("done", "")) == "strategy":
+			at = i
+			break
+	if at < 0:
+		check(false, "открыл вид сверху — шаг засчитан", "шага «вид сверху» в цепочке нет")
+		return
+	guide._passed = at
 	var before: int = int(guide.current(_world, me).get("number", 0))
 	guide.note_strategy()
 	var after: int = int(guide.current(_world, me).get("number", 0))
-	me.global_position = home
 	check(after > before, "открыл вид сверху — шаг засчитан",
 		"было %d, стало %d" % [before, after])
 
@@ -357,13 +368,18 @@ func _test_economy_comes_before_the_assault() -> void:
 	var bad := PackedStringArray()
 	if String(chain[last].get("live", "")) != "palace":
 		bad.append("последний шаг не про захват дворца")
-	for rule in ["farm", "barracks", "house", "squad", "stable"]:
+	for rule in ["farm", "horse", "barracks", "house", "squad"]:
 		if not at.has(rule):
 			bad.append("нет шага «%s»" % rule)
 			continue
-		# ПОЛЕ — ИСКЛЮЧЕНИЕ, и намеренное: еда это базовый ресурс, её растят до
-		# того, как поедут обозы за железом. Остальное хозяйство — после.
-		if rule != "farm" and (not at.has("iron") or int(at[rule]) < int(at["iron"])):
+		# ПОЛЕ И ЛОШАДЬ — БАЗА, они идут ДО обоза. Поле кормит артель; лошадь —
+		# то, без чего обоз не выедет вовсе (у злодея на старте их ноль, GDD
+		# 9a). Остальное хозяйство — развитие, оно после железа.
+		if rule in ["farm", "horse"]:
+			if at.has("iron") and int(at[rule]) > int(at["iron"]):
+				bad.append("«%s» позже обоза — обоз без него не выедет" % rule)
+			continue
+		if not at.has("iron") or int(at[rule]) < int(at["iron"]):
 			bad.append("«%s» раньше железа" % rule)
 		if int(at[rule]) >= last:
 			bad.append("«%s» не раньше штурма" % rule)

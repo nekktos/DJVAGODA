@@ -31,7 +31,10 @@ const LIMB_SCENE := preload("res://scenes/SeveredLimb.tscn")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 
 ## Сколько батраков у злодея в начале партии.
-const STARTING_LABOURERS := 2
+## Батраков на старте у злодея нет вовсе (GDD 9a): их нанимают на золото с
+## микро-шахты. Раньше их было двое — и партия начиналась с работающего
+## хозяйства, которое злодей не строил.
+const STARTING_LABOURERS := 0
 const RES := preload("res://scripts/economy/resources.gd")
 const PROGRESS := preload("res://scripts/progression.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
@@ -40,6 +43,22 @@ const FACTIONS := preload("res://scripts/factions.gd")
 ## «уже есть и ресурсы, и здания». Без неё условие поражения стражи («казарма
 ## снесена И командир убит») было бы неопределимым — сносить нечего.
 const GUARD_BARRACKS_POS := Vector3(332.0, 6.0, -238.0)
+
+## Обжитое хозяйство стражи на плато (GDD 9a): «у людей со старта есть все
+## постройки, фермы, поля с пшеницей, ангары». Ангары — это склады. Всё стоит
+## внутри дворцовых стен и достроено сразу.
+##
+## Злодей и стража — ЗЕРКАЛЬНЫЕ стороны, и разница между ними не в том, что им
+## доступно, а в том, с чего они начинают. Злодей строит всё это сам из
+## разрушенного форта; страже оно досталось, и ей для стратегии нужно другое —
+## пройти цепочку приказов командира.
+const GUARD_ESTATE := [
+	[RES.Building.STORAGE, Vector3(340.0, 6.0, -200.0)],
+	[RES.Building.FARM, Vector3(220.0, 6.0, -210.0)],
+	[RES.Building.FARM, Vector3(220.0, 6.0, -250.0)],
+	[RES.Building.HOUSE, Vector3(380.0, 6.0, -240.0)],
+	[RES.Building.STABLE, Vector3(380.0, 6.0, -200.0)],
+]
 
 ## На каком расстоянии от своего склада ресурсы «при себе» перекладываются в
 ## него сами. Отдельной кнопки нет намеренно: вклад должен быть очевидным
@@ -379,6 +398,8 @@ func reset_for_new_game() -> void:
 ## даже если за неё ещё никто не сел. Иначе ИИ, добывающий «как игрок», начинал
 ## бы партию с пустыми руками.
 func _spawn_starting_labourers() -> void:
+	if STARTING_LABOURERS <= 0:
+		return
 	if not labourers_of(FACTIONS.Kind.VILLAIN).is_empty():
 		return
 	var base: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN]
@@ -395,6 +416,8 @@ func _spawn_guard_barracks() -> void:
 		if "faction" in node and int(node.faction) == FACTIONS.Kind.GUARD:
 			return
 	spawn_building(RES.Building.SWORD_BARRACKS, GUARD_BARRACKS_POS, 0, FACTIONS.Kind.GUARD, true)
+	for entry in GUARD_ESTATE:
+		spawn_building(int(entry[0]), entry[1], 0, FACTIONS.Kind.GUARD, true)
 
 
 ## Сессия закрывается — успеваем сохраниться.

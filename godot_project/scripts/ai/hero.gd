@@ -30,6 +30,13 @@ const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
 const HEALTH := preload("res://scripts/combat/health.gd")
+const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
+
+## Насколько далеко от микро-шахты ещё её залежь.
+const MICRO_RADIUS := 20.0
+## С какого расстояния бьём залежь. Меньше дальности добычи (RES.HARVEST_RANGE):
+## луч идёт от груди, и с самого края он в камень не попадает.
+const MINE_REACH := 2.4
 
 ## Как часто пересматриваем обстановку. Чаще, чем думает отряд (2 с): герой
 ## дерётся лично, и полсекунды опоздания — это пропущенный размен.
@@ -119,6 +126,19 @@ func _drive(faction: int, hero: Node3D) -> void:
 	var enemies := _enemies_near(faction, hero.global_position)
 	var target: Node3D = _closest(hero.global_position, enemies)
 
+	# БУТСТРАП ЗЛОДЕЯ. С новым стартом (GDD 9a) злодей начинает с нулём:
+	# ни ресурсов, ни батраков, а микро-шахту у форта надо бить РУКАМИ. Живой
+	# игрок так и делает. ИИ этого не умел — и замер бы на всю партию: золота
+	# нет, нанять некого, а бить камень некому. Это не мелочь: пока человек
+	# играет за эльфов или стражу, злодеем правит именно ИИ, и мир без него
+	# мёртв. Поэтому ИИ-вожак делает ровно то, что сделал бы человек: идёт к
+	# микро-шахте и бьёт её, пока там что-то есть и рядом нет врага.
+	if target == null:
+		var vein: Node3D = _micro_vein(faction, hero)
+		if vein != null:
+			_mine(hero, vein)
+			return
+
 	# Куда идти. Есть враг — на него, нет — к якорю своего отряда.
 	var goal: Vector3 = hero.global_position
 	if target != null:
@@ -163,6 +183,71 @@ func _drive(faction: int, hero: Node3D) -> void:
 			input["ability"] = spell
 
 	hero.scripted_input = input
+
+
+## Ближайшая непустая залежь микро-шахты. Только у злодея: микро-шахта его.
+func _micro_vein(faction: int, hero: Node3D) -> Node3D:
+	if faction != FACTIONS.Kind.VILLAIN:
+		return null
+	# ТОЛЬКО ПОКА У СТОРОНЫ НЕТ СКЛАДА. Это и есть старт с нуля: до первой
+	# постройки вожак — единственный, кто всерьёз работает, а первые батраки
+	# рубят лес на тот самый склад. Как только склад встал, хозяйство держат
+	# батраки, и вожак возвращается к отряду.
+	#
+	# Сперва здесь стояло «пока нет ни одного батрака» — и вожак бросал шахту
+	# сразу после первого найма, а единственного батрака распорядитель ставил
+	# на камень, и дерева на склад рубить стало некому: набор «подъём с нуля»
+	# не дождался склада. А совсем без условия вожак бросал бы отряд ради камня
+	# при каждом затишье — набор «герой» показал «40 м от якоря при поводке 18».
+	if get_parent().storage_of(faction) != null:
+		return null
+	var mine := Vector2(WORLD_BUILDER.MICRO_MINE_POS.x, WORLD_BUILDER.MICRO_MINE_POS.z)
+	var best: Node3D = null
+	var best_gap := INF
+	for node in get_tree().get_nodes_in_group("harvestable"):
+		var vein := node as Node3D
+		if vein == null or not is_instance_valid(vein):
+			continue
+		var at := Vector2(vein.global_position.x, vein.global_position.z)
+		if at.distance_to(mine) > MICRO_RADIUS:
+			continue
+		if int(vein.get_meta("hits_left", 0)) <= 0:
+			continue
+		var gap: float = _flat(hero.global_position, vein.global_position)
+		if gap < best_gap:
+			best_gap = gap
+			best = vein
+	return best
+
+
+## Подойти к залежи и бить её молотом. Молот — потому что по камню он вдвое
+## добычливее, и микро-шахта рассчитана именно на него.
+func _mine(hero: Node3D, vein: Node3D) -> void:
+	var step: Vector3 = _next_step(hero, vein.global_position)
+	var to_goal: Vector3 = step - hero.global_position
+	to_goal.y = 0.0
+	if to_goal.length() > 0.05:
+		hero.rotation.y = atan2(-to_goal.x, -to_goal.z)
+	var gap: float = _flat(hero.global_position, vein.global_position)
+	var close: bool = gap <= MINE_REACH + _vein_radius(vein)
+	if close and hero.sync_weapon != WEAPONS.Kind.HAMMER:
+		hero._select_weapon(WEAPONS.Kind.HAMMER)
+	hero.scripted_input = {
+		"move": Vector2.ZERO if close else Vector2(0.0, -1.0),
+		"jump": false,
+		"attack": close,
+	}
+
+
+## Полуширина залежи: мерить надо от её края, а не от середины камня — в
+## середину не подойти, камень твёрдый. Та же ошибка уже была с деревом, стройкой
+## и складом.
+func _vein_radius(vein: Node3D) -> float:
+	for child in vein.get_children():
+		if child is CollisionShape3D and child.shape is BoxShape3D:
+			var size: Vector3 = (child.shape as BoxShape3D).size
+			return maxf(size.x, size.z) * 0.5
+	return 2.0
 
 
 ## Следующая точка на пути к цели. Тот же приём, что у бойцов: вблизи идём

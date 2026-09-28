@@ -23,6 +23,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const FACTIONS := preload("res://scripts/factions.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
 const HEALTH := preload("res://scripts/combat/health.gd")
@@ -58,6 +59,14 @@ func _run() -> void:
 		fail("герой свободной стороны не заведён")
 		finish()
 		return
+
+	# Набор проверяет вожака В БОЮ, а не на старте с нуля. Злодей теперь
+	# начинает без построек (GDD 9a), и пока у него нет склада, ИИ-вожак уходит
+	# бить микро-шахту — это верно, и это проверяет набор «подъём с нуля». Здесь
+	# ставим стороне склад: хозяйство пошло, и вожак ведёт себя как вожак.
+	var base: Vector3 = FACTIONS.SPAWN[SIDE]
+	_world.spawn_building(RES.Building.STORAGE, base + Vector3(24.0, 0.0, 30.0), 0, SIDE, true)
+	await get_tree().create_timer(1.5).timeout
 
 	_test_camera_belongs_to_human(hero)
 	_test_exists_and_is_leader(hero)

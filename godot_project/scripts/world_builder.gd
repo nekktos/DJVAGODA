@@ -49,6 +49,13 @@ const MINE_ENTRANCE_AHEAD := 26.0
 
 ## Лавка эльфов: на поляне их поселения. Тратить награбленное можно только
 ## дойдя сюда (GDD раздел 2.1).
+## Микро-шахта злодея: где стоит и где в ней камень и золото (смещения от
+## центра). Сразу за восточной стеной форта — видна из него, идти до неё
+## сотню метров, а не через полкарты.
+const MICRO_MINE_POS := Vector3(-192.0, 0.0, 296.0)
+const MICRO_MINE_STONE := [Vector3(-5.0, 0.0, -4.0), Vector3(5.0, 0.0, 3.0)]
+const MICRO_MINE_GOLD := [Vector3(0.0, 0.0, 8.0), Vector3(-6.0, 0.0, 9.0)]
+
 ## Лавки: У КАЖДОЙ СТОРОНЫ СВОЯ, в её собственной зоне.
 ##
 ## ЗАЧЕМ. Раньше лавка была одна на всю карту и стояла у эльфов, а обслуживала
@@ -398,6 +405,32 @@ func _build_emperor(c: Vector2) -> void:
 	_cone(g, Vector3(c.x, 62.0, c.y), 15.0, 14.0, "accent")
 
 
+## Микро-шахта у форта злодея (GDD 9a).
+##
+## ЗАЧЕМ. Злодей начинает с НУЛЁМ построек и ресурсов, в разрушенном форте, и
+## первые ресурсы добывает сам. Нужен источник, которого хватит «только на
+## базовые постройки, без развития», — дословно решение автора.
+##
+## ЧТО В НЕЙ. Камень и золото, и НИ ЕДИНИЦЫ ЖЕЛЕЗА. Камня ровно на склад, поле и
+## дом дружины; золота на трёх батраков. Железа нет намеренно: без него нет ни
+## казармы, ни армии, и за ним надо идти к шахтам на земле эльфов. Это и есть
+## «без развития»: база встаёт, войско — нет.
+##
+## Запас задан ЧИСЛОМ УДАРОВ, а не весом: так устроены все залежи в игре.
+## Сколько это в камне, зависит от инструмента — молот бьёт камень вдвое, — и
+## числа ниже рассчитаны на молот, которым злодей вооружён с первой минуты.
+func _build_micro_mine(g: Node3D) -> void:
+	var at: Vector3 = MICRO_MINE_POS
+	for i in MICRO_MINE_STONE.size():
+		var spot: Vector3 = at + MICRO_MINE_STONE[i]
+		_harvestable(_rock(g, spot, Vector3(4.0, 3.0, 4.0), float(i) * 1.3, 90 + i),
+			RES.Kind.STONE, RES.MICRO_STONE_HITS_EACH)
+	for i in MICRO_MINE_GOLD.size():
+		var spot: Vector3 = at + MICRO_MINE_GOLD[i]
+		_harvestable(_rock(g, spot, Vector3(2.6, 2.2, 2.6), float(i) * 2.1, 190 + i),
+			RES.Kind.GOLD, RES.MICRO_GOLD_HITS_EACH)
+
+
 ## Лавка: навес на столбах. Одинаковый у всех сторон НАМЕРЕННО — это один и тот
 ## же предмет мира, и узнавать его надо с первого взгляда в любой зоне.
 func _build_trader(g: Node3D, at: Vector3) -> void:
@@ -413,6 +446,7 @@ func _build_trader(g: Node3D, at: Vector3) -> void:
 func _build_villain(c: Vector2) -> void:
 	var g := _group("ZoneVillain")
 	_build_trader(g, TRADER_POS[0])
+	_build_micro_mine(g)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2989
 
@@ -494,9 +528,15 @@ func _build_ridge(g: Node3D, c: Vector2, rng: RandomNumberGenerator) -> void:
 		# гряда рассыпается на отдельные камни.
 		var jitter := Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(-14.0, 14.0))
 		var p: Vector2 = c + Vector2(cos(a), sin(a)) * radius + jitter
-		_harvestable(_peak(g, Vector3(p.x, 0.0, p.y),
+		# ГРЯДА — НЕ КАМЕНОЛОМНЯ. Раньше каждая вершина годилась в добычу, и у
+		# форта злодея лежало больше тысячи камня: пятнадцать вершин и двадцать
+		# две осыпи. С новым стартом (GDD 9a) камень у форта берётся только с
+		# МИКРО-ШАХТЫ, и её предел ничего бы не ограничивал рядом с горой.
+		# Гору мечом не копают. Геометрия от этого не меняется: `_harvestable`
+		# случайных чисел не тратит.
+		_peak(g, Vector3(p.x, 0.0, p.y),
 			Vector3(width, height, width * rng.randf_range(0.8, 1.15)),
-			rng.randf() * TAU, rng.randi()), RES.Kind.STONE, 10)
+			rng.randf() * TAU, rng.randi())
 
 	# Осыпь у подножия: мелкие камни с внутренней стороны, вразброс.
 	for i in 22:
@@ -506,9 +546,9 @@ func _build_ridge(g: Node3D, c: Vector2, rng: RandomNumberGenerator) -> void:
 		var back: float = radius - rng.randf_range(34.0, 62.0)
 		var p: Vector2 = c + Vector2(cos(a), sin(a)) * back
 		var s: float = 7.0 + crest * 9.0 + rng.randf_range(-2.0, 3.0)
-		_harvestable(_rock(g, Vector3(p.x, 0.0, p.y),
+		_rock(g, Vector3(p.x, 0.0, p.y),
 			Vector3(s, s * rng.randf_range(0.5, 0.8), s * rng.randf_range(0.7, 1.2)),
-			rng.randf() * TAU, rng.randi()), RES.Kind.STONE)
+			rng.randf() * TAU, rng.randi())
 
 
 ## Шахта. СВОЯ группа, а не часть зоны злодея.

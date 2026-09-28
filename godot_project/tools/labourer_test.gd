@@ -71,7 +71,11 @@ func _crew(me: Node3D) -> Array:
 func _test_start_with_two(me: Node3D) -> void:
 	check(int(me.faction) == FACTIONS.Kind.VILLAIN, "проверяем за злодея",
 		FACTIONS.name_of(int(me.faction)))
-	check(_crew(me).size() == 2, "на старте два батрака", "%d" % _crew(me).size())
+	# БАТРАКОВ НА СТАРТЕ НЕТ (GDD 9a): злодей нанимает их сам на золото с
+	# микро-шахты. Раньше их было двое, и партия начиналась с работающего
+	# хозяйства, которого злодей не строил.
+	check(_crew(me).size() == 0, "на старте батраков нет — их нанимают",
+		"%d" % _crew(me).size())
 
 
 ## Наём: за деньги, с потолком, и только той стороне, у которой они есть.

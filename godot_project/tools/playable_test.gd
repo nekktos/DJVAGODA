@@ -214,6 +214,23 @@ func _test_landmarks_reachable(me: Node3D) -> void:
 ## по карману: сторона, которой нечего сделать в первую минуту, стоит на месте.
 func _test_first_purchase_affordable() -> void:
 	var start: Array = FACTIONS.STARTING_RESOURCES[_side]
+	# ЗЛОДЕЙ НАЧИНАЕТ С НУЛЯ (GDD 9a), и первый его шаг — не покупка, а добыча
+	# руками. Его первая постройка оплачивается микро-шахтой; что её хватает,
+	# проверяет набор «старт», считая залежи по миру. Здесь для злодея
+	# проверяем, что микро-шахта вообще стоит у форта.
+	if _side == FACTIONS.Kind.VILLAIN:
+		var veins := 0
+		for node in get_tree().get_nodes_in_group("harvestable"):
+			var n := node as Node3D
+			if n == null:
+				continue
+			var at := Vector2(n.global_position.x, n.global_position.z)
+			var mine := Vector2(WORLD_BUILDER.MICRO_MINE_POS.x, WORLD_BUILDER.MICRO_MINE_POS.z)
+			if at.distance_to(mine) <= 20.0:
+				veins += 1
+		check(veins > 0, "первое злодею даёт микро-шахта у форта — она на месте",
+			"залежей у форта: %d" % veins)
+		return
 	if FACTIONS.can_build(_side):
 		var cost: Array = RES.BUILDING_COST[RES.Building.STORAGE]
 		var enough := true
