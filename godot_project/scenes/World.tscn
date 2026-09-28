@@ -140,6 +140,27 @@ script = ExtResource("5_mine")
 replication_config = SubResource("Repl_mine")
 replication_interval = 0.5
 
+[node name="MineStone" type="Node3D" parent="."]
+script = ExtResource("5_mine")
+
+[node name="MineSync" type="MultiplayerSynchronizer" parent="MineStone"]
+replication_config = SubResource("Repl_mine")
+replication_interval = 0.5
+
+[node name="MineCoal" type="Node3D" parent="."]
+script = ExtResource("5_mine")
+
+[node name="MineSync" type="MultiplayerSynchronizer" parent="MineCoal"]
+replication_config = SubResource("Repl_mine")
+replication_interval = 0.5
+
+[node name="MineGold" type="Node3D" parent="."]
+script = ExtResource("5_mine")
+
+[node name="MineSync" type="MultiplayerSynchronizer" parent="MineGold"]
+replication_config = SubResource("Repl_mine")
+replication_interval = 0.5
+
 [node name="Terrain" type="Node3D" parent="."]
 
 [node name="Forest" type="Node3D" parent="."]

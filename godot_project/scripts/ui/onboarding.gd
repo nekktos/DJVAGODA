@@ -288,12 +288,12 @@ func _flat_gap(from: Vector3, to: Vector3) -> float:
 	return Vector2(from.x, from.z).distance_to(Vector2(to.x, to.z))
 
 
-## Куда ведёт шахта: НЕ центр глыбы, а вход перед ней. Середина
-## пятидесятиметровой скалы недостижима по определению, и маяк, поставленный
-## туда, звал бы игрока внутрь камня.
+## Куда ведёт шаг «железо»: ко ВХОДУ железной шахты, а не в центр скалы.
+## Середина скалы недостижима по определению, и маяк, поставленный туда, звал
+## бы игрока внутрь камня. Шахт три (GDD 9a), но казарме нужно именно железо.
 func _mine_entrance() -> Vector3:
-	var mine: Vector3 = WORLD_BUILDER.MINE_POS
-	return mine + Vector3(0.0, 0.0, WORLD_BUILDER.MINE_ENTRANCE_AHEAD)
+	var info: Dictionary = WORLD_BUILDER.mine_info(RES.Kind.IRON)
+	return WORLD_BUILDER.mine_entrance(info["at"])
 
 
 ## Цепочка стороны целиком. Открыта наружу ради проверок: набор «онбординг»
@@ -367,8 +367,8 @@ func _villain_chain() -> Array:
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
-			"text": "Железа в зоне нет, оно только в шахте. Нарисуй туда маршрут обоза",
-			"keys": "сверху: C — рисовать, ЛКМ — точки, Enter — отправить",
+			"text": "Железа у форта нет. Оно в железной шахте в лесу эльфов — нарисуй туда маршрут обоза",
+			"keys": "сверху: C — рисовать, ЛКМ — точки, последняя у шахты, Enter — отправить",
 			"done": "iron",
 			"place": "шахта",
 			"at": _mine_entrance(),

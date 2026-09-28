@@ -2203,7 +2203,9 @@ func request_send_caravan(points: PackedVector3Array) -> void:
 			_refuse("точка маршрута вне карты, караван не отправлен")
 			return
 		route.append(point)
-	route.append(world.mine.global_position)
+	# Шахт три (GDD 9a): обоз едет к той, у которой поставлена последняя точка.
+	# Без точек — к ближайшей к складу.
+	route.append(world.mine_dock(world.mine_near(route[route.size() - 1])))
 
 	# Запрягаем столько, сколько ЕСТЬ и сколько просили. Свободных меньше —
 	# едем меньшей упряжкой и говорим об этом, а не отказываем: обоз с одной

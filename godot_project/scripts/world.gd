@@ -96,7 +96,12 @@ signal camera_mode_changed(strategy: bool)
 @onready var _world_spawner: MultiplayerSpawner = $WorldSpawner
 @onready var build_controller: Node3D = $BuildController
 @onready var route_controller: Node3D = $RouteController
+## Железная шахта. Отдельной ссылкой, потому что к ней ведёт обучение и за ней
+## ходят проверки; все три — в `mines`.
 @onready var mine: Node3D = $Mine
+## Все шахты, в порядке `WORLD_BUILDER.MINES`: железо, камень, уголь, золото
+## (GDD 9a).
+@onready var mines: Array[Node3D] = [$Mine, $MineStone, $MineCoal, $MineGold]
 @onready var objective: Node3D = $Objective
 @onready var forest: Node3D = $Forest
 @onready var commander: Node3D = $Commander
@@ -147,6 +152,7 @@ func _ready() -> void:
 		WORLD_BUILDER.ZONE_HALF - 30.0,
 		70.0,
 		3615,
+		_mine_clearings(),
 	)
 	# Стволы для выпечки ставим временно: живые деревья появляются по мере
 	# надобности, а сетке нужны все и сразу.
@@ -155,7 +161,7 @@ func _ready() -> void:
 	trunks.queue_free()
 	build_controller.place_requested.connect(_on_place_requested)
 	route_controller.route_sent.connect(_on_route_sent)
-	mine.position = WORLD_BUILDER.MINE_POS
+	_place_mines()
 	# Мир построен, но НЕ запущен. Пока человек в меню, он не играет, и мир
 	# играть за него не должен: см. `_set_running`.
 	_set_running(false)
@@ -383,7 +389,8 @@ func reset_for_new_game() -> void:
 	objective.reset()
 	# Шахта копит сама и с потолком, но начинать новую партию с чужой полной
 	# шахтой — это подарок в 300 единиц на ровном месте.
-	mine.stored = RES.empty()
+	for each in mines:
+		each.stored = RES.empty()
 	print("[мир] состояние прошлой партии стёрто, начинаем с чистого")
 
 
@@ -1331,3 +1338,47 @@ func spawn_garrison_unit(faction: int, slot: int, point: Vector3, home: Vector3,
 		"home": home,
 		"leash": leash,
 	})
+
+
+## Поляны под шахты в лесу эльфов: [центр, радиус] для `forest.build`.
+func _mine_clearings() -> Array:
+	var out := []
+	for info in WORLD_BUILDER.MINES:
+		var at: Vector3 = info["at"]
+		out.append([Vector2(at.x, at.z), WORLD_BUILDER.MINE_CLEARING])
+	return out
+
+
+## Расставить шахты по местам и сказать каждой, что она добывает.
+func _place_mines() -> void:
+	for i in mines.size():
+		var info: Dictionary = WORLD_BUILDER.MINES[i]
+		mines[i].position = info["at"]
+		mines[i].kind = int(info["kind"])
+
+
+## Шахта, ближайшая к точке. Так выбирается, куда едет обоз: к той шахте, у
+## которой игрок поставил последнюю точку маршрута.
+func mine_near(point: Vector3) -> Node3D:
+	var best: Node3D = null
+	var best_distance := INF
+	for each in mines:
+		var d: float = Vector2(point.x, point.z).distance_to(
+			Vector2(each.global_position.x, each.global_position.z))
+		if d < best_distance:
+			best_distance = d
+			best = each
+	return best
+
+
+## Шахта нужной породы.
+func mine_of(kind: int) -> Node3D:
+	for each in mines:
+		if int(each.kind) == kind:
+			return each
+	return null
+
+
+## Куда обоз едет за грузом: к ВХОДУ шахты, а не в середину скалы.
+func mine_dock(which: Node3D) -> Vector3:
+	return WORLD_BUILDER.mine_entrance(which.global_position)

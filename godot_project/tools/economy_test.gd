@@ -335,7 +335,9 @@ func _test_shortfall_hint(me: Node3D) -> void:
 	var both: Array = [0, 0, 999, 999]
 
 	var hint: String = RES.shortfall_hint(iron_only, empty)
-	check(hint.contains("железо") and hint.contains("шахте"),
+	# «шахт», а не «шахте»: шахт теперь несколько (GDD 9a), подсказка во
+	# множественном числе.
+	check(hint.contains("железо") and hint.contains("шахт"),
 		"на нехватку железа подсказывают шахту", hint.strip_edges())
 	check(RES.shortfall_hint(wood_only, empty).is_empty(),
 		"на дерево и камень подсказки нет", "пусто, как и задумано")

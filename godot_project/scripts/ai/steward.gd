@@ -347,7 +347,8 @@ func _send_caravan(faction: int) -> void:
 		return
 	if world.caravans_of(0).size() >= CARAVANS_WANTED:
 		return
-	if world.mine == null:
+	var target: Node3D = _pick_mine(faction)
+	if target == null:
 		return
 	# Запрягаем СВОИХ лошадей, а не берём их из воздуха. Иначе конюшня у ИИ
 	# декоративна: он строил бы её и не пользовался, а обозы ходили бы парой
@@ -362,9 +363,32 @@ func _send_caravan(faction: int) -> void:
 	if wallet != null:
 		wallet.horses_out += team
 
-	var route := PackedVector3Array([storage.global_position, world.mine.global_position])
+	var route := PackedVector3Array([storage.global_position, world.mine_dock(target)])
 	var cart: Node = world.spawn_caravan(route, 0, faction, team)
 	_guard_caravan(faction, cart)
+
+
+## К какой шахте слать обоз: за тем, чего у стороны меньше всего.
+##
+## Железо, камень и золото — то, на что ИИ реально тратит (стройка, казармы,
+## наём). Уголь пока ни на что не идёт, и возить его ИИ незачем. Равенство
+## решается в пользу железа: без него нет казарм.
+func _pick_mine(faction: int) -> Node3D:
+	var world := get_parent()
+	if not ("mines" in world):
+		return null
+	var wallet := _wallet(faction)
+	var best: Node3D = null
+	var best_have := INF
+	for kind in [RES.Kind.IRON, RES.Kind.STONE, RES.Kind.GOLD]:
+		var target: Node3D = world.mine_of(kind)
+		if target == null:
+			continue
+		var have: float = float(wallet.get_amount(kind)) if wallet != null else 0.0
+		if have < best_have:
+			best_have = have
+			best = target
+	return best
 
 
 ## Купить лошадь, если есть конюшня и есть на что.

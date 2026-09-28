@@ -29,7 +29,7 @@ const HELP := """Команды (выполняет хост):
   caravan                       отправить караван по прямой до шахты
   capture                       мгновенно захватить дворец своей стороной
   tp <x> <z>                    телепорт
-  goto villain|elves|guard|mine|palace|trader|commander  телепорт к точке
+  goto villain|elves|guard|mine|stone|coal|palace|trader|commander  телепорт к точке
   order done                    засчитать текущий приказ стражи целиком
   save                          сохранить мир прямо сейчас
   load                          перечитать мир из сохранения
@@ -206,7 +206,7 @@ static func _caravan(world: Node3D, player: Node3D) -> String:
 	if storage == null:
 		return "нет достроенного склада — каравану некуда возвращаться"
 	world.spawn_caravan(PackedVector3Array([
-		storage.global_position, world.mine.global_position
+		storage.global_position, world.mine_dock(world.mine)
 	]), int(player.peer_id))
 	return "караван отправлен по прямой"
 
@@ -221,14 +221,16 @@ static func _teleport(player: Node3D, args: Array) -> String:
 
 static func _goto(world: Node3D, player: Node3D, args: Array) -> String:
 	if args.size() < 1:
-		return "нужно: goto villain|elves|guard|mine|palace|trader|commander"
+		return "нужно: goto villain|elves|guard|mine|stone|coal|palace|trader|commander"
 	var where := String(args[0]).to_lower()
 	var point := Vector3.ZERO
 	match where:
 		"villain": point = FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN]
 		"elves": point = FACTIONS.SPAWN[FACTIONS.Kind.ELVES]
 		"guard": point = FACTIONS.SPAWN[FACTIONS.Kind.GUARD]
-		"mine": point = world.mine.global_position + Vector3(0.0, 4.0, 34.0)
+		"mine", "iron": point = world.mine_dock(world.mine) + Vector3(0.0, 4.0, 0.0)
+		"stone": point = world.mine_dock(world.mine_of(RES.Kind.STONE)) + Vector3(0.0, 4.0, 0.0)
+		"coal": point = world.mine_dock(world.mine_of(RES.Kind.COAL)) + Vector3(0.0, 4.0, 0.0)
 		"trader": point = world.trader_position(int(player.faction)) + Vector3(0.0, 2.0, 4.0)
 		"commander": point = world.commander.POSITION + Vector3(0.0, 2.0, 4.0)
 		"palace": point = world.objective.PALACE + Vector3(0.0, 4.0, 0.0)

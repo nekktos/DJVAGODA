@@ -79,6 +79,10 @@ const LOAD_SECONDS := 3.0
 const WAYPOINT_REACH := 3.0
 ## Насколько близко надо подъехать к шахте и складу.
 const DOCK_RANGE := 14.0
+## Насколько далеко от СЕРЕДИНЫ скалы шахты ещё можно грузиться. Середина
+## внутри камня; вход — в двадцати метрах перед ней, и навигация может
+## остановить обоз чуть в стороне.
+const LOAD_REACH := 45.0
 
 ## Поводок охраны вокруг повозки.
 const GUARD_LEASH := 16.0
@@ -621,12 +625,26 @@ func path_ahead() -> PackedVector3Array:
 	return ahead
 
 
+## Грузится у той шахты, к которой приехал.
+##
+## Шахт три (GDD 9a), и груз берётся у БЛИЖАЙШЕЙ, если обоз и правда стоит у её
+## входа. Раньше шахта была одна, и обоз грузился ею, где бы ни кончился его
+## маршрут, — хоть посреди поля. Теперь конец маршрута вдали от шахт значит
+## пустую телегу.
 func _load_at_mine() -> void:
-	var mine := _world().get_node_or_null("Mine")
+	var world := _world()
+	if world == null or not world.has_method("mine_near"):
+		return
+	var mine: Node3D = world.mine_near(position)
 	if mine == null:
 		return
+	var gap: float = Vector2(position.x, position.z).distance_to(
+		Vector2(mine.global_position.x, mine.global_position.z))
+	if gap > LOAD_REACH:
+		print("[караван] конец маршрута в %.0f м от шахты — грузить нечего" % gap)
+		return
 	cargo = mine.take(CAPACITY)
-	print("[караван] загружен на шахте: %s" % _cargo_text())
+	print("[караван] загружен: %s — %s" % [mine.title(), _cargo_text()])
 
 
 func _unload_at_home() -> void:

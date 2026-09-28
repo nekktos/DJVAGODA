@@ -75,6 +75,7 @@ func _build_pile() -> void:
 			RES.Kind.STONE: _build_rocks(spot)
 			RES.Kind.IRON: _build_ingots(spot, Color(0.62, 0.64, 0.68), 0.75)
 			RES.Kind.GOLD: _build_ingots(spot, Color(0.92, 0.74, 0.20), 0.95)
+			RES.Kind.COAL: _build_ingots(spot, Color(0.08, 0.08, 0.09), 0.9)
 
 
 ## Брёвна: три цилиндра лёжа, третье сверху в ложбинке.

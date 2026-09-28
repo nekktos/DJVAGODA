@@ -273,8 +273,7 @@ func _test_iron_has_a_source(me: Node3D) -> void:
 	# поперечнике, её центр внутри камня, и путь туда честно не доходит
 	# двадцать пять метров. Первый заход так и отчитался «не дошёл 31 м» — то
 	# есть ругался на радиус скалы, а не на дыру в мире.
-	var door := Vector3(WORLD_BUILDER.MINE_POS.x, 0.0,
-		WORLD_BUILDER.MINE_POS.z + WORLD_BUILDER.MINE_ENTRANCE_AHEAD)
+	var door: Vector3 = _world.mine_dock(mine)
 	var gap: float = _walk_gap(me.global_position, door)
 	check(gap >= 0.0 and gap < NEAR_STRUCTURE, "до входа в шахту можно дойти ногами",
 		"не дошёл %.1f м" % gap if gap >= 0.0 else "пути нет вовсе")

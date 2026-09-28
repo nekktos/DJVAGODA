@@ -1,10 +1,18 @@
 extends Node3D
 ##
-## Шахта злодея (Этап 5, GDD раздел 2.3): «одна шахта, расположена далеко от
-## форта, ресурсы возит караван».
+## Шахта (Этап 5, GDD 2.3; с доработки 28.09.2026 — GDD 9a).
 ##
-## Копит железо и золото сама — считается, что там работают. Забрать накопленное
-## можно только караваном: пешком до форта это 240 метров с полными руками.
+## Шахт ЧЕТЫРЕ, по одной на породу: железо, камень, уголь, золото, и все на
+## земле эльфов.
+## Какая порода у этой — говорит `kind`, его выставляет мир (`world.gd`).
+##
+## Копит добытое сама — считается, что там работают. Забрать накопленное можно
+## ТОЛЬКО обозом: по решению автора «ресурсы, добытые на шахте, можно
+## использовать только после того, как караван дойдёт с шахты до склада».
+## Батраки-шахтёры отсюда больше не берут: раньше они носили руду домой в руках,
+## мимо обоза, и грабить было нечего.
+##
+## Запас общий, а не чей-то: кто первым подогнал обоз, тот и увёз.
 ##
 ## Добычу считает ТОЛЬКО хост. Шахта стоит в мире статично и одинаково на всех
 ## пирах, поэтому её запас едет обычным синхронизатором с авторитетом хоста.
@@ -12,22 +20,22 @@ extends Node3D
 
 const RES := preload("res://scripts/economy/resources.gd")
 
-## Сколько единиц в секунду даёт шахта по каждому ресурсу.
+## Сколько единиц в секунду даёт шахта каждой породы.
 ##
-## Состав намеренно неровный: камень — основная добыча (больше половины), железа
-## заметно больше золота, золота мало. Из этого следует, зачем вообще ходить в
-## шахту: камень и железо в мире больше взять негде в таком количестве, а золото
-## остаётся редким и потому дорогим.
-const RATE := {
-	RES.Kind.STONE: 3.0,
-	RES.Kind.IRON: 1.6,
-	RES.Kind.GOLD: 0.4,
+## Камень и железо — прежние скорости единой шахты. Золота больше, чем давала
+## попутная жила (0.4), потому что теперь за ним едут отдельным рейсом через
+## весь лес, а не везут заодно с камнем; но меньше железа — оно дорогое.
+const RATES := {
+	RES.Kind.IRON: {RES.Kind.IRON: 1.6},
+	RES.Kind.STONE: {RES.Kind.STONE: 3.0},
+	RES.Kind.COAL: {RES.Kind.COAL: 1.6},
+	RES.Kind.GOLD: {RES.Kind.GOLD: 0.6},
 }
-## Больше этого шахта не накапливает — забирайте караваном или батраками.
+## Больше этого шахта не накапливает по каждой породе — забирайте обозом.
 const STOCKPILE_CAP := 300
 
-## Что тут добывают. Порядок для показа, доли — в RATE.
-const PRODUCES := [RES.Kind.STONE, RES.Kind.IRON, RES.Kind.GOLD]
+## Главная порода шахты. Выставляет мир при постройке.
+var kind: int = RES.Kind.IRON
 
 ## Реплицируемое состояние: накопленное по каждому ресурсу.
 @export var stored: PackedInt32Array = RES.empty()
@@ -39,16 +47,17 @@ var _fractions := {}
 func _process(delta: float) -> void:
 	if not Net.hosting():
 		return
-	var copy := stored.duplicate()
+	var copy := RES.fit(stored)
 	var changed := false
-	for kind in PRODUCES:
-		var carry: float = float(_fractions.get(kind, 0.0)) + float(RATE[kind]) * delta
+	var rate: Dictionary = RATES.get(kind, {})
+	for ore in rate:
+		var carry: float = float(_fractions.get(ore, 0.0)) + float(rate[ore]) * delta
 		var whole := int(carry)
 		if whole <= 0:
-			_fractions[kind] = carry
+			_fractions[ore] = carry
 			continue
-		_fractions[kind] = carry - float(whole)
-		copy[kind] = mini(STOCKPILE_CAP, copy[kind] + whole)
+		_fractions[ore] = carry - float(whole)
+		copy[ore] = mini(STOCKPILE_CAP, copy[ore] + whole)
 		changed = true
 	if changed:
 		stored = copy
@@ -60,17 +69,31 @@ func take(limit: int) -> PackedInt32Array:
 	var taken := RES.empty()
 	if not Net.hosting():
 		return taken
-	var copy := stored.duplicate()
-	for kind in PRODUCES:
-		var amount: int = mini(limit, copy[kind])
-		copy[kind] -= amount
-		taken[kind] = amount
+	# Берём ВСЁ, что лежит, а не только то, что шахта добывает сейчас: запас
+	# мог попасть сюда и иначе (проверки, сохранение), и оставлять его навсегда
+	# недоступным незачем.
+	var copy := RES.fit(stored)
+	for ore in RES.COUNT:
+		var amount: int = mini(limit, copy[ore])
+		copy[ore] -= amount
+		taken[ore] = amount
 	stored = copy
 	return taken
 
 
 func summary() -> String:
 	var parts := PackedStringArray()
-	for kind in PRODUCES:
-		parts.append("%s %d" % [RES.SHORT[kind], stored[kind]])
+	for ore in RES.COUNT:
+		if RES.at(stored, ore) > 0 or RATES.get(kind, {}).has(ore):
+			parts.append("%s %d" % [RES.SHORT[ore], RES.at(stored, ore)])
 	return " ".join(parts)
+
+
+## Как шахту называть игроку: «железная шахта».
+func title() -> String:
+	match kind:
+		RES.Kind.IRON: return "железная шахта"
+		RES.Kind.STONE: return "каменоломня"
+		RES.Kind.COAL: return "угольная шахта"
+		RES.Kind.GOLD: return "золотой прииск"
+	return "шахта"

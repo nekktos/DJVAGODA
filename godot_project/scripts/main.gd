@@ -397,14 +397,34 @@ func _strategy_prompt() -> String:
 		return refusal
 	var route: Node3D = _world.route_controller
 	if route.active:
-		return "МАРШРУТ: ЛКМ — точка (%d), Enter или двойной ЛКМ — отправить, ПКМ — отмена" % route.points().size()
+		return "МАРШРУТ: ЛКМ — точка (%d), Enter или двойной ЛКМ — отправить, ПКМ — отмена · едет в: %s" % [
+			route.points().size(), _route_target()]
 	var controller: Node3D = _world.build_controller
 	if controller.active:
 		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
 	var boss: Node3D = _world.local_player()
 	if boss != null and boss.stock.get_amount(RES.Kind.IRON) <= 0:
-		return "Железо только в шахте: построй склад (1), нажми C и отправь караван"
+		return "Железо только в шахте на земле эльфов: построй склад (1), нажми C и отправь караван"
 	return "F1 — все клавиши"
+
+
+## К какой шахте поедет обоз, если отправить его сейчас: к ближайшей к
+## последней точке маршрута, без точек — к ближайшей к складу. Правило то же,
+## что у хоста (`player.gd::request_send_caravan`); показываем его, потому что
+## шахт три и ошибиться шахтой — значит съездить через лес впустую.
+func _route_target() -> String:
+	var points: PackedVector3Array = _world.route_controller.points()
+	var from := Vector3.ZERO
+	if not points.is_empty():
+		from = points[points.size() - 1]
+	else:
+		var boss: Node3D = _world.local_player()
+		var storage: Node3D = _world.storage_of(int(boss.faction)) if boss != null else null
+		if storage == null:
+			return "—"
+		from = storage.global_position
+	var target: Node3D = _world.mine_near(from)
+	return target.title() if target != null else "—"
 
 
 ## Отдать громкость звуковой шине. Одна общая на всё: и на фон, и на удары.
@@ -965,6 +985,7 @@ const TEST_FLAGS := {
 	"--progresstest": ["res://tools/progress_test.gd", true],
 	"--starttest": ["res://tools/start_test.gd", true],
 	"--bootstraptest": ["res://tools/bootstrap_test.gd", true],
+	"--minestest": ["res://tools/mines_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1309,13 +1330,16 @@ func _build_hint() -> String:
 	if controller.active:
 		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
 	var line := "стройка: " + "   ".join(parts)
-	line += "   |   C — маршрут каравана   |   шахта: %s" % _world.mine.summary()
+	var stocks := PackedStringArray()
+	for each in _world.mines:
+		stocks.append("%s: %s" % [each.title(), each.summary()])
+	line += "   |   C — маршрут каравана   |   %s" % " · ".join(stocks)
 	# Железо в мире добывается ТОЛЬКО шахтой и попадает на склад ТОЛЬКО
 	# караваном. Живой тестер этого не нашёл, упёрся в казарму и бросил
 	# сессию — поэтому пишем прямо, пока железа нет.
 	var boss: Node3D = _world.local_player()
 	if boss != null and boss.stock.get_amount(RES.Kind.IRON) <= 0:
-		line += "\nЖЕЛЕЗО берётся только из шахты: построй склад (1), нажми C, отметь маршрут до шахты и отправь караван"
+		line += "\nЖЕЛЕЗО берётся только из железной шахты на земле эльфов: построй склад (1), нажми C, поставь последнюю точку у шахты и отправь караван"
 
 	var mine_caravans: Array = []
 	var me: Node3D = _world.local_player()

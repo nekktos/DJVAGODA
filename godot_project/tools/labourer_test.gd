@@ -96,11 +96,19 @@ func _test_hire(me: Node3D) -> void:
 		"%d при потолке %d" % [_crew(me).size(), RES.LABOURER_LIMIT])
 
 
-## Состав добычи шахты: камень основной, железа заметно больше золота.
+## Состав добычи шахт: камень основной, железа заметно больше золота.
+##
+## Шахт теперь четыре, по породе на каждую (GDD 9a). Складываем скорости всех
+## шахт: пропорции те же, что у прежней единой шахты.
 func _test_mine_composition() -> void:
-	var stone: float = MINE.RATE[RES.Kind.STONE]
-	var iron: float = MINE.RATE[RES.Kind.IRON]
-	var gold: float = MINE.RATE[RES.Kind.GOLD]
+	var sum := {}
+	for mine_kind in MINE.RATES:
+		var rate: Dictionary = MINE.RATES[mine_kind]
+		for ore in rate:
+			sum[ore] = float(sum.get(ore, 0.0)) + float(rate[ore])
+	var stone: float = sum.get(RES.Kind.STONE, 0.0)
+	var iron: float = sum.get(RES.Kind.IRON, 0.0)
+	var gold: float = sum.get(RES.Kind.GOLD, 0.0)
 	var total := stone + iron + gold
 	check(stone / total > 0.5, "камень — основная добыча шахты",
 		"%.0f%% от всего" % (stone / total * 100.0))

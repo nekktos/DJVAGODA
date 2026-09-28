@@ -399,12 +399,9 @@ func _find_site() -> Node3D:
 	var best: Node3D = null
 	var best_distance := INF
 
-	# Шахта для шахтёра — тоже месторождение, и обычно самое богатое.
-	if sync_role == Role.MINER:
-		var world := get_parent().get_parent()
-		if world != null and "mine" in world and world.mine != null:
-			best = world.mine
-			best_distance = global_position.distance_to(world.mine.global_position)
+	# Шахты эльфов шахтёру НЕ место (GDD 9a): добытое там становится ресурсом
+	# только когда обоз довёз его до склада. Раньше шахтёр носил руду из шахты
+	# в руках, мимо обоза, — и грабить было нечего. Шахтёр бьёт залежи.
 
 	for node in get_tree().get_nodes_in_group("harvestable"):
 		var source := node as Node3D

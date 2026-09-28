@@ -104,7 +104,10 @@ func _ready() -> void:
 
 ## Построить лес. center — центр зоны, radius — до какого радиуса сажать,
 ## clearing — радиус поляны в середине, где деревьев нет (там поселение).
-func build(center: Vector2, radius: float, clearing: float, tree_seed: int) -> void:
+## holes — ещё поляны: массив [центр Vector2, радиус]. Сейчас это шахты (GDD
+## 9a): к их входам подъезжает обоз, и лес на их месте рос бы сквозь скалу.
+func build(center: Vector2, radius: float, clearing: float, tree_seed: int,
+		holes: Array = []) -> void:
 	_make_resources()
 
 	var rng := RandomNumberGenerator.new()
@@ -122,10 +125,19 @@ func build(center: Vector2, radius: float, clearing: float, tree_seed: int) -> v
 		if r < clearing:
 			continue
 		var p := center + Vector2(cos(a), sin(a)) * r
+		if _in_hole(p, holes):
+			continue
 		_add_tree(Vector3(p.x, 0.0, p.y), rng.randf_range(0.75, 1.45))
 
 	_build_grid()
 	_build_impostors()
+
+
+func _in_hole(p: Vector2, holes: Array) -> bool:
+	for hole in holes:
+		if p.distance_to(hole[0]) < float(hole[1]):
+			return true
+	return false
 
 
 func _add_tree(pos: Vector3, s: float) -> void:
