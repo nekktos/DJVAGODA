@@ -822,6 +822,14 @@ func aim_origin() -> Vector3:
 ## стреляем ИЗ РУКИ В ЭТУ ТОЧКУ. Не упёрся ни во что — берём точку на пределе
 ## дальности, тогда направление совпадает со взглядом.
 func aim_direction() -> Vector3:
+	# ИИ-ВОЖАК ЦЕЛИТСЯ КОРПУСОМ, а не камерой. Прицел через камеру — это
+	# прицел ЧЕЛОВЕКА: у ИИ камера неактивна и смотрит куда попало, а он сам
+	# разворачивает корпус к цели. Пока ИИ только дрался, это пряталось: удар
+	# ближнего боя бьёт сектором и прощает промах. Добыча бьёт точным лучом, и
+	# ИИ-злодей, стоя вплотную к залежи с молотом в руке, две минуты подряд
+	# бил мимо камня — набор «подъём с нуля» насчитал ноль попаданий.
+	if ai_led:
+		return -Basis(Vector3.UP, rotation.y).z
 	var straight: Vector3 = -(Basis(Vector3.UP, rotation.y) * Basis(Vector3.RIGHT, _pitch)).z
 	if _camera == null or not is_inside_tree():
 		return straight
@@ -1325,11 +1333,15 @@ func request_attack(kind: int, origin: Vector3, dir: Vector3) -> void:
 	if not Net.hosting():
 		return
 
-	var sender := multiplayer.get_remote_sender_id()
-	if sender == 0:
-		sender = multiplayer.get_unique_id()
-	if sender != peer_id:
-		push_warning("Пир %d пытался ударить персонажем %d" % [sender, peer_id])
+	# ВЛАДЕНИЕ — ОБЩИМ ПОМОЩНИКОМ, как в остальных двадцати пяти заявках.
+	# Здесь стояла своя, самодельная сверка отправителя с peer_id, и она забыла
+	# про ИИ: у героя под ИИ peer_id = -1, пира у него нет, и сверка отбивала
+	# КАЖДЫЙ его удар с предупреждением «пытался ударить персонажем -1».
+	# ИИ-вожаки за всю историю проекта не нанесли ни одного удара — ни врагу,
+	# ни камню. Нашлось, когда ИИ-злодею впервые понадобилось добывать самому.
+	if not _sender_is_owner():
+		push_warning("Пир %d пытался ударить чужим персонажем %d"
+			% [multiplayer.get_remote_sender_id(), peer_id])
 		return
 
 	if not health.alive or _server_cooldown > 0.0:
