@@ -69,6 +69,7 @@ SUITES=(
 	"keys:--keystest:0:"
 	"hud:--hudtest:0:"
 	"intercept:--intercepttest:0:"
+	"service:--servicetest:2:"
 	"playable0:--playabletest:0:"
 	"playable1:--playabletest:1:"
 	"playable2:--playabletest:2:"

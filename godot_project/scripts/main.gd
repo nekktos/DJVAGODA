@@ -1229,6 +1229,7 @@ const TEST_FLAGS := {
 	"--keystest": ["res://tools/keys_test.gd", true],
 	"--hudtest": ["res://tools/hud_test.gd", true],
 	"--intercepttest": ["res://tools/intercept_test.gd", true],
+	"--servicetest": ["res://tools/service_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1971,6 +1972,11 @@ func _refresh_commander(me: Node3D) -> void:
 		promote.text = "Распорядитель пал"
 	elif me.is_leader:
 		promote.text = "Ты уже командир"
+	elif int(me.orders_done) < ORDERS.ORDERS_FOR_PROMOTION:
+		# Командование заслуживают службой (GDD 9a) — кнопка говорит, сколько
+		# осталось, а не просто гаснет.
+		promote.text = "Командование — после %d приказов (сдано %d)" % [
+			ORDERS.ORDERS_FOR_PROMOTION, int(me.orders_done)]
 	else:
 		promote.text = "Командование занято"
 

@@ -911,7 +911,7 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 		# Докладываем СВОЮ сторону, а не владельца. У гарнизона и распорядителя
 		# владельца нет вовсе (owner_id = 0), и по нему сторона считалась как -1:
 		# приказ «убить бойцов злодея» не засчитывал убитых из его гарнизона.
-		world.report_unit_kill(attacker_id, faction)
+		world.report_unit_kill(attacker_id, faction, self)
 	died_on_server.emit(self)
 	# Труп остаётся лежать — тот же, что у персонажа, и тем же кодом. Боец,
 	# который просто исчезает, стирает след боя: по полю после схватки не видно

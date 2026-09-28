@@ -2331,6 +2331,7 @@ func request_rob_caravan() -> void:
 	var taken: int = cart.capture_horses()
 	if taken <= 0:
 		return
+	world_here.commander.report_caravan_lost(cart.global_position, int(cart.faction))
 	var world := get_parent().get_parent()
 	# Лошади встают рядом с обозом ЖИВЫМИ телами, а не числом в казне: увести
 	# их до дома — отдельная работа, и по дороге их могут отбить.

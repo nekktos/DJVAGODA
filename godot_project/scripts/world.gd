@@ -617,6 +617,7 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 		return
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
+	commander.report_victim(killer_id, player)
 	_award_kill_xp(killer_id, int(player.faction), bool(player.is_leader))
 	# Гибель стража может провалить его решающий удар; гибель вожака — засчитать
 	# чужой. Порядок важен: сперва снимаем провал, потом засчитываем победителю.
@@ -766,9 +767,10 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1,
 
 ## Постройка разрушена. Для стражи это половина условия поражения (GDD раздел 7):
 ## сломлена она, только когда пал командир И снесена казарма.
-func _on_building_destroyed(_building: Node3D, _killer_id: int) -> void:
+func _on_building_destroyed(building: Node3D, killer_id: int) -> void:
 	if not Net.hosting():
 		return
+	commander.report_building_down(building, killer_id)
 	objective.check_victories()
 
 
@@ -906,7 +908,8 @@ func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1,
 		# обратном пути их могут увести или убить — тогда возвращать нечего, и
 		# считать это должен сам обоз, а не отправитель.
 		node.came_home.connect(func(team: int) -> void:
-			_on_caravan_home(team, int(node.faction)))
+			_on_caravan_home(team, int(node.faction))
+			commander.report_caravan_home(node))
 	return node
 
 
@@ -938,6 +941,7 @@ func intercept_caravan(cart: Node3D, player: Node3D) -> bool:
 	if new_wallet != null:
 		new_wallet.horses = int(new_wallet.horses) + team
 		new_wallet.horses_out = int(new_wallet.horses_out) + team
+	commander.report_caravan_lost(cart.global_position, old_side)
 	cart.redirect(side, int(player.peer_id), walked)
 	commander.report_caravan_destroyed(int(player.peer_id), old_side)
 	objective.log_event.rpc("Обоз «%s» перехвачен стороной «%s»" % [
@@ -991,6 +995,7 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 	# Приказ стражи «перехватить караван» засчитывается тут же: командир сам
 	# решит, его ли это караван и тот ли игрок его разбил.
 	commander.report_caravan_destroyed(killer_id, caravan_faction)
+	commander.report_caravan_lost(point, caravan_faction)
 	var total := 0
 	for value in cargo:
 		total += value
@@ -1007,10 +1012,12 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 
 ## Боец погиб. Приказ стражи «проредить войско злодея» засчитывает и бойцов,
 ## а не только самого злодея.
-func report_unit_kill(killer_id: int, victim_faction: int) -> void:
+func report_unit_kill(killer_id: int, victim_faction: int, victim: Node3D = null) -> void:
 	if not Net.hosting():
 		return
 	commander.report_kill(killer_id, victim_faction)
+	if victim != null:
+		commander.report_victim(killer_id, victim)
 	_award_kill_xp(killer_id, victim_faction, false)
 
 

@@ -12,6 +12,7 @@ extends "res://tools/test_base.gd"
 ##
 
 const FACTIONS := preload("res://scripts/factions.gd")
+const ORDERS := preload("res://scripts/orders.gd")
 
 var _world: Node3D
 var _heard: Array[String] = []
@@ -83,6 +84,9 @@ func _test_promotion(me: Node3D) -> void:
 
 	me.teleport.rpc(commander.POSITION + Vector3(0.0, 2.0, 2.0))
 	await get_tree().physics_frame
+	# Командование заслуживают службой (GDD 9a): выслуженную цепочку приказов
+	# ставим сами — её прохождение проверяет набор «служба».
+	me.orders_done = ORDERS.ORDERS_FOR_PROMOTION
 	me.request_promotion()
 	await get_tree().physics_frame
 	check(me.is_leader, "у NPC командование принимается", "is_leader=true")

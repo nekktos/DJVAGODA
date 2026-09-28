@@ -45,6 +45,11 @@ const LEASH := 45.0
 ## Живое тело распорядителя. Пока его нет — он пал и ещё не вернулся.
 var _body: Node3D = null
 var _respawn_left := 0.0
+## Кто грабил обозы стражи: живые тела, на которых висит погоня. Слабые
+## ссылки — грабитель мог умереть от чужой руки, и держать его в памяти незачем.
+var _robbers: Array[WeakRef] = []
+const ROBBERS_KEPT := 12
+const RES := preload("res://scripts/economy/resources.gd")
 
 
 func _ready() -> void:
@@ -159,6 +164,10 @@ func _tick_order(guard: Node3D, delta: float) -> void:
 			_tick_hold(guard, delta)
 		ORDERS.Kind.RAID:
 			_tick_raid(guard)
+		ORDERS.Kind.ESCORT:
+			_tick_escort(guard, delta)
+		ORDERS.Kind.MINE:
+			_tick_mine(guard, delta)
 
 
 ## Держать дворец: секунды капают, только пока страж стоит в точке И дворец наш.
@@ -193,6 +202,158 @@ func _tick_raid(guard: Node3D) -> void:
 	elif guard.order_progress == 1:
 		if in_range(guard.global_position):
 			guard.order_progress = 2
+
+
+## Сопровождение: копим секунды рядом с обозом стражи, едущим домой. Сдаётся
+## приказ, когда этот обоз доехал (`report_caravan_home`).
+func _tick_escort(guard: Node3D, delta: float) -> void:
+	if not guard.health.alive:
+		return
+	var key := "escort_%d" % int(guard.peer_id)
+	for cart in _guard_caravans():
+		if int(cart.state) != int(cart.State.TO_HOME):
+			continue
+		if _flat_gap(guard.global_position, cart.global_position) > ORDERS.ESCORT_RADIUS:
+			continue
+		cart.set_meta(key, float(cart.get_meta(key, 0.0)) + delta)
+
+
+## Шахта: секунды у поляны любой шахты, пока рядом нет чужих живых.
+func _tick_mine(guard: Node3D, delta: float) -> void:
+	if not guard.health.alive:
+		return
+	var world := get_parent()
+	var mine: Node3D = world.mine_near(guard.global_position)
+	if mine == null or _flat_gap(guard.global_position, mine.global_position) > ORDERS.MINE_RADIUS:
+		return
+	if _hostiles_near(mine.global_position, ORDERS.MINE_RADIUS) > 0:
+		return
+	guard.set_meta("mine_seconds", float(guard.get_meta("mine_seconds", 0.0)) + delta)
+	var whole := int(guard.get_meta("mine_seconds", 0.0))
+	if whole != guard.order_progress:
+		guard.order_progress = whole
+
+
+## Обоз стражи доехал до склада. Кто шёл рядом достаточно долго — сопроводил.
+func report_caravan_home(cart: Node) -> void:
+	if not Net.hosting() or cart == null or int(cart.faction) != FACTIONS.Kind.GUARD:
+		return
+	for guard in _guards():
+		if guard.order_kind != ORDERS.Kind.ESCORT:
+			continue
+		if float(cart.get_meta("escort_%d" % int(guard.peer_id), 0.0)) >= ORDERS.ESCORT_SECONDS:
+			guard.order_progress = ORDERS.target_of(ORDERS.Kind.ESCORT)
+			_notify(guard, "Обоз доведён. Доложи командиру.")
+
+
+## Обоз стражи разграблен, разбит, перехвачен или остался без лошадей.
+## Запоминаем тех, кто был рядом: на них теперь погоня.
+func report_caravan_lost(point: Vector3, cart_faction: int) -> void:
+	if not Net.hosting() or cart_faction != FACTIONS.Kind.GUARD:
+		return
+	for body in _living_hostiles():
+		if _flat_gap(body.global_position, point) > ORDERS.ROBBER_RADIUS:
+			continue
+		if _is_robber(body):
+			continue
+		_robbers.append(weakref(body))
+	while _robbers.size() > ROBBERS_KEPT:
+		_robbers.pop_front()
+	print("[командир] обоз стражи ограблен, на погоне %d" % _robbers_alive().size())
+
+
+## Кого-то убили — для обороны и погони нужно знать КОГО и ГДЕ, а не только
+## сторону. Зовёт мир из обоих путей смерти: игрока и бойца.
+func report_victim(killer_id: int, victim: Node3D) -> void:
+	if not Net.hosting() or victim == null or not ("faction" in victim):
+		return
+	var side := int(victim.faction)
+	if side == FACTIONS.Kind.GUARD:
+		return
+	var objective: Node3D = get_parent().get_node_or_null("Objective")
+	for guard in _guards():
+		if int(guard.peer_id) != killer_id:
+			continue
+		if guard.order_kind == ORDERS.Kind.DEFEND and objective != null:
+			if _flat_gap(victim.global_position, objective.PALACE) <= ORDERS.DEFEND_RADIUS:
+				guard.order_progress += 1
+		if guard.order_kind == ORDERS.Kind.HUNT and _is_robber(victim):
+			guard.order_progress += 1
+
+
+## Снесена постройка. Поле злодея, снесённое стражем, — «разорить поле».
+func report_building_down(building: Node3D, killer_id: int) -> void:
+	if not Net.hosting() or building == null:
+		return
+	if int(building.faction) != FACTIONS.Kind.VILLAIN or int(building.kind) != RES.Building.FARM:
+		return
+	for guard in _guards():
+		if int(guard.peer_id) == killer_id and guard.order_kind == ORDERS.Kind.FIELD:
+			guard.order_progress = ORDERS.target_of(ORDERS.Kind.FIELD)
+
+
+func _is_robber(body: Node) -> bool:
+	for ref in _robbers:
+		if ref.get_ref() == body:
+			return true
+	return false
+
+
+func _robbers_alive() -> Array:
+	var alive := []
+	for ref in _robbers:
+		var body = ref.get_ref()
+		if body == null or not is_instance_valid(body):
+			continue
+		if "health" in body and not _alive(body):
+			continue
+		alive.append(body)
+	return alive
+
+
+static func _alive(body: Node) -> bool:
+	var hp = body.health
+	if hp is float or hp is int:
+		return float(hp) > 0.0
+	return hp != null and hp.alive
+
+
+## Все живые не-стражники: игроки и бойцы.
+func _living_hostiles() -> Array:
+	var found := []
+	var world := get_parent()
+	var players: Node = world.get_node_or_null("Players")
+	if players != null:
+		for child in players.get_children():
+			if "faction" in child and int(child.faction) != FACTIONS.Kind.GUARD and _alive(child):
+				found.append(child)
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if "faction" in unit and int(unit.faction) != FACTIONS.Kind.GUARD and "health" in unit and _alive(unit):
+			found.append(unit)
+	return found
+
+
+func _hostiles_near(point: Vector3, radius: float) -> int:
+	var count := 0
+	for body in _living_hostiles():
+		if _flat_gap(body.global_position, point) <= radius:
+			count += 1
+	return count
+
+
+func _guard_caravans() -> Array:
+	var found := []
+	var spawned: Node = get_parent().get_node_or_null("Spawned")
+	if spawned == null:
+		return found
+	for child in spawned.get_children():
+		if child.has_method("path_ahead") and int(child.faction) == FACTIONS.Kind.GUARD:
+			found.append(child)
+	return found
+
+
+static func _flat_gap(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z))
 
 
 ## Кто-то что-то убил или разбил. Зовёт мир, командир решает, засчитывать ли.
@@ -283,13 +444,40 @@ func report(guard: Node3D) -> String:
 ## Сюжета и диалогов здесь нет намеренно — форма кампании выражена через то,
 ## что уже работает, тем же принципом, что и сами приказы.
 func _issue_next(guard: Node3D) -> String:
-	var kind: int = ORDERS.Kind.FINAL if _final_available(guard) else int(guard.orders_done) % ORDERS.COUNT
+	var kind: int = ORDERS.Kind.FINAL if _final_available(guard) else _next_in_rotation(guard)
 	guard.order_kind = kind
 	guard.order_progress = 0
 	guard.set_meta("hold_seconds", 0.0)
+	guard.set_meta("mine_seconds", 0.0)
 	var text := "Новый приказ: %s" % ORDERS.name_of(kind)
 	_notify(guard, text)
 	return text
+
+
+## Следующий приказ круга, который сейчас ВЫПОЛНИМ.
+##
+## Круг идёт по счёту сданных, как и раньше, — но приказ, которого не
+## выполнить (грабителей нет, поля у злодея нет), пропускается: выдать его
+## значит поставить стража перед задачей без решения.
+func _next_in_rotation(guard: Node3D) -> int:
+	var start := int(guard.orders_done) % ORDERS.ROTATION.size()
+	for step in ORDERS.ROTATION.size():
+		var kind: int = ORDERS.ROTATION[(start + step) % ORDERS.ROTATION.size()]
+		if _order_possible(kind):
+			return kind
+	return ORDERS.Kind.HOLD
+
+
+func _order_possible(kind: int) -> bool:
+	match kind:
+		ORDERS.Kind.HUNT:
+			return not _robbers_alive().is_empty()
+		ORDERS.Kind.FIELD:
+			for node in get_tree().get_nodes_in_group("building"):
+				if int(node.faction) == FACTIONS.Kind.VILLAIN and int(node.kind) == RES.Building.FARM:
+					return true
+			return false
+	return true
 
 
 ## Готов ли страж к решающему удару.
@@ -353,11 +541,14 @@ func can_promote(guard: Node3D) -> bool:
 		return false
 	if not guard.health.alive or guard.is_leader:
 		return false
+	# Командование заслуживают службой (GDD 9a).
+	if int(guard.orders_done) < ORDERS.ORDERS_FOR_PROMOTION:
+		return false
 	return not guard_has_leader()
 
 
-## Принять командование. Пока это простое согласие NPC; по замыслу здесь будет
-## цепочка квестов, и повышение станет её наградой.
+## Принять командование — награда за цепочку приказов: без
+## ORDERS_FOR_PROMOTION сданных `can_promote` откажет.
 ##
 ## Вместе с командованием страж получает стратегический режим, стройку и наём
 ## (GDD раздел 2.2) — и окончательную смерть: командир не возрождается.
@@ -367,6 +558,9 @@ func promote(guard: Node3D) -> String:
 	if not in_range(guard.global_position):
 		return ""
 	if not can_promote(guard):
+		if int(guard.orders_done) < ORDERS.ORDERS_FOR_PROMOTION:
+			return "Командование заслуживают службой: сдано приказов %d из %d." % [
+				int(guard.orders_done), ORDERS.ORDERS_FOR_PROMOTION]
 		return "Командовать сейчас некому и незачем."
 	guard.is_leader = true
 	var text := "Страж %d принял командование" % int(guard.peer_id)
