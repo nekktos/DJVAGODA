@@ -83,7 +83,9 @@ func _test_appears_only_on_free_side(me: Node3D) -> void:
 	# Без этой проверки гарнизон стражи молча считался бы на одного больше.
 	var champions := 0
 	for node in get_tree().get_nodes_in_group("unit"):
-		if is_instance_valid(node) and "is_champion" in node and node.is_champion:
+		# Чемпион стражи: с 29.09 чемпион есть и у эльфов — старейшина.
+		if (is_instance_valid(node) and "is_champion" in node and node.is_champion
+				and int(node.faction) == FACTIONS.Kind.GUARD):
 			champions += 1
 	check(champions == 1, "распорядитель в мире ровно один", "%d" % champions)
 	check(_garrison().size_of(FACTIONS.Kind.GUARD) != 1,
