@@ -32,7 +32,7 @@ var _shots := 0
 
 func start(world: Node3D) -> void:
 	tag = "расходники"
-	expected_host = 13
+	expected_host = 18
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -63,6 +63,10 @@ func _run() -> void:
 	_test_second_wind_needs_a_floor(me)
 	_test_stamina_returns(me)
 	await _test_jump_costs_stamina(me)
+	await _test_elf_is_faster(me)
+	await _test_double_jump(me)
+	await _test_only_elves_double_jump(me)
+	await _test_dash(me)
 	finish()
 
 
@@ -234,6 +238,89 @@ func _test_jump_costs_stamina(me: Node3D) -> void:
 	check(paid and refused and grounded, "прыжок стоит сил, и без сил его нет",
 		"списалось=%s, стоял на земле=%s, без сил прыгнул=%s"
 			% [paid, grounded, not refused])
+
+
+## ЭЛЬФИЙСКАЯ МОБИЛЬНОСТЬ (GDD 9a): «повышенная скорость с первого уровня,
+## двойной прыжок и рывок». Проверяем в ДВИЖЕНИИ, а не в таблице: таблица может
+## говорить одно, а шаг движения делать другое.
+
+## Эльф быстрее, и это видно по скорости шага, а не по числу в таблице.
+func _test_elf_is_faster(me: Node3D) -> void:
+	await _land(me)
+	me._dash_left = 0.0
+	me.apply_input({"move": Vector2(0.0, -1.0), "jump": false, "run": false}, 0.05)
+	var flat: float = Vector2(me.velocity.x, me.velocity.z).length()
+	var plain: float = me.body.move_speed(me.SPEED)
+	check(flat > plain * 1.05, "эльф ходит быстрее базовой скорости",
+		"шаг %.2f м/с при базовых %.2f" % [flat, plain])
+
+
+## Второй прыжок в воздухе есть, третьего — нет.
+func _test_double_jump(me: Node3D) -> void:
+	me.sync_stamina = me.stamina_max()
+	me._winded = false
+	await _land(me)
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.02)
+	# Даём оторваться от земли и начать падать, иначе «второй прыжок» сработает
+	# как первый — с пола.
+	for i in 20:
+		me.apply_input({"move": Vector2.ZERO, "jump": false, "run": false}, 0.02)
+		await get_tree().physics_frame
+	var airborne: bool = not me.is_on_floor()
+	me.velocity.y = -1.0
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.02)
+	var second: bool = me.velocity.y > 1.0
+	me.velocity.y = -1.0
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.02)
+	var third: bool = me.velocity.y > 1.0
+	check(airborne and second and not third,
+		"у эльфа есть второй прыжок в воздухе, а третьего нет",
+		"в воздухе=%s, второй=%s, третий=%s" % [airborne, second, third])
+	await _land(me)
+
+
+## Двойной прыжок — ЭЛЬФИЙСКИЙ. Злодею его не дано.
+func _test_only_elves_double_jump(me: Node3D) -> void:
+	var was: int = int(me.faction)
+	me.faction = FACTIONS.Kind.VILLAIN
+	me.sync_stamina = me.stamina_max()
+	await _land(me)
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.02)
+	for i in 20:
+		me.apply_input({"move": Vector2.ZERO, "jump": false, "run": false}, 0.02)
+		await get_tree().physics_frame
+	me.velocity.y = -1.0
+	me.apply_input({"move": Vector2.ZERO, "jump": true, "run": false}, 0.02)
+	var jumped: bool = me.velocity.y > 1.0
+	me.faction = was
+	check(not jumped, "у злодея второго прыжка нет",
+		"злодей прыгнул в воздухе: %s" % jumped)
+	await _land(me)
+
+
+## Рывок разгоняет, стоит сил и не идёт очередью.
+func _test_dash(me: Node3D) -> void:
+	await _land(me)
+	me.sync_stamina = me.stamina_max()
+	me._dash_cd = 0.0
+	me._dash_left = 0.0
+	var before: float = me.sync_stamina
+	me.apply_input({"move": Vector2(0.0, -1.0), "jump": false, "run": false, "dash": true}, 0.02)
+	var burst: float = Vector2(me.velocity.x, me.velocity.z).length()
+	var paid: bool = me.sync_stamina < before
+	check(burst >= me.DASH_SPEED - 0.5 and paid, "рывок разгоняет и стоит сил",
+		"скорость %.1f при рывковых %.1f, выносливость %d -> %d"
+			% [burst, me.DASH_SPEED, int(before), int(me.sync_stamina)])
+
+	# Сразу второй — нельзя: откат. Дожидаемся конца первого, чтобы мерить
+	# именно откат, а не тот же самый рывок.
+	for i in 20:
+		me.apply_input({"move": Vector2(0.0, -1.0), "jump": false, "run": false}, 0.02)
+	var spent: float = me.sync_stamina
+	me.apply_input({"move": Vector2(0.0, -1.0), "jump": false, "run": false, "dash": true}, 0.02)
+	check(is_equal_approx(me.sync_stamina, spent) or me.sync_stamina > spent,
+		"рывок не идёт очередью: на откате второго нет",
+		"выносливость %d -> %d" % [int(spent), int(me.sync_stamina)])
 
 
 ## Дождаться, пока персонаж встанет на землю.

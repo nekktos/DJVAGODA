@@ -98,6 +98,20 @@ const STAMINA_JUMP := 12.0
 const STAMINA_REGEN := 12.0
 const STAMINA_FLOOR := 15.0
 const STAMINA_REST := 0.6
+
+## Рывок эльфа: как быстро, как долго, как часто и во что обходится.
+##
+## Короткий и резкий: полсекунды разгона дали бы полёт, а не рывок. Сотая доля
+## секунды — дрожь. Одна пятая при двадцати двух метрах в секунду — это около
+## четырёх метров: ровно столько, чтобы выйти из-под удара или вскочить на
+## обоз, и мало, чтобы пересекать ими карту.
+##
+## Откат и цена в выносливости — вместе. Без отката рывки шли бы очередью, пока
+## хватает сил; без цены он был бы бесплатным бегом, который быстрее бега.
+const DASH_SPEED := 22.0
+const DASH_TIME := 0.18
+const DASH_COOLDOWN := 1.2
+const DASH_STAMINA := 18.0
 ## Насколько далеко бьёт луч прицеливания. Дальше стрелять всё равно не в кого:
 ## снаряды живут меньше.
 const AIM_RANGE := 300.0
@@ -219,6 +233,13 @@ func run_scale() -> float:
 @export var sync_stamina: float = STAMINA_MAX
 ## Выдохся: бежать нельзя, пока не наберётся STAMINA_FLOOR.
 var _winded := false
+## Сколько ещё прыжков осталось в воздухе. Сбрасывается на земле по правилам
+## стороны (`FACTIONS.MOBILITY`).
+var _air_jumps := 0
+## Идущий рывок: сколько ещё длится и куда. И откат до следующего.
+var _dash_left := 0.0
+var _dash_dir := Vector3.ZERO
+var _dash_cd := 0.0
 ## Сколько ещё не восстанавливаться.
 var _rest_left := 0.0
 
@@ -563,6 +584,7 @@ func _gather_input() -> Dictionary:
 		"move": Input.get_vector("move_left", "move_right", "move_forward", "move_back"),
 		"jump": Input.is_action_just_pressed("jump"),
 		"run": Input.is_action_pressed("sprint"),
+		"dash": Input.is_action_just_pressed("dash"),
 		"bandage": Input.is_action_pressed("bandage"),
 	}
 
@@ -604,12 +626,17 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 				_winded = true
 	sync_running = running
 
-	var speed: float = body.move_speed(SPEED) * buff_speed_scale() * mount_speed_scale()
+	# Скорость СТОРОНЫ — отдельным множителем. Эльфы быстрее с первого уровня
+	# (GDD 9a), и это врождённое, а не купленное: к прокачке бега не относится.
+	var speed: float = (body.move_speed(SPEED) * buff_speed_scale() * mount_speed_scale()
+		* float(FACTIONS.mobility_of(int(faction))["speed"]))
 	if running:
 		speed *= run_scale()
 	var jump_power: float = body.jump_velocity(JUMP_VELOCITY)
 
+	var agile: Dictionary = FACTIONS.mobility_of(int(faction))
 	if is_on_floor():
+		_air_jumps = int(agile["air_jumps"])
 		# Прыжок тоже стоит сил. Прыжковая лестница через полкарты была
 		# способом обойти разом и рельеф, и усталость.
 		if jump and jump_power > 0.0 and (mounted or sync_stamina >= STAMINA_JUMP):
@@ -619,6 +646,15 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 				_rest_left = STAMINA_REST
 	else:
 		velocity.y -= _gravity * delta
+		# ДВОЙНОЙ ПРЫЖОК — только у тех, кому он дан (эльфы, GDD 9a). Стоит тех
+		# же сил, что и первый: второй прыжок без цены сделал бы первый лишним.
+		# Верхом его нет: лошадь с земли не отталкивается.
+		if (jump and _air_jumps > 0 and not mounted and jump_power > 0.0
+				and sync_stamina >= STAMINA_JUMP):
+			_air_jumps -= 1
+			velocity.y = jump_power
+			sync_stamina = maxf(0.0, sync_stamina - STAMINA_JUMP)
+			_rest_left = STAMINA_REST
 
 	# Возврат: не бежим и отдышались — набираем.
 	if not running:
@@ -631,8 +667,28 @@ func apply_input(inp: Dictionary, delta: float) -> void:
 	var dir := (transform.basis * Vector3(move.x, 0.0, move.y))
 	dir.y = 0.0
 	dir = dir.normalized()
-	velocity.x = dir.x * speed
-	velocity.z = dir.z * speed
+
+	# РЫВОК. Только у тех, кому он дан, только пешком и только не выдохшись.
+	# Направление — куда жмёшь; не жмёшь никуда — вперёд, куда смотришь: рывок
+	# на месте был бы потраченной выносливостью без движения.
+	_dash_cd = maxf(0.0, _dash_cd - delta)
+	if (bool(inp.get("dash", false)) and bool(agile["dash"]) and not mounted
+			and _dash_cd <= 0.0 and _dash_left <= 0.0 and sync_paralysis <= 0.0
+			and not body.is_crawling() and sync_stamina >= DASH_STAMINA):
+		_dash_dir = dir if dir.length() > 0.1 else -transform.basis.z
+		_dash_dir.y = 0.0
+		_dash_dir = _dash_dir.normalized()
+		_dash_left = DASH_TIME
+		_dash_cd = DASH_COOLDOWN
+		sync_stamina = maxf(0.0, sync_stamina - DASH_STAMINA)
+		_rest_left = STAMINA_REST
+	if _dash_left > 0.0:
+		_dash_left -= delta
+		velocity.x = _dash_dir.x * DASH_SPEED
+		velocity.z = _dash_dir.z * DASH_SPEED
+	else:
+		velocity.x = dir.x * speed
+		velocity.z = dir.z * speed
 
 	move_and_slide()
 

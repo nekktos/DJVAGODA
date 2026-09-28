@@ -41,6 +41,28 @@ const COLORS := [
 ]
 
 
+## Мобильность стороны: во сколько раз быстрее ходит, сколько прыжков в
+## воздухе и есть ли рывок.
+##
+## ЭЛЬФЫ МОБИЛЬНЕЕ ОТ ПРИРОДЫ — решение автора игры (GDD 9a): «повышенная
+## скорость с первого уровня, двойной прыжок и рывок». Это их ответ на то, что
+## у них нет ни стройки, ни обозов: они не держат землю, они по ней носятся.
+##
+## ПРИБАВКА К СКОРОСТИ МАЛЕНЬКАЯ НАМЕРЕННО. Двойной прыжок и рывок уже дают
+## эльфу догнать и уйти; ещё и бегать заметно быстрее — значит, что за ним не
+## угнаться вовсе, и погоня теряет смысл. Пятнадцать процентов чувствуются, но
+## не решают бой в одиночку.
+const MOBILITY := {
+	Kind.VILLAIN: {"speed": 1.0, "air_jumps": 0, "dash": false},
+	Kind.ELVES: {"speed": 1.15, "air_jumps": 1, "dash": true},
+	Kind.GUARD: {"speed": 1.0, "air_jumps": 0, "dash": false},
+}
+
+
+static func mobility_of(faction: int) -> Dictionary:
+	return MOBILITY.get(clampi(faction, 0, COUNT - 1), MOBILITY[Kind.VILLAIN])
+
+
 static func color_of(faction: int) -> Color:
 	return COLORS[clampi(faction, 0, COUNT - 1)]
 
