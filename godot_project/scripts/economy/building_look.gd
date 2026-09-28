@@ -85,6 +85,8 @@ static func build(kind: int, size: Vector3) -> Node3D:
 
 	_roof(root, size)
 	_trim(root, kind, size)
+	if kind == RES.Building.FORGE:
+		_forge_trim(root, size)
 	return root
 
 
@@ -129,6 +131,29 @@ static func _elf_house(root: Node3D, size: Vector3, stone: bool) -> void:
 
 ## Казармы деревянные, склад и конюшня каменные. Дерево у казарм не случайно:
 ## их сносят чаще всего, и вид «сарай, который не жалко» тут к месту.
+## Кузня узнаётся по трубе и наковальне у входа.
+static func _forge_trim(root: Node3D, size: Vector3) -> void:
+	var stone: StandardMaterial3D = TEXTURES.of("stone")
+	var chimney := MeshInstance3D.new()
+	var tall := BoxMesh.new()
+	tall.size = Vector3(1.6, 4.0, 1.6)
+	chimney.mesh = tall
+	chimney.material_override = stone
+	chimney.position = Vector3(size.x * 0.3, size.y + ROOF_RISE + 1.0, 0.0)
+	root.add_child(chimney)
+	var anvil := MeshInstance3D.new()
+	var block := BoxMesh.new()
+	block.size = Vector3(1.2, 0.8, 0.6)
+	anvil.mesh = block
+	var iron := StandardMaterial3D.new()
+	iron.albedo_color = Color(0.22, 0.22, 0.25)
+	iron.metallic = 0.7
+	iron.roughness = 0.4
+	anvil.material_override = iron
+	anvil.position = Vector3(-size.x * 0.25, 0.4, size.z * 0.5 + 1.6)
+	root.add_child(anvil)
+
+
 static func _wooden(kind: int) -> bool:
 	# Дом дружины тоже деревянный: он и строится из дерева с камнем, и должен
 	# читаться жильём, а не укреплением.

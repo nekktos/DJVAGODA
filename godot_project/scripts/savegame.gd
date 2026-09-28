@@ -171,6 +171,8 @@ func save_world() -> String:
 		cfg.set_value("player/" + profile, "last_faction", int(child.faction))
 		cfg.set_value(key, "faction", int(child.faction))
 		cfg.set_value(key, "gear_tier", int(child.gear_tier))
+		cfg.set_value(key, "armor_tier", int(child.armor_tier))
+		cfg.set_value(key, "potions", [int(child.potions_heal), int(child.potions_mana)])
 		# Сколько лошадей запрягать — решение игрока, а не случайное число.
 		# Сбрасывать его к двойке при каждом входе значит заставлять принимать
 		# это решение заново каждый раз.
@@ -374,6 +376,10 @@ func restore_player(player: Node3D) -> bool:
 			return false
 
 	player.gear_tier = int(cfg.get_value(key, "gear_tier", 0))
+	player.armor_tier = int(cfg.get_value(key, "armor_tier", 0))
+	var potions: Array = cfg.get_value(key, "potions", [0, 0])
+	player.potions_heal = int(potions[0]) if potions.size() > 0 else 0
+	player.potions_mana = int(potions[1]) if potions.size() > 1 else 0
 	player.harness_size = int(cfg.get_value(key, "harness_size", player.harness_size))
 	player.is_leader = bool(cfg.get_value(key, "is_leader", player.is_leader))
 	player.orders_done = int(cfg.get_value(key, "orders_done", 0))

@@ -122,6 +122,15 @@ properties/31/replication_mode = 1
 properties/32/path = NodePath("Health:bonus")
 properties/32/spawn = true
 properties/32/replication_mode = 1
+properties/33/path = NodePath(".:armor_tier")
+properties/33/spawn = true
+properties/33/replication_mode = 1
+properties/34/path = NodePath(".:potions_heal")
+properties/34/spawn = true
+properties/34/replication_mode = 1
+properties/35/path = NodePath(".:potions_mana")
+properties/35/spawn = true
+properties/35/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2

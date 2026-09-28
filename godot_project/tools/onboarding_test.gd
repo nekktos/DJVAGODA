@@ -258,7 +258,7 @@ func _test_goal_is_named_before_the_shop() -> void:
 		# Лавку ищем по ПРАВИЛУ ПРОПУСКА, а не по слову в подписи. Подпись уже
 		# менялась — была «лавка эльфов», стала «своя лавка», — и проверка
 		# тихо перестала находить шаг, о котором писана.
-		if shop < 0 and String(chain[i].get("skip", "")) == "gear":
+		if shop < 0 and String(chain[i].get("skip", "")) in ["gear", "armor"]:
 			shop = i
 	check(goal >= 0 and shop >= 0 and goal < shop,
 		"цель партии названа раньше лавки",

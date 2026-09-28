@@ -241,6 +241,7 @@ static func _root(side: int) -> int:
 ## что у эльфов не было клавиш стройки.
 static func may_build(faction: int, kind: int, leader: bool) -> bool:
 	var elf_house: bool = kind in [6, 7]
+	# Кузня — за уголь, а уголь возят обозы: у эльфов ни того, ни другого.
 	if faction == Kind.ELVES:
 		return elf_house
 	if elf_house:

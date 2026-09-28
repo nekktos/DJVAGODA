@@ -194,7 +194,19 @@ func _ready() -> void:
 	trader.get_node("Bandages").pressed.connect(_on_trade.bind(RES.Trade.BANDAGES))
 	trader.get_node("Arrows").pressed.connect(_on_trade.bind(RES.Trade.ARROWS))
 	trader.get_node("Gear").pressed.connect(_on_trade.bind(RES.Trade.GEAR))
+	# Новый товар (GDD 9a): доспех и зелья. Кнопки заводим кодом и ставим
+	# перед «Закрыть» — у каждой стороны в окне только её товар.
+	for entry in [["Armor", RES.Trade.ARMOR], ["PotionHeal", RES.Trade.POTION_HEAL],
+			["PotionMana", RES.Trade.POTION_MANA]]:
+		var goods := Button.new()
+		goods.name = entry[0]
+		goods.custom_minimum_size = Vector2(0.0, 40.0)
+		goods.pressed.connect(_on_trade.bind(int(entry[1])))
+		trader.add_child(goods)
+		trader.move_child(goods, trader.get_node("Close").get_index())
 	trader.get_node("Close").pressed.connect(_close_trader)
+	# Одеть заново: окна одевались в `_build_bars`, до новых кнопок.
+	_dress_panels()
 
 	var commander := $UI/Commander/Panel/VBox
 	commander.get_node("Report").pressed.connect(_on_report)
@@ -631,6 +643,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _try_squad_move_order():
 			get_viewport().set_input_as_handled()
 			return
+	# ЗЕЛЬЯ (эльфы, GDD 9a): свои клавиши, из боевого вида.
+	if Net.active and not _world.strategy_mode:
+		var drinker: Node3D = _world.local_player()
+		if drinker != null and event.is_action_pressed(&"potion_heal"):
+			drinker.ask_use_potion(0)
+			get_viewport().set_input_as_handled()
+			return
+		if drinker != null and event.is_action_pressed(&"potion_mana"):
+			drinker.ask_use_potion(1)
+			get_viewport().set_input_as_handled()
+			return
 	# ДОМ ЭЛЬФОВ (GDD 9a): N — деревянный, ещё раз N — каменный, ещё раз —
 	# снять. Строят из боевого вида: вида сверху у эльфов нет.
 	if event.is_action_pressed(&"build_elf_house") and Net.active and not _world.strategy_mode:
@@ -764,6 +787,7 @@ const BUILD_ACTIONS := [
 	[&"build_stable", 3],
 	[&"build_house", 4],
 	[&"build_farm", 5],
+	[&"build_forge", 8],
 ]
 const ROLE_ACTIONS := [
 	[&"role_lumberjack", 0],
@@ -844,7 +868,8 @@ func _build_bars() -> void:
 ## незачем: у кнопки Godot есть своя картинка. Здесь же им общий вид с новыми
 ## меню — рамка Kenney, тёмные кнопки с золотой обводкой при наведении.
 const PANEL_ICONS := {
-	"Trader": {"Bandages": "bandage", "Arrows": "arrows", "Gear": "wpn_0"},
+	"Trader": {"Bandages": "bandage", "Arrows": "arrows", "Gear": "wpn_1",
+		"Armor": "armor", "PotionHeal": "potion_heal", "PotionMana": "potion_mana"},
 	"Bench": {"Wooden": "res_0", "Iron": "res_3", "Master": "res_2", "Necrotic": "abl_4",
 		"Eye": "abl_5", "Splint": "bandage", "Chair": "cart"},
 	"Upgrade": {"Stat0": "heart", "Stat1": "stamina", "Stat2": "horse", "Stat3": "mana"},
@@ -1254,6 +1279,7 @@ const TEST_FLAGS := {
 	"--servicetest": ["res://tools/service_test.gd", true],
 	"--endgametest": ["res://tools/endgame_test.gd", true],
 	"--elvestest": ["res://tools/elves_test.gd", true],
+	"--shoptest": ["res://tools/shop_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1910,22 +1936,31 @@ func _toggle_trader() -> void:
 
 func _refresh_trader(me: Node3D) -> void:
 	var box := $UI/Trader/Panel/VBox
-	# Чья лавка, видно прямо здесь. У каждой стороны она своя и чужих не
-	# обслуживает вовсе: отношения вырезаны, и «обслужат ли» больше не вопрос
-	# торга, а вопрос принадлежности.
-	# Запасы здесь больше не пишем: они картинками в полосе вверху, и та же
-	# строка в окне лавки была третьей копией одних и тех же чисел.
-	box.get_node("Stock").text = "снаряжение: %s · лавка стороны «%s»" % [
-		WEAPONS.gear_name(me.gear_tier), FACTIONS.name_of(me.trader_faction())
-	]
+	var side := int(me.faction)
+	var elf := side == FACTIONS.Kind.ELVES
+	# Чья лавка, видно прямо здесь. У каждой стороны она своя, и товар в ней
+	# свой (GDD 9a): у эльфов травы, зелья, луки и лёгкая броня; у злодея и
+	# стражи — бинты, стрелы и латы, чёрные и серебряные.
+	box.get_node("Stock").text = "оружие: %s · доспех: %s · лавка стороны «%s»" % [
+		WEAPONS.gear_name(me.gear_tier), RES.armor_name(side, int(me.armor_tier)),
+		FACTIONS.name_of(me.trader_faction())]
+	box.get_node("Note").text = ("Эльфийская лавка: травы, зелья, луки и лёгкая броня — за золото."
+		if elf else "Бинты, стрелы и латы. Оружие закаляют в кузне — за железо и уголь.")
+	var sold: Array = RES.SHOP.get(side, [])
+	var slots := {"Bandages": RES.Trade.BANDAGES, "Arrows": RES.Trade.ARROWS,
+		"Gear": RES.Trade.GEAR, "Armor": RES.Trade.ARMOR,
+		"PotionHeal": RES.Trade.POTION_HEAL, "PotionMana": RES.Trade.POTION_MANA}
+	for slot in slots:
+		box.get_node(slot).visible = int(slots[slot]) in sold
 
 	var bandages: Button = box.get_node("Bandages")
+	var herb_name := "Травы" if elf else "Бинты"
 	if me.body.bandages >= RES.BANDAGE_LIMIT:
-		bandages.text = "Бинты — сумка полна (%d)" % RES.BANDAGE_LIMIT
+		bandages.text = "%s — сумка полна (%d)" % [herb_name, RES.BANDAGE_LIMIT]
 		bandages.disabled = true
 	else:
 		var cost_b: Array = me.bandage_cost()
-		bandages.text = "Бинты, %d шт — %s" % [RES.BANDAGE_PACK, RES.format_cost(cost_b)]
+		bandages.text = "%s, %d шт — %s" % [herb_name, RES.BANDAGE_PACK, RES.format_cost(cost_b)]
 		bandages.disabled = not me.stock.can_afford(cost_b)
 
 	var quiver: Button = box.get_node("Arrows")
@@ -1933,7 +1968,7 @@ func _refresh_trader(me: Node3D) -> void:
 		quiver.text = "Стрелы — колчан полон (%d)" % RES.QUIVER_LIMIT
 		quiver.disabled = true
 	else:
-		var cost_a: Array = me.arrow_cost()
+		var cost_a: Array = me.arrow_price()
 		quiver.text = "Стрелы, %d шт (в колчане %d) — %s" % [
 			RES.ARROW_PACK, me.arrows, RES.format_cost(cost_a)]
 		quiver.disabled = not me.stock.can_afford(cost_a)
@@ -1941,13 +1976,33 @@ func _refresh_trader(me: Node3D) -> void:
 	var gear: Button = box.get_node("Gear")
 	var cost: Array = me.next_gear_cost()
 	if cost.is_empty():
-		gear.text = "Снаряжение — лучше нет"
+		gear.text = "Эльфийское оружие — лучше нет"
 		gear.disabled = true
 	else:
-		gear.text = "Снаряжение: %s — %s" % [
-			WEAPONS.gear_name(me.gear_tier + 1), RES.format_cost(cost)
-		]
+		gear.text = "Эльфийское оружие: %s — %s" % [
+			WEAPONS.gear_name(me.gear_tier + 1), RES.format_cost(cost)]
 		gear.disabled = not me.stock.can_afford(cost)
+
+	var armor: Button = box.get_node("Armor")
+	var armor_cost: Array = me.next_armor_cost()
+	if armor_cost.is_empty():
+		armor.text = "%s — лучше нет" % RES.armor_name(side, int(me.armor_tier))
+		armor.disabled = true
+	else:
+		armor.text = "%s (урон по тебе x%.2f) — %s" % [
+			RES.armor_name(side, int(me.armor_tier) + 1).capitalize(),
+			RES.armor_taken(side, int(me.armor_tier) + 1), RES.format_cost(armor_cost)]
+		armor.disabled = not me.stock.can_afford(armor_cost)
+
+	for entry in [["PotionHeal", "Зелье лечения", RES.POTION_HEAL_COST, int(me.potions_heal)],
+			["PotionMana", "Зелье маны", RES.POTION_MANA_COST, int(me.potions_mana)]]:
+		var potion: Button = box.get_node(entry[0])
+		if int(entry[3]) >= RES.POTION_LIMIT:
+			potion.text = "%s — сумка полна (%d)" % [entry[1], RES.POTION_LIMIT]
+			potion.disabled = true
+		else:
+			potion.text = "%s (есть %d) — %s" % [entry[1], int(entry[3]), RES.format_cost(entry[2])]
+			potion.disabled = not me.stock.can_afford(entry[2])
 
 
 func _close_trader() -> void:

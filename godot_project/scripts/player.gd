@@ -152,6 +152,36 @@ signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id
 ## Уровень снаряжения, куплен у торговца. Ведёт ХОСТ — иначе клиент выписал бы
 ## себе эльфийский клинок бесплатно. Действует на любое оружие в руках.
 @export var gear_tier: int = 0
+## Ступень доспеха (GDD 9a): латы у злодея и стражи, лёгкая броня у эльфов.
+## Режет входящий урон (`RES.armor_taken`). Со смертью НЕ падает: латы не
+## снимают с трупа на бегу, — в отличие от оружия, которое выпадает из рук.
+@export var armor_tier: int = 0
+## Зелья эльфов: лечения и маны. Пьются своими клавишами.
+@export var potions_heal: int = 0
+@export var potions_mana: int = 0
+## Какая ступень доспеха сейчас НАРИСОВАНА. Отдельно от `armor_tier`: ступень
+## приезжает по сети, а рисуют её на каждом пире сами.
+var _shown_armor := 0
+var _armor_nodes: Array = []
+
+## Цвет доспеха по стороне: чёрные латы злодея, кожа эльфов, серебро стражи.
+const ARMOR_LOOK := [
+	[Color(0.10, 0.10, 0.12), 0.7],
+	[Color(0.40, 0.30, 0.18), 0.0],
+	[Color(0.78, 0.80, 0.86), 0.9],
+]
+
+
+## Перерисовать доспех, если ступень сменилась.
+func _refresh_armor() -> void:
+	if _shown_armor == armor_tier or _skeleton == null:
+		return
+	for node in _armor_nodes:
+		if is_instance_valid(node):
+			node.queue_free()
+	var look: Array = ARMOR_LOOK[clampi(int(faction), 0, ARMOR_LOOK.size() - 1)]
+	_armor_nodes = RIG.armor_pieces(_skeleton, armor_tier, look[0], float(look[1]))
+	_shown_armor = armor_tier
 
 ## Колчан. Ведёт ХОСТ, клиент только показывает.
 ##
@@ -487,6 +517,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_refresh_armor()
 	if Net.hosting():
 		_server_cooldown = maxf(0.0, _server_cooldown - delta)
 		sync_stagger = maxf(0.0, sync_stagger - delta)
@@ -1450,7 +1481,9 @@ func _apply_melee_effect(kind: int, target: Node3D) -> void:
 func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3, _aoe := false, weapon := -1) -> void:
 	if not Net.hosting():
 		return
-	var dealt: float = health.apply_damage(amount, attacker_id)
+	# Доспех режет урон до того, как он дошёл до здоровья и до тела.
+	var dealt: float = health.apply_damage(amount * RES.armor_taken(int(faction), armor_tier),
+		attacker_id)
 	if dealt <= 0.0:
 		return
 	# Два обязательных контрплея против магии злодея (GDD 3.2) — оба здесь,
@@ -1984,11 +2017,24 @@ func trade_cost(base: Array) -> Array:
 	return base
 
 
+## Цена следующей ступени оружия. У эльфов — в их лавке за золото; у злодея
+## и стражи — в кузне за железо и уголь (GDD 9a: «без угля нет огня»).
 func next_gear_cost() -> Array:
 	var next := gear_tier + 1
-	if not RES.GEAR_COST.has(next):
+	var table: Dictionary = RES.ELF_GEAR_COST if int(faction) == FACTIONS.Kind.ELVES else RES.FORGE_GEAR_COST
+	if not table.has(next):
 		return []
-	return trade_cost(RES.GEAR_COST[next])
+	return trade_cost(table[next])
+
+
+## Цена следующей ступени доспеха у своей стороны. Пусто — выше некуда.
+func next_armor_cost() -> Array:
+	return trade_cost(RES.armor_cost(int(faction), armor_tier + 1))
+
+
+## Цена стрел у своей лавки. Эльфийские — без железа.
+func arrow_price() -> Array:
+	return trade_cost(RES.ELF_ARROW_COST if int(faction) == FACTIONS.Kind.ELVES else RES.ARROW_COST)
 
 
 func bandage_cost() -> Array:
@@ -2012,6 +2058,10 @@ func request_trade(what: int) -> void:
 		return
 	if not health.alive or not at_trader():
 		return
+	# Лавка продаёт только товар своей стороны (GDD 9a).
+	if not (what in RES.SHOP.get(int(faction), [])):
+		_refuse("этого в вашей лавке не продают")
+		return
 
 	match what:
 		RES.Trade.BANDAGES:
@@ -2020,6 +2070,75 @@ func request_trade(what: int) -> void:
 			_server_buy_gear()
 		RES.Trade.ARROWS:
 			_server_buy_arrows()
+		RES.Trade.ARMOR:
+			_server_buy_armor()
+		RES.Trade.POTION_HEAL:
+			if potions_heal < RES.POTION_LIMIT and stock.spend(trade_cost(RES.POTION_HEAL_COST)):
+				potions_heal += 1
+		RES.Trade.POTION_MANA:
+			if potions_mana < RES.POTION_LIMIT and stock.spend(trade_cost(RES.POTION_MANA_COST)):
+				potions_mana += 1
+
+
+func _server_buy_armor() -> void:
+	var cost := next_armor_cost()
+	if cost.is_empty():
+		return
+	if not stock.spend(cost):
+		_refuse("не хватает на %s: нужно %s" % [RES.armor_name(int(faction), armor_tier + 1),
+			RES.format_cost(cost)])
+		return
+	armor_tier += 1
+	print("[торг] игрок %d купил доспех: %s" % [peer_id, RES.armor_name(int(faction), armor_tier)])
+
+
+## Закалить оружие в кузне (GDD 9a). Злодей и стража — у своей достроенной
+## кузни: железо и уголь. Эльфам кузня не нужна, их оружие — из лавки.
+func ask_forge_gear() -> void:
+	if Net.hosting():
+		request_forge_gear()
+	else:
+		request_forge_gear.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_forge_gear() -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	if int(faction) == FACTIONS.Kind.ELVES:
+		return
+	if building_at_hand(RES.Building.FORGE) == null:
+		_refuse("закаляют в кузне: подойди к своей достроенной кузне")
+		return
+	var cost := next_gear_cost()
+	if cost.is_empty():
+		return
+	if not stock.spend(cost):
+		_refuse("не хватает на закалку: нужно %s%s" % [RES.format_cost(cost),
+			" — уголь возят обозом с угольной шахты" if RES.at(cost, RES.Kind.COAL) > int(stock.get_amount(RES.Kind.COAL)) else ""])
+		return
+	gear_tier += 1
+	print("[кузня] игрок %d закалил оружие: %s" % [peer_id, WEAPONS.gear_name(gear_tier)])
+
+
+## Выпить зелье: 0 — лечения, 1 — маны.
+func ask_use_potion(kind: int) -> void:
+	if Net.hosting():
+		request_use_potion(kind)
+	else:
+		request_use_potion.rpc_id(1, kind)
+
+
+@rpc("any_peer", "reliable")
+func request_use_potion(kind: int) -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	if kind == 0 and potions_heal > 0:
+		potions_heal -= 1
+		health.current = minf(health.maximum(), health.current + RES.POTION_HEAL)
+	elif kind == 1 and potions_mana > 0:
+		potions_mana -= 1
+		mana = minf(mana_max(), mana + RES.POTION_MANA)
 
 
 func _server_buy_bandages() -> void:
@@ -2039,7 +2158,7 @@ func arrow_cost() -> Array:
 func _server_buy_arrows() -> void:
 	if arrows >= RES.QUIVER_LIMIT:
 		return
-	if not stock.spend(arrow_cost()):
+	if not stock.spend(arrow_price()):
 		return
 	arrows = mini(RES.QUIVER_LIMIT, arrows + RES.ARROW_PACK)
 	print("[торг] игрок %d купил стрелы, в колчане %d" % [peer_id, arrows])

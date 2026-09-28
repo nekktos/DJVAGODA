@@ -72,6 +72,7 @@ SUITES=(
 	"service:--servicetest:2:"
 	"endgame:--endgametest:0:"
 	"elves:--elvestest:1:"
+	"shop:--shoptest:0:"
 	"playable0:--playabletest:0:"
 	"playable1:--playabletest:1:"
 	"playable2:--playabletest:2:"

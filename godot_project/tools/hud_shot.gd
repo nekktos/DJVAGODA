@@ -43,6 +43,7 @@ func _run() -> void:
 
 	# Заклинание на откате и лошадь под боком: так на кадре видны и затемнение
 	# слота, и строка действия с клавишей и картинкой.
+	me.armor_tier = 2
 	me.sync_ability_cd[4] = 9.0
 	me.mana = 20.0
 	_world.spawn_horse(me.global_position + me.global_transform.basis.z * -2.5)
@@ -79,6 +80,18 @@ func _run() -> void:
 	main._building_ui.open_for(_world, me, stable)
 	await get_tree().create_timer(0.3).timeout
 	await _shot("08_конюшня")
+	main._building_ui.close_panel()
+	# Латы на теле: камера спереди, на уровне груди.
+	var eye := Camera3D.new()
+	_world.add_child(eye)
+	var chest: Vector3 = me.global_position + Vector3(0.0, 1.3, 0.0)
+	var facing: Vector3 = -me.global_transform.basis.z
+	eye.look_at_from_position(chest + facing * 3.2 + Vector3(0.8, 0.4, 0.0), chest)
+	eye.current = true
+	main._hud.visible = false
+	await get_tree().create_timer(0.4).timeout
+	await _shot("09_латы")
+	main._hud.visible = true
 	print("[снимки интерфейса] готово: %s" % out_dir)
 	get_tree().quit()
 

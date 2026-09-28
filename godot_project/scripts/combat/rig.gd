@@ -318,6 +318,61 @@ static func faction_band(skeleton: Skeleton3D, color: Color) -> Node3D:
 	return mount
 
 
+## Доспех на теле (GDD 9a): кираса на груди, со второй ступени — наплечники.
+## Цвет — сторона: чёрные латы злодея, серебряные стражи, кожа эльфов
+## («стилистически разные», ответ автора от 28.09).
+##
+## Крепится к костям, как лента стороны, и ездит вместе с телом. Возвращает
+## корневые узлы, чтобы их можно было снять при смене ступени.
+static func armor_pieces(skeleton: Skeleton3D, tier: int, color: Color, metal: float) -> Array:
+	var made := []
+	if skeleton == null or tier <= 0:
+		return made
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.metallic = metal
+	mat.roughness = 0.35 if metal > 0.3 else 0.85
+	var torso := bone(skeleton, "Torso")
+	if torso >= 0:
+		var mount := BoneAttachment3D.new()
+		mount.name = "Armor"
+		mount.bone_name = skeleton.get_bone_name(torso)
+		mount.bone_idx = torso
+		skeleton.add_child(mount)
+		var shell := CylinderMesh.new()
+		shell.top_radius = 0.46
+		shell.bottom_radius = 0.40
+		shell.height = 0.5
+		shell.radial_segments = 10
+		var chest := MeshInstance3D.new()
+		chest.mesh = shell
+		chest.material_override = mat
+		chest.position = Vector3(0.0, 0.18, 0.0)
+		mount.add_child(chest)
+		made.append(mount)
+	if tier >= 2:
+		for name in ["UpperArm.L", "UpperArm.R"]:
+			var arm := bone(skeleton, name)
+			if arm < 0:
+				continue
+			var pad_mount := BoneAttachment3D.new()
+			# Имя по стороне: два узла с одним именем у одного родителя движок
+			# переименовывает в безымянные, и найти второй наплечник было нечем.
+			pad_mount.name = "ArmorPad" + name.get_slice(".", 1)
+			pad_mount.bone_name = skeleton.get_bone_name(arm)
+			pad_mount.bone_idx = arm
+			skeleton.add_child(pad_mount)
+			var dome := SphereMesh.new()
+			dome.radius = 0.2
+			dome.height = 0.3
+			var pad := MeshInstance3D.new()
+			pad.mesh = dome
+			pad.material_override = mat
+			pad_mount.add_child(pad)
+			made.append(pad_mount)
+	return made
+
+
 ## Отметить выбитые глаза кровью на лице.
 ##
 ## Накладок на глазницы больше нет и быть не может: у Kenney лицо было отдельным

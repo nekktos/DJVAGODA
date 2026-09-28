@@ -25,7 +25,8 @@ const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
 
 ## Мелочь для боевой полосы: стрелы, бинт, опыт, мана.
-const TRINKETS := ["arrows", "bandage", "xp", "mana", "heart", "stamina"]
+const TRINKETS := ["arrows", "bandage", "xp", "mana", "heart", "stamina",
+	"armor", "potion_heal", "potion_mana"]
 
 ## Размер снимка. Иконки в меню от 24 до 80 пикселей, и 128 хватает с запасом:
 ## уменьшенная картинка читается лучше увеличенной.
@@ -366,6 +367,29 @@ func _trinket(key: String) -> Node3D:
 			point.position = Vector3(0.0, -0.14, 0.0)
 			point.rotation = Vector3(0.0, 0.0, deg_to_rad(45.0))
 			root.add_child(point)
+		"armor":
+			# Кираса: корпус и два наплечника.
+			var steel := Color(0.55, 0.57, 0.62)
+			var chest := _box(Vector3(0.7, 0.8, 0.35), steel, 0.8)
+			root.add_child(chest)
+			for side in [-0.48, 0.48]:
+				var pad := _sphere(0.2, steel)
+				pad.material_override = _material(steel, 0.8)
+				pad.position = Vector3(side, 0.32, 0.0)
+				pad.scale = Vector3(1.0, 0.7, 1.0)
+				root.add_child(pad)
+		"potion_heal", "potion_mana":
+			# Склянка: пузо, горлышко, пробка. Цвет — что в ней.
+			var tint := Color(0.90, 0.20, 0.25) if key == "potion_heal" else Color(0.35, 0.55, 1.0)
+			var belly := _sphere(0.38, tint)
+			belly.material_override = _glow(tint)
+			root.add_child(belly)
+			var neck := _cylinder(0.12, 0.35, Color(0.85, 0.90, 0.95))
+			neck.position = Vector3(0.0, 0.45, 0.0)
+			root.add_child(neck)
+			var cork := _cylinder(0.14, 0.14, Color(0.55, 0.38, 0.22))
+			cork.position = Vector3(0.0, 0.66, 0.0)
+			root.add_child(cork)
 		"stamina":
 			# Молния: три наклонённых бруска зигзагом.
 			var amber := Color(0.98, 0.78, 0.35)

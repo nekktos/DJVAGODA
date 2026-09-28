@@ -73,11 +73,15 @@ const HARVEST_RANGE := 3.2
 ## прочность; нужно время; количество домиков ограничено и зависит от числа
 ## игроков за эльфов — например, пять на игрока». Два вида: деревянный и
 ## каменный. Дома — места возрождения эльфов.
+##
+## КУЗНЯ (ответ автора от 28.09): «уголь — расходный ресурс для кузни, без угля
+## нет огня, и металлообработка невозможна». В кузне закаляют оружие — за
+## железо и уголь.
 enum Building { STORAGE, SWORD_BARRACKS, ARCHER_BARRACKS, STABLE, HOUSE, FARM,
-	ELF_HOUSE, ELF_STONE_HOUSE }
+	ELF_HOUSE, ELF_STONE_HOUSE, FORGE }
 
 const BUILDING_NAMES := ["склад", "казарма мечников", "казарма лучников", "конюшня",
-	"дом дружины", "поле", "дом эльфов", "каменный дом эльфов"]
+	"дом дружины", "поле", "дом эльфов", "каменный дом эльфов", "кузня"]
 
 ## Дома эльфов — чтобы спрашивать одним местом, «эльфийская ли постройка».
 const ELF_HOUSES := [Building.ELF_HOUSE, Building.ELF_STONE_HOUSE]
@@ -118,6 +122,9 @@ const BUILDING_COST := {
 	# эльфов нет под рукой: его ещё надо добыть или отбить.
 	Building.ELF_HOUSE: [60, 0, 0, 0],
 	Building.ELF_STONE_HOUSE: [30, 60, 0, 0],
+	# Кузня каменная и с железом в горне: её не поставить, пока не пришёл
+	# первый обоз.
+	Building.FORGE: [80, 60, 0, 20],
 }
 
 ## Сколько секунд строится.
@@ -130,6 +137,7 @@ const BUILD_TIME := {
 	Building.FARM: 8.0,
 	Building.ELF_HOUSE: 25.0,
 	Building.ELF_STONE_HOUSE: 40.0,
+	Building.FORGE: 20.0,
 }
 
 ## Размер основания, метры. Нужен и для призрака, и для проверки места.
@@ -145,6 +153,7 @@ const BUILDING_SIZE := {
 	# Дом на сваях: невысокий короб, высоко поднятый. Коллизия — по коробу.
 	Building.ELF_HOUSE: Vector3(10.0, 7.0, 10.0),
 	Building.ELF_STONE_HOUSE: Vector3(10.0, 7.0, 10.0),
+	Building.FORGE: Vector3(12.0, 6.0, 10.0),
 }
 
 ## Цена одного бойца по роду войск и потолок отряда. Лучник дороже железом и
@@ -278,7 +287,71 @@ static func shortfall_hint(cost: Array, have: Object) -> String:
 ## Цены пока одинаковы для всех. GDD раздел 8.1 говорит, что они должны зависеть
 ## от отношений между фракциями, но репутации и дипломатии в коде ещё нет —
 ## см. открытый вопрос в README.
-enum Trade { BANDAGES, GEAR, ARROWS }
+## Товары. Новые — в конец: номер уходит в сеть.
+##
+## У КАЖДОЙ СТОРОНЫ СВОЙ ТОВАР (ответ автора от 28.09): «у эльфов травы, зелья,
+## луки, лёгкая броня и оружие; у злодея и людей магазины одинаковые, но
+## стилистически разные — например, у злодея латы чёрные, а у людей
+## серебряные». Что продаёт чья лавка — `SHOP`.
+##
+## Оружие злодея и стражи в лавке НЕ продаётся: его закаляют в кузне за
+## железо и уголь (`FORGE_GEAR_COST`). Эльфийское оружие — дело их мастеров,
+## оно продаётся в их лавке за золото.
+enum Trade { BANDAGES, GEAR, ARROWS, ARMOR, POTION_HEAL, POTION_MANA }
+
+## Что продаёт лавка стороны. Порядок — порядок в окне лавки.
+const SHOP := {
+	0: [Trade.BANDAGES, Trade.ARROWS, Trade.ARMOR],
+	1: [Trade.BANDAGES, Trade.ARROWS, Trade.GEAR, Trade.ARMOR, Trade.POTION_HEAL, Trade.POTION_MANA],
+	2: [Trade.BANDAGES, Trade.ARROWS, Trade.ARMOR],
+}
+
+## ДОСПЕХ. Две ступени поверх «без доспеха». Режет входящий урон.
+## Латы злодея и стражи — тяжёлые и крепкие; эльфийская броня — лёгкая:
+## режет меньше, зато эльф остаётся быстрым (скорость доспех не трогает вовсе).
+const ARMOR_TIERS := 2
+const PLATE_TAKEN := [1.0, 0.82, 0.66]
+const LEATHER_TAKEN := [1.0, 0.88, 0.78]
+const PLATE_COST := {1: [0, 0, 50, 25], 2: [0, 0, 140, 60]}
+const LEATHER_COST := {1: [0, 0, 40, 0], 2: [0, 0, 120, 0]}
+## Как доспех называется у стороны — «стилистически разные».
+const ARMOR_NAMES := {
+	0: ["без доспеха", "чёрная кираса", "чёрные латы"],
+	1: ["без доспеха", "кожаная куртка", "эльфийская броня"],
+	2: ["без доспеха", "серебряная кираса", "серебряные латы"],
+}
+
+## Эльфийское оружие — за золото, без железа и угля: у эльфов нет ни шахт, ни
+## горна, и оружие их — дерево и мастерство.
+const ELF_GEAR_COST := {1: [0, 0, 80, 0], 2: [0, 0, 220, 0]}
+## Закалка оружия в кузне злодея и стражи: железо и уголь, немного золота.
+## Порядок массива — [дерево, камень, золото, железо, еда, уголь].
+const FORGE_GEAR_COST := {1: [0, 0, 20, 20, 0, 10], 2: [0, 0, 60, 60, 0, 30]}
+## Эльфийские стрелы — без железного наконечника.
+const ELF_ARROW_COST := [0, 0, 6, 0]
+
+## ЗЕЛЬЯ (эльфы). Лечение — сразу, мана — сразу. Пьются своими клавишами.
+const POTION_LIMIT := 3
+const POTION_HEAL_COST := [0, 0, 25, 0]
+const POTION_MANA_COST := [0, 0, 20, 0]
+const POTION_HEAL := 50.0
+const POTION_MANA := 60.0
+
+
+## Какой ценой сторона покупает товар ступени `tier` (для доспеха и оружия).
+static func armor_cost(faction: int, tier: int) -> Array:
+	var table: Dictionary = LEATHER_COST if faction == 1 else PLATE_COST
+	return table.get(tier, [])
+
+
+static func armor_taken(faction: int, tier: int) -> float:
+	var table: Array = LEATHER_TAKEN if faction == 1 else PLATE_TAKEN
+	return float(table[clampi(tier, 0, table.size() - 1)])
+
+
+static func armor_name(faction: int, tier: int) -> String:
+	var names: Array = ARMOR_NAMES.get(faction, ARMOR_NAMES[0])
+	return String(names[clampi(tier, 0, names.size() - 1)])
 
 ## Сколько бинтов в пачке и потолок в сумке.
 ## Вправить одну ПЕРЕБИТУЮ конечность: лубок и работа лекаря.

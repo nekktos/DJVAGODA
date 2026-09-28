@@ -210,7 +210,11 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 ## обслужит. Такой шаг молча пропускаем — иначе цепочка встанет на нём, и до
 ## цели партии человек не доберётся.
 func _skipped(step: Dictionary, me: Node3D) -> bool:
-	if String(step.get("skip", "")) != "gear":
+	var rule := String(step.get("skip", ""))
+	if rule == "armor":
+		var price: Array = me.next_armor_cost()
+		return price.is_empty() or not me.stock.can_afford(price)
+	if rule != "gear":
 		return false
 	var cost: Array = me.next_gear_cost()
 	return cost.is_empty() or not me.stock.can_afford(cost) or not me.trade_allowed()
@@ -234,13 +238,6 @@ func _capture_rule() -> String:
 
 ## Цена следующего снаряжения словами. Берём У ИГРЫ, а не вписываем числом:
 ## цены ещё будут меняться, и подсказка, врущая про цену, хуже молчания.
-func _gear_price() -> String:
-	var cost: Array = RES.GEAR_COST.get(1, [])
-	if cost.size() < 4:
-		return ""
-	return "%d золота и %d железа" % [cost[RES.Kind.GOLD], cost[RES.Kind.IRON]]
-
-
 ## Есть ли у стороны казарма — любая. Склад не в счёт: он про добычу, а шаг
 ## про то, чтобы было кем воевать.
 ## Есть ли у стороны достроенная постройка такого вида.
@@ -428,10 +425,13 @@ func _villain_chain() -> Array:
 			# понятно», а потом «меня там сразу убили». Лавок теперь три, по
 			# одной на сторону, и своя стоит у форта. Необязательным шаг
 			# остался: покупать никто не обязан.
-			"text": "Можно поднять снаряжение: урон больше на четверть, удар быстрее. Лавка своя, у форта",
-			"keys": "%s у прилавка · цена %s · шаг необязательный" % [_k(&"interact"), _gear_price()],
+			# С 28.09 (GDD 9a) оружие злодея закаляют в КУЗНЕ за железо и
+			# уголь, а лавка продаёт бинты, стрелы и латы.
+			"text": "В своей лавке у форта — чёрная кираса: режет урон почти на пятую часть",
+			"keys": "%s у прилавка · цена %s · шаг необязательный" % [
+				_k(&"interact"), RES.format_cost(RES.armor_cost(FACTIONS.Kind.VILLAIN, 1))],
 			"done": "trader",
-			"skip": "gear",
+			"skip": "armor",
 			"place": "своя лавка",
 			"at": WORLD_BUILDER.TRADER_POS[FACTIONS.Kind.VILLAIN],
 		},

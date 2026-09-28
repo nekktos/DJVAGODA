@@ -59,6 +59,8 @@ const ACTIONS := [
 	["ability_3", "заклинание 3", Group.COMBAT, [KEY_6]],
 	# Эльфы строят дома из боевого вида: вида сверху у них нет (GDD 9a).
 	["build_elf_house", "эльфы: построить дом", Group.COMBAT, [KEY_N]],
+	["potion_heal", "выпить зелье лечения", Group.COMBAT, [KEY_Z]],
+	["potion_mana", "выпить зелье маны", Group.COMBAT, [KEY_X]],
 
 	["cam_rotate_left", "поворот камеры влево", Group.STRATEGY, [KEY_Q]],
 	["cam_rotate_right", "поворот камеры вправо", Group.STRATEGY, [KEY_E]],
@@ -68,6 +70,7 @@ const ACTIONS := [
 	["build_stable", "строить: конюшня", Group.STRATEGY, [KEY_4]],
 	["build_house", "строить: дом дружины", Group.STRATEGY, [KEY_5]],
 	["build_farm", "строить: поле", Group.STRATEGY, [KEY_6]],
+	["build_forge", "строить: кузня", Group.STRATEGY, [KEY_U]],
 	["route", "маршрут обоза", Group.STRATEGY, [KEY_C]],
 	["hire_labourer", "нанять батрака", Group.STRATEGY, [KEY_B]],
 	["role_lumberjack", "батрака в лесорубы", Group.STRATEGY, [KEY_7]],

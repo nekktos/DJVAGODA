@@ -29,6 +29,8 @@ var _weapons := []
 var _abilities := []
 var _arrows: Label
 var _bandages: Label
+var _potion_heal: Control
+var _potion_mana: Control
 var _faction := -1
 
 
@@ -106,9 +108,23 @@ func _rebuild(me: Node3D) -> void:
 	row.add_child(arrows)
 	var bandages := _counter("bandage")
 	bandages.name = "Bandages"
-	bandages.tooltip_text = "Бинты: держи %s, стоя на месте, чтобы перевязаться." % KEYMAP.key_text(&"bandage")
+	bandages.tooltip_text = "%s: держи %s, стоя на месте, чтобы перевязаться." % [
+		"Травы" if _faction == FACTIONS.Kind.ELVES else "Бинты", KEYMAP.key_text(&"bandage")]
 	_bandages = bandages.get_child(1)
 	row.add_child(bandages)
+	# Зелья — только у эльфов: только их лавка их продаёт (GDD 9a).
+	if _faction == FACTIONS.Kind.ELVES:
+		_potion_heal = _counter("potion_heal")
+		_potion_heal.name = "PotionHeal"
+		_potion_heal.tooltip_text = "Зелье лечения: %s — выпить" % KEYMAP.key_text(&"potion_heal")
+		row.add_child(_potion_heal)
+		_potion_mana = _counter("potion_mana")
+		_potion_mana.name = "PotionMana"
+		_potion_mana.tooltip_text = "Зелье маны: %s — выпить" % KEYMAP.key_text(&"potion_mana")
+		row.add_child(_potion_mana)
+	else:
+		_potion_heal = null
+		_potion_mana = null
 
 
 ## Ячейка: картинка во всю ячейку, клавиша в углу.
@@ -183,5 +199,8 @@ func refresh() -> void:
 		cell.set_meta("broke", broke)
 	_arrows.text = str(int(me.arrows))
 	_arrows.add_theme_color_override("font_color", STYLE.DANGER if int(me.arrows) <= 0 else STYLE.TEXT_MAIN)
+	if _potion_heal != null:
+		(_potion_heal.get_child(1) as Label).text = str(int(me.potions_heal))
+		(_potion_mana.get_child(1) as Label).text = str(int(me.potions_mana))
 	_bandages.text = str(int(me.body.bandages))
 	_bandages.add_theme_color_override("font_color", STYLE.DANGER if int(me.body.bandages) <= 0 else STYLE.TEXT_MAIN)

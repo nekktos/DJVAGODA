@@ -173,6 +173,8 @@ func _fill() -> void:
 			_fill_stable()
 		RES.Building.STORAGE:
 			_fill_storage()
+		RES.Building.FORGE:
+			_fill_forge()
 		_:
 			_note.text = "Делать тут нечего."
 
@@ -218,6 +220,21 @@ func _fill_stable() -> void:
 		button.disabled = next == int(_player.harness_size)
 		button.pressed.connect(func() -> void: _player.ask_set_harness(next))
 		row.add_child(button)
+
+
+## Кузня (GDD 9a): закалить оружие за железо и уголь.
+func _fill_forge() -> void:
+	const WEAPONS := preload("res://scripts/combat/weapons.gd")
+	_note.text = "Закалка делает любое оружие в руках сильнее и быстрее. Горн жжёт уголь: без угля огня нет."
+	var cost: Array = _player.next_gear_cost()
+	if cost.is_empty():
+		_line("Оружие закалено до предела: %s." % WEAPONS.gear_name(int(_player.gear_tier)))
+		return
+	var forge := _button("Закалить: %s — %s" % [WEAPONS.gear_name(int(_player.gear_tier) + 1),
+		RES.format_cost(cost)], "wpn_0")
+	forge.disabled = not _player.stock.can_afford(cost)
+	forge.pressed.connect(func() -> void: _player.ask_forge_gear())
+	_line("Сейчас: %s." % WEAPONS.gear_name(int(_player.gear_tier)))
 
 
 func _fill_storage() -> void:

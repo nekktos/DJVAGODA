@@ -32,6 +32,7 @@ const BUILD := [
 	[&"build_stable", RES.Building.STABLE],
 	[&"build_house", RES.Building.HOUSE],
 	[&"build_farm", RES.Building.FARM],
+	[&"build_forge", RES.Building.FORGE],
 ]
 const ROLES := [
 	[&"role_lumberjack", LABOURER.Role.LUMBERJACK],
@@ -44,17 +45,22 @@ const ROLES := [
 ## Подпись на карточке. Короче полного названия: «казарма мечников» в карточку
 ## шириной в картинку не влезала и обрезалась на полуслове. Полное — в
 ## подсказке.
-const BUILD_CAPTIONS := ["склад", "мечники", "лучники", "конюшня", "дом", "поле"]
+const BUILD_CAPTIONS := {
+	RES.Building.STORAGE: "склад", RES.Building.SWORD_BARRACKS: "мечники",
+	RES.Building.ARCHER_BARRACKS: "лучники", RES.Building.STABLE: "конюшня",
+	RES.Building.HOUSE: "дом", RES.Building.FARM: "поле", RES.Building.FORGE: "кузня",
+}
 
 ## Что делает каждая постройка — во всплывающей подсказке карточки.
-const BUILD_NOTES := [
-	"Хранит добычу: сложенное в склад не теряется со смертью. Сюда возвращаются обозы.",
-	"Здесь нанимают мечников.",
-	"Здесь нанимают лучников.",
-	"Здесь покупают лошадей: без лошади обоз не выедет.",
-	"Поднимает потолок отряда: без домов держишь только охрану.",
-	"Растит еду сама; фермер уносит её на склад. Батраки едят.",
-]
+const BUILD_NOTES := {
+	RES.Building.STORAGE: "Хранит добычу: сложенное в склад не теряется со смертью. Сюда возвращаются обозы.",
+	RES.Building.SWORD_BARRACKS: "Здесь нанимают мечников.",
+	RES.Building.ARCHER_BARRACKS: "Здесь нанимают лучников.",
+	RES.Building.STABLE: "Здесь покупают лошадей: без лошади обоз не выедет.",
+	RES.Building.HOUSE: "Поднимает потолок отряда: без домов держишь только охрану.",
+	RES.Building.FARM: "Растит еду сама; фермер уносит её на склад. Батраки едят.",
+	RES.Building.FORGE: "Закаляет оружие за железо и уголь. Без угля огня нет.",
+}
 const ROLE_NOTES := [
 	"Рубит лес и носит дерево на склад.",
 	"Бьёт камень и руду в залежах. Руду из шахт эльфов возит только обоз.",
