@@ -71,6 +71,9 @@ const WAYPOINT := preload("res://scripts/ui/waypoint.gd")
 const KEYMAP := preload("res://scripts/ui/keymap.gd")
 const PAUSE_MENU := preload("res://scripts/ui/pause_menu.gd")
 const STYLE := preload("res://scripts/ui/style.gd")
+const ICONS := preload("res://scripts/ui/icons.gd")
+const RESOURCE_BAR := preload("res://scripts/ui/resource_bar.gd")
+const COMMAND_BAR := preload("res://scripts/ui/command_bar.gd")
 
 ## Человек ВЫБРАЛ сторону сам, а не получил её подстановкой из сейва.
 ##
@@ -83,6 +86,11 @@ const STYLE := preload("res://scripts/ui/style.gd")
 var _onboarding := ONBOARDING.new()
 ## Меню паузы и клавиш (Esc). Собирается кодом при старте.
 var _settings: Control = null
+## Иконки интерфейса — снимки моделей игры (`ui/icons.gd`).
+var _icons: Node = null
+## Полоса запасов (левый верх) и панель команд вида сверху (левый низ).
+var _res_bar: Control = null
+var _command_bar: Control = null
 var _waypoint: Node3D = null
 var _faction_chosen := false
 
@@ -144,6 +152,7 @@ func _ready() -> void:
 	# клавиши, и сохранённые переназначения должны действовать с первого кадра.
 	KEYMAP.install()
 	_build_settings()
+	_build_bars()
 	Net.status_changed.connect(_on_status)
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
@@ -219,6 +228,7 @@ func _process(delta: float) -> void:
 	_tick_announce(delta)
 	_tick_refusal(delta)
 	_refresh_hud()
+	_refresh_bars()
 	_update_blindness()
 
 
@@ -272,17 +282,18 @@ func _refresh_hud() -> void:
 	# что бросается в глаза.
 	for line in _objective_hint(me).split("\n"):
 		right.append(line)
-	if me != null:
-		right.append("склад: %s" % me.stock.summary())
+	# Запасы — картинками в полосе слева вверху (`ui/resource_bar.gd`), здесь
+	# их больше нет: одна и та же цифра в двух местах читается как две разные.
 	var ai: String = _ai_hint().strip_edges()
 	if ai != "":
 		right.append(ai)
 
 	if _world.strategy_mode:
-		_hud.set_vitals(0.0, 1.0, "", "")
+		# Жизнь сверху не нужна: персонажа отсюда не видно, а левый низ занят
+		# панелью команд. Батраки и отряд — там же, карточками.
+		_hud.vitals_panel.visible = false
 		right.append("высота камеры: %d м" % int(_world.strategy_height()))
-		right.append(_crew_hint().replace("\n", "  "))
-		right.append(_squad_hint().replace("\n", "  "))
+		right.append(_squad_hint())
 		_hud.set_right(right)
 		_hud.set_spells("")
 		_hud.set_prompt(_strategy_prompt())
@@ -718,6 +729,58 @@ func _toggle_mouse() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+## Иконки, полоса запасов и панель команд. Иконки снимаются один раз при
+## запуске, пока человек смотрит на главное меню.
+func _build_bars() -> void:
+	_icons = ICONS.new()
+	_icons.name = "Icons"
+	add_child(_icons)
+	_res_bar = RESOURCE_BAR.new()
+	_res_bar.name = "ResourceBar"
+	_hud.add_child(_res_bar)
+	_res_bar.setup(_world, _icons)
+	_res_bar.position = Vector2(_hud.MARGIN, 8.0)
+	_res_bar.visible = false
+	_command_bar = COMMAND_BAR.new()
+	_command_bar.name = "CommandBar"
+	_hud.add_child(_command_bar)
+	_command_bar.setup(_world, _icons)
+	# Привязка к левому низу ОТСТУПАМИ, а не позицией: позиция, заданная после
+	# привязки, считалась от верха, и на первом снимке панель висела поверх
+	# полосы запасов. Растёт вверх — снизу её держит край экрана.
+	_command_bar.anchor_left = 0.0
+	_command_bar.anchor_right = 0.0
+	_command_bar.anchor_top = 1.0
+	_command_bar.anchor_bottom = 1.0
+	_command_bar.offset_left = _hud.MARGIN
+	_command_bar.offset_top = -_hud.MARGIN
+	_command_bar.offset_bottom = -_hud.MARGIN
+	_command_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_command_bar.visible = false
+	# Меню паузы должно остаться поверх полос: переносим его в конец.
+	$UI.move_child(_settings, -1)
+
+
+## Раз в кадр: полосы и подсветка нехватки.
+##
+## Подсвечиваем цену того, на что сейчас смотрят: карточка под мышью или
+## постройка, которую держат над землёй. Так видно, чего не хватает, ДО того,
+## как стройка получит отказ.
+func _refresh_bars() -> void:
+	if not Net.active:
+		_res_bar.visible = false
+		_command_bar.visible = false
+		_hud.set_prompt_lift(0.0)
+		return
+	_command_bar.refresh()
+	var cost: Array = _command_bar.hovered_cost
+	if cost.is_empty() and _world.build_controller.active:
+		cost = RES.BUILDING_COST[int(_world.build_controller.kind)]
+	_res_bar.highlight_shortfall(cost)
+	_res_bar.refresh()
+	_hud.set_prompt_lift(_command_bar.size.y + 8.0 if _command_bar.visible else 0.0)
+
+
 ## Меню паузы и клавиш. Кладём ПОСЛЕДНИМ в UI, чтобы оно было поверх всего.
 func _build_settings() -> void:
 	_settings = PAUSE_MENU.new()
@@ -1058,6 +1121,7 @@ const TEST_FLAGS := {
 	"--bootstraptest": ["res://tools/bootstrap_test.gd", true],
 	"--minestest": ["res://tools/mines_test.gd", true],
 	"--keystest": ["res://tools/keys_test.gd", true],
+	"--hudtest": ["res://tools/hud_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1101,6 +1165,12 @@ func _apply_cmdline() -> void:
 	for arg in args:
 		if arg.begins_with("--shots="):
 			_start_screenshots(arg.substr("--shots=".length()))
+			needs_session = true
+			break
+
+	for arg in args:
+		if arg.begins_with("--hudshots="):
+			_start_tool_with(arg.substr("--hudshots=".length()), "res://tools/hud_shot.gd")
 			needs_session = true
 			break
 
@@ -1487,10 +1557,13 @@ func _squad_hint() -> String:
 			swords += 1
 	# Про наём здесь больше ни слова: нанимают у казарм, а не с этой панели, и
 	# подсказка о клавише, которой нет, хуже отсутствия подсказки.
-	return "отряд: %d/%d (мечников %d, лучников %d), %s, %s
-F1-F4 строй, G следовать, ПКМ идти в точку" % [
+	# Клавиши — из раскладки: строи с 28.09 на F2-F5, и прежняя подпись
+	# «F1-F4» звала жать клавишу, которую перехватывала справка.
+	return "отряд: %d/%d (мечников %d, лучников %d), %s, %s\nстрой %s · %s — за мной · ПКМ — идти в точку" % [
 		squad.size(), _world.squad_capacity(int(me.faction)), swords, bows, stance,
-		FORMATIONS.describe(me.squad_formation)
+		FORMATIONS.NAMES[clampi(me.squad_formation, 0, FORMATIONS.NAMES.size() - 1)],
+		_keys([&"formation_1", &"formation_2", &"formation_3", &"formation_4"]),
+		_k(&"squad_follow"),
 	]
 
 

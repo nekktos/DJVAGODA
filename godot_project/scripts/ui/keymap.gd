@@ -145,7 +145,24 @@ static func primary(action: StringName) -> InputEvent:
 	return events[0] if not events.is_empty() else null
 
 
-## Как клавишу назвать человеку: «E», «Space», «ЛКМ».
+## Клавиши, у которых движок даёт английское слово вместо значка: «Minus»,
+## «QuoteLeft». Человек ищет на клавиатуре значок, а не слово.
+const RUSSIAN_KEYS := {
+	KEY_MINUS: "-",
+	KEY_EQUAL: "=",
+	KEY_QUOTELEFT: "Ё",
+	KEY_SPACE: "Пробел",
+	KEY_COMMA: ",",
+	KEY_PERIOD: ".",
+	KEY_SLASH: "/",
+	KEY_SEMICOLON: ";",
+	KEY_APOSTROPHE: "'",
+	KEY_BRACKETLEFT: "[",
+	KEY_BRACKETRIGHT: "]",
+}
+
+
+## Как клавишу назвать человеку: «E», «Пробел», «ЛКМ».
 static func key_text(action: StringName) -> String:
 	return event_text(primary(action))
 
@@ -169,6 +186,8 @@ static func event_text(event: InputEvent) -> String:
 		var shown := 0
 		if DisplayServer.get_name() != "headless":
 			shown = DisplayServer.keyboard_get_keycode_from_physical(code as Key)
+		if RUSSIAN_KEYS.has(code):
+			return RUSSIAN_KEYS[code]
 		var text := OS.get_keycode_string(shown if shown != 0 else code)
 		return text if text != "" else "?"
 	return "?"

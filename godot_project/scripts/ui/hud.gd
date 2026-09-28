@@ -43,6 +43,8 @@ const BAR_FILL_TEX := preload("res://assets/ui/kenney/slide_horizontal_color.png
 
 ## Отступ панелей от края экрана.
 const MARGIN := 18.0
+## Ширина панели хозяйства. Вместе с панелью команд слева укладывается в 1280.
+const RIGHT_WIDTH := 380.0
 
 ## Фон панелей. Тёмный и полупрозрачный: мир под ним светлый, и белый текст без
 ## подложки на нём не читается вовсе — это видно на снимке старого интерфейса.
@@ -145,10 +147,15 @@ func set_crosshair(on: bool) -> void:
 func _build() -> void:
 	# Техническая строка. Мелко и тускло — она нужна, когда тестер пишет отчёт,
 	# а не когда он дерётся.
+	# Правый верх, а не левый: левый верх с 28.09 занимает полоса запасов, на
+	# которую смотрят куда чаще, чем на номер сборки.
 	tech = Label.new()
-	tech.add_theme_font_size_override("font_size", 13)
+	tech.add_theme_font_size_override("font_size", 12)
 	tech.add_theme_color_override("font_color", TEXT_DIM)
-	tech.position = Vector2(MARGIN, 10.0)
+	tech.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tech.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	tech.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	tech.position = Vector2(-MARGIN, 8.0)
 	add_child(tech)
 
 	# Жизнь: левый низ. Сюда смотрят чаще всего и в самый неподходящий момент,
@@ -209,6 +216,10 @@ func _build() -> void:
 	add_child(right)
 	right_box = VBoxContainer.new()
 	right_box.add_theme_constant_override("separation", 3)
+	# ШИРИНА ЗАДАНА, строки переносятся. Без этого длинная строка («без
+	# игроков: Лесные эльфы — идёт в набег (4) ...») растягивала панель на
+	# полэкрана, и сверху она залезала под панель команд.
+	right_box.custom_minimum_size = Vector2(RIGHT_WIDTH, 0.0)
 	right.add_child(right_box)
 
 	# Что можно сделать прямо сейчас — одной строкой по центру внизу. Это
@@ -237,7 +248,9 @@ func _build() -> void:
 	task_panel = _panel()
 	task_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	task_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	task_panel.position = Vector2(0.0, 34.0)
+	# Ниже полосы запасов: та стоит в левом верхнем углу во всю высоту первой
+	# строки, и на узком экране задача налезала бы на неё.
+	task_panel.position = Vector2(0.0, 62.0)
 	task_panel.visible = false
 	add_child(task_panel)
 	var task_box := VBoxContainer.new()
@@ -379,9 +392,20 @@ func set_right(lines: PackedStringArray) -> void:
 		label.add_theme_font_size_override("font_size", 14)
 		label.add_theme_color_override("font_color", TEXT_MAIN)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.custom_minimum_size = Vector2(RIGHT_WIDTH, 0.0)
 		label.text = line
 		right_box.add_child(label)
 	right_box.get_parent().visible = right_box.get_child_count() > 0
+
+
+## Поднять строку действия над панелью команд. Ноль — на обычное место.
+##
+## Сверху внизу экрана стоит панель команд, и строка «СТРОЙКА: ЛКМ поставить»
+## без подъёма пряталась бы за карточками, о которых она и говорит.
+func set_prompt_lift(pixels: float) -> void:
+	prompt.offset_bottom = -56.0 - pixels
+	prompt.offset_top = -84.0 - pixels
 
 
 ## Одна строка о том, что доступно прямо сейчас. Пусто — прячем.

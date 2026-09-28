@@ -27,26 +27,31 @@ var _waiting: StringName = &""
 var _note: Label
 ## Открыли клавиши прямо из главного меню: «назад» закрывает окно целиком.
 var _keys_only := false
+## Середина экрана: обе страницы живут в ней и сами встают по центру.
+var _centre: CenterContainer
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Привязку И отступы разом. С одной привязкой окно, собранное кодом,
+	# оставалось нулевого размера: пауза вылезала в левый верхний угол, а
+	# затемнение не рисовалось вовсе — это видно на первом снимке.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.0, 0.0, 0.55)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
+	_centre = CenterContainer.new()
+	_centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_centre)
 	_build_pause()
 	_build_keys()
 
 
 func _build_pause() -> void:
 	var box := STYLE.panel(24.0)
-	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(box)
+	_centre.add_child(box)
 	_pause_page = box
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 10)
@@ -75,10 +80,7 @@ func _build_pause() -> void:
 
 func _build_keys() -> void:
 	var box := STYLE.panel(20.0)
-	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(box)
+	_centre.add_child(box)
 	_keys_page = box
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 10)
@@ -94,25 +96,31 @@ func _build_keys() -> void:
 
 	# Три колонки по режимам: в бою, сверху и везде. Колонки, а не одна длинная
 	# простыня: в каждом режиме свои клавиши, и искать их удобнее рядом.
+	# В прокрутке: сорок семь действий в три колонки на экране высотой 720 не
+	# помещаются, и без прокрутки низ списка с кнопкой «Назад» уходил за край.
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0.0, 470.0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(scroll)
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 18)
-	outer.add_child(columns)
+	scroll.add_child(columns)
 	var lists := []
 	for group in KEYMAP.GROUP_NAMES.size():
 		var column := VBoxContainer.new()
 		column.add_theme_constant_override("separation", 3)
-		column.custom_minimum_size = Vector2(300.0, 0.0)
+		column.custom_minimum_size = Vector2(290.0, 0.0)
 		column.add_child(STYLE.label(KEYMAP.GROUP_NAMES[group], 17, STYLE.ACCENT))
 		columns.add_child(column)
 		lists.append(column)
 	for entry in KEYMAP.ACTIONS:
 		var row := HBoxContainer.new()
-		var name_label := STYLE.label(String(entry[1]), 14)
+		var name_label := STYLE.label(String(entry[1]), 13)
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
-		var key := STYLE.button("", 14)
+		var key := STYLE.button("", 13)
 		key.name = String(entry[0])
-		key.custom_minimum_size = Vector2(92.0, 0.0)
+		key.custom_minimum_size = Vector2(84.0, 0.0)
 		key.pressed.connect(_begin_capture.bind(StringName(entry[0])))
 		row.add_child(key)
 		lists[int(entry[2])].add_child(row)
