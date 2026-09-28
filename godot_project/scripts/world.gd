@@ -748,11 +748,23 @@ func _drop_belongings(player: Node3D) -> void:
 	var lost: PackedInt32Array = player.stock.drop_carried()
 	var gear: int = int(player.gear_tier)
 	player.gear_tier = 0
+	# ПАДАЕТ ВСЁ, что было на теле (ответ автора от 29.09): доспех, бинты или
+	# травы, зелья, стрелы. Раньше доспех оставался на вернувшемся.
+	var armor: int = int(player.armor_tier)
+	var bandages: int = int(player.body.bandages)
+	var potions_heal: int = int(player.potions_heal)
+	var potions_mana: int = int(player.potions_mana)
+	var arrows: int = int(player.arrows)
+	player.armor_tier = 0
+	player.body.bandages = 0
+	player.potions_heal = 0
+	player.potions_mana = 0
+	player.arrows = 0
 
 	var total := 0
 	for value in lost:
 		total += value
-	if total <= 0 and gear <= 0:
+	if total <= 0 and gear <= 0 and armor <= 0 and bandages + potions_heal + potions_mana + arrows <= 0:
 		return
 
 	_spawn_counter += 1
@@ -762,9 +774,14 @@ func _drop_belongings(player: Node3D) -> void:
 		"point": player.global_position + Vector3.UP * 0.6,
 		"contents": lost,
 		"gear": gear,
+		"armor": armor,
+		"bandages": bandages,
+		"potions_heal": potions_heal,
+		"potions_mana": potions_mana,
+		"arrows": arrows,
 	})
-	print("[смерть] с игрока %d выпало %d единиц и снаряжение уровня %d"
-		% [int(player.peer_id), total, gear])
+	print("[смерть] с игрока %d выпало %d единиц, оружие %d, доспех %d, бинтов %d, зелий %d, стрел %d"
+		% [int(player.peer_id), total, gear, armor, bandages, potions_heal + potions_mana, arrows])
 
 
 func _spawn_corpse(player: Node3D) -> void:
@@ -1051,9 +1068,10 @@ func intercept_caravan(cart: Node3D, player: Node3D) -> bool:
 ## казармы), бойцы стражи, её обозы, казна и лошади.
 ##
 ## ЧТО НЕТ: стражники-ИГРОКИ. Они остаются стражей — со своим оружием и без
-## магии злодея, — но становятся его союзниками (`FACTIONS.hostile`) и теряют
-## командование: вожак на стороне один. Перекрасить живого игрока в злодея
-## значило бы выдать ему чужое снаряжение и чужую магию посреди боя.
+## магии злодея, «обычные люди-воины», — становятся его союзниками
+## (`FACTIONS.hostile`) и командование сохраняют (ответ автора от 29.09).
+## Перекрасить живого игрока в злодея значило бы выдать ему чужое снаряжение и
+## чужую магию посреди боя.
 func absorb_guard() -> void:
 	if not Net.hosting():
 		return
@@ -1090,8 +1108,9 @@ func absorb_guard() -> void:
 		from.grant(RES.empty())
 		from.horses = 0
 		from.horses_out = 0
-	for player in players_of(guard):
-		player.is_leader = false
+	# Командир стражи командование СОХРАНЯЕТ (ответ автора от 29.09: «с
+	# командованием, но без магии — они обычные люди-воины»): он теперь служит
+	# злодею, но отрядом, стройкой и наёмом распоряжается по-прежнему.
 	print("[цель] стража перешла к злодею: постройки, бойцы, обозы, казна")
 
 

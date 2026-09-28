@@ -21,6 +21,13 @@ const LIFETIME := 240.0
 ## Уровень снаряжения, выпавший с убитого (Этап 10, шаг 1). 0 — снаряжения в
 ## куче нет, это обычный груз каравана.
 @export var gear: int = 0
+## ВСЁ, ЧТО БЫЛО НА ТЕЛЕ (ответ автора от 29.09: «весь лут падает и
+## содержимое инвентаря»): доспех, бинты или травы, зелья, стрелы.
+@export var armor: int = 0
+@export var bandages: int = 0
+@export var potions_heal: int = 0
+@export var potions_mana: int = 0
+@export var arrows: int = 0
 
 var _taken := false
 
@@ -29,6 +36,11 @@ func setup(data: Dictionary) -> void:
 	position = data["point"]
 	contents = RES.fit(data["contents"])
 	gear = int(data.get("gear", 0))
+	armor = int(data.get("armor", 0))
+	bandages = int(data.get("bandages", 0))
+	potions_heal = int(data.get("potions_heal", 0))
+	potions_mana = int(data.get("potions_mana", 0))
+	arrows = int(data.get("arrows", 0))
 
 
 func _ready() -> void:
@@ -171,6 +183,28 @@ func collect(player: Node3D) -> int:
 	if gear > int(player.gear_tier):
 		player.gear_tier = gear
 		took_gear = true
+	# Доспех — тоже только лучше своего. Расходники добираются до потолка
+	# сумки: лишнее остаётся лежать, а не пропадает.
+	if armor > int(player.armor_tier):
+		player.armor_tier = armor
+		took_gear = true
+	var room: int = RES.BANDAGE_LIMIT - int(player.body.bandages)
+	var took: int = clampi(bandages, 0, maxi(0, room))
+	player.body.bandages += took
+	bandages -= took
+	total += took
+	took = clampi(potions_heal, 0, maxi(0, RES.POTION_LIMIT - int(player.potions_heal)))
+	player.potions_heal += took
+	potions_heal -= took
+	total += took
+	took = clampi(potions_mana, 0, maxi(0, RES.POTION_LIMIT - int(player.potions_mana)))
+	player.potions_mana += took
+	potions_mana -= took
+	total += took
+	took = clampi(arrows, 0, maxi(0, RES.QUIVER_LIMIT - int(player.arrows)))
+	player.arrows += took
+	arrows -= took
+	total += took
 
 	if total <= 0 and not took_gear:
 		return 0
@@ -186,4 +220,14 @@ func summary() -> String:
 	for i in RES.COUNT:
 		if contents[i] > 0:
 			parts.append("%s %d" % [RES.SHORT[i], contents[i]])
+	if gear > 0:
+		parts.append("оружие %d" % gear)
+	if armor > 0:
+		parts.append("доспех %d" % armor)
+	if bandages > 0:
+		parts.append("бинтов %d" % bandages)
+	if potions_heal + potions_mana > 0:
+		parts.append("зелий %d" % (potions_heal + potions_mana))
+	if arrows > 0:
+		parts.append("стрел %d" % arrows)
 	return ", ".join(parts)

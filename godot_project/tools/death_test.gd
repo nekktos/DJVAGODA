@@ -20,7 +20,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "смерть"
-	expected_host = 18
+	expected_host = 20
 	expected_client = 2
 	_world = world
 	_run.call_deferred()
@@ -68,6 +68,8 @@ func _test_wallet_split(me: Node3D) -> void:
 ## Смерть роняет всё при себе и купленное снаряжение; поднять может любой.
 func _test_death_drops(me: Node3D) -> void:
 	me.gear_tier = 2
+	me.armor_tier = 2
+	me.potions_heal = 2
 	me.stock.carried.amounts = RES.fit([0, 0, 90, 20])
 	me.teleport.rpc(Vector3(20.0, 2.0, 20.0))
 	await get_tree().physics_frame
@@ -86,6 +88,12 @@ func _test_death_drops(me: Node3D) -> void:
 	if pile == null:
 		return
 	check(int(pile.gear) == 2, "снаряжение выпало в кучу", "уровень %d" % int(pile.gear))
+	# ПАДАЕТ ВСЁ (ответ автора от 29.09): доспех и зелья тоже.
+	check(int(pile.armor) == 2 and int(pile.potions_heal) == 2 and int(me.armor_tier) == 0
+			and int(me.potions_heal) == 0,
+		"доспех и зелья тоже выпали в кучу",
+		"в куче доспех %d, зелий %d; на мёртвом доспех %d, зелий %d" % [int(pile.armor),
+			int(pile.potions_heal), int(me.armor_tier), int(me.potions_heal)])
 
 	# Ждём респавна и идём подбирать своё же добро.
 	await get_tree().create_timer(6.0).timeout
@@ -107,6 +115,8 @@ func _test_death_drops(me: Node3D) -> void:
 		"золота %d" % me.stock.get_amount(RES.Kind.GOLD))
 	check(int(me.gear_tier) == 2, "снаряжение возвращается с кучей",
 		"уровень %d" % int(me.gear_tier))
+	check(int(me.armor_tier) == 2 and int(me.potions_heal) == 2, "доспех и зелья возвращаются с кучей",
+		"доспех %d, зелий %d" % [int(me.armor_tier), int(me.potions_heal)])
 
 
 ## Ранения переживают смерть. Это главное в шаге: раньше здесь стоял body.reset(),
