@@ -105,6 +105,9 @@ signal camera_mode_changed(strategy: bool)
 @onready var objective: Node3D = $Objective
 @onready var forest: Node3D = $Forest
 @onready var commander: Node3D = $Commander
+## Старейшина эльфов (задания). Узел заводим кодом: в сцене его нет.
+var elder: Node3D = null
+const ELDER := preload("res://scripts/elder.gd")
 @onready var treasury: Node = $Treasury
 @onready var savegame: Node = $Save
 @onready var garrison: Node = $Garrison
@@ -162,6 +165,9 @@ func _ready() -> void:
 	build_controller.place_requested.connect(_on_place_requested)
 	route_controller.route_sent.connect(_on_route_sent)
 	_place_mines()
+	elder = ELDER.new()
+	elder.name = "Elder"
+	add_child(elder)
 	# Мир построен, но НЕ запущен. Пока человек в меню, он не играет, и мир
 	# играть за него не должен: см. `_set_running`.
 	_set_running(false)
@@ -478,6 +484,10 @@ func living_elves() -> int:
 			count += 1
 	for unit in get_tree().get_nodes_in_group("unit"):
 		if "faction" in unit and int(unit.faction) == FACTIONS.Kind.ELVES and float(unit.health) > 0.0:
+			# Старейшина не в счёт: он встаёт сам, и эльфы с ним не выбыли бы
+			# никогда, как их ни вырезай.
+			if "is_champion" in unit and bool(unit.is_champion):
+				continue
 			count += 1
 	return count
 
@@ -682,6 +692,7 @@ func _on_player_death(player: Node3D, killer_id: int) -> void:
 	print("[бой] %s убит игроком %d" % [player.name, killer_id])
 	commander.report_kill(killer_id, int(player.faction))
 	commander.report_victim(killer_id, player)
+	elder.report_victim(killer_id, player)
 	_award_kill_xp(killer_id, int(player.faction), bool(player.is_leader))
 	# Гибель стража может провалить его решающий удар; гибель вожака — засчитать
 	# чужой. Порядок важен: сперва снимаем провал, потом засчитываем победителю.
@@ -1131,6 +1142,7 @@ func _on_caravan_destroyed(point: Vector3, cargo: PackedInt32Array, killer_id: i
 	# решит, его ли это караван и тот ли игрок его разбил.
 	commander.report_caravan_destroyed(killer_id, caravan_faction)
 	commander.report_caravan_lost(point, caravan_faction)
+	elder.report_caravan_hit(killer_id, caravan_faction)
 	var total := 0
 	for value in cargo:
 		total += value
@@ -1153,6 +1165,7 @@ func report_unit_kill(killer_id: int, victim_faction: int, victim: Node3D = null
 	commander.report_kill(killer_id, victim_faction)
 	if victim != null:
 		commander.report_victim(killer_id, victim)
+		elder.report_victim(killer_id, victim)
 	_award_kill_xp(killer_id, victim_faction, false)
 
 

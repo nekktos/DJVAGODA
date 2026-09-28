@@ -50,6 +50,7 @@ extends RefCounted
 const FACTIONS := preload("res://scripts/factions.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const KEYMAP := preload("res://scripts/ui/keymap.gd")
+const ELDER := preload("res://scripts/elder.gd")
 const OBJECTIVE := preload("res://scripts/objective.gd")
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
 const COMMANDER := preload("res://scripts/commander.gd")
@@ -193,6 +194,8 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return me.global_position.distance_to(_spawn) > LOOKED_AROUND
 		"commander":
 			return world.commander != null and world.commander.in_range(me.global_position)
+		"elder":
+			return int(me.order_kind) >= 0
 		"arrived":
 			var at = step.get("at", null)
 			if at == null:
@@ -464,6 +467,15 @@ func _elf_chain() -> Array:
 			"done": "trader",
 			"place": "лавка",
 			"at": WORLD_BUILDER.TRADER_POS[FACTIONS.Kind.ELVES],
+		},
+		{
+			# СТАРЕЙШИНА (GDD 9a): у эльфов теперь есть задания, как у стражи
+			# приказы. Без этого шага эльф узнавал о них разве что случайно.
+			"text": "Старейшина в поселении даёт задания: засады на обозы, шахты, древние земли",
+			"keys": "%s у старейшины" % _k(&"interact"),
+			"done": "elder",
+			"place": "старейшина",
+			"at": ELDER.POSITION,
 		},
 		{
 			"text": "Живёшь ты грабежом. Чужие обозы идут через перекрёсток в центре",

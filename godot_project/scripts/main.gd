@@ -65,6 +65,7 @@ const WARBAND := preload("res://scripts/ai/warband.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const PROGRESS := preload("res://scripts/progression.gd")
 const ORDERS := preload("res://scripts/orders.gd")
+const TASKS := preload("res://scripts/elf_tasks.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
 const ONBOARDING := preload("res://scripts/ui/onboarding.gd")
 const WAYPOINT := preload("res://scripts/ui/waypoint.gd")
@@ -432,6 +433,10 @@ func _action_prompt(me: Node3D) -> Dictionary:
 			"text": "лавка (снаряжение сейчас %s)" % WEAPONS.gear_name(me.gear_tier)}
 	if me.at_commander():
 		return {"key": &"interact", "icon": "guard", "text": "командир: %s" % _order_hint(me)}
+	if me.at_elder():
+		var task := "получить задание" if me.order_kind < 0 else "%s (%s)" % [
+			TASKS.name_of(me.order_kind), TASKS.progress_text(me.order_kind, me.order_progress)]
+		return {"key": &"interact", "icon": "elf", "text": "старейшина: %s" % task}
 	if me.at_workbench():
 		return {"key": &"interact", "icon": "wpn_%d" % WEAPONS.Kind.HAMMER, "text": "верстак: протезы и коляска"}
 	if me.body.bleeding:
@@ -439,6 +444,9 @@ func _action_prompt(me: Node3D) -> Dictionary:
 		if progress > 0.0:
 			return {"icon": "bandage", "text": "перевязка: %d%%" % int(progress * 100.0)}
 		return {"key": &"bandage", "icon": "bandage", "text": "перевязать (держать, стоя на месте)"}
+	if int(me.faction) == FACTIONS.Kind.ELVES and me.order_kind >= 0:
+		return {"icon": "elf", "text": "задание: %s — %s" % [
+			TASKS.name_of(me.order_kind), TASKS.progress_text(me.order_kind, me.order_progress)]}
 	if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
 		return {"icon": "guard", "text": "приказ: %s — %s" % [
 			ORDERS.name_of(me.order_kind),
@@ -686,7 +694,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			me.ask_collect_loot()
 		elif me != null and (me.at_trader() or _trader.visible):
 			_toggle_trader()
-		elif me != null and (me.at_commander() or _commander_ui.visible):
+		elif me != null and (me.at_commander() or me.at_elder() or _commander_ui.visible):
 			_toggle_commander()
 		elif _building_ui.is_open():
 			_building_ui.close_panel()
@@ -1280,6 +1288,7 @@ const TEST_FLAGS := {
 	"--endgametest": ["res://tools/endgame_test.gd", true],
 	"--elvestest": ["res://tools/elves_test.gd", true],
 	"--shoptest": ["res://tools/shop_test.gd", true],
+	"--eldertest": ["res://tools/elder_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -2030,7 +2039,7 @@ func _toggle_commander() -> void:
 		_close_commander()
 		return
 	var me: Node3D = _world.local_player()
-	if me == null or not me.at_commander():
+	if me == null or not (me.at_commander() or me.at_elder()):
 		return
 	_refresh_commander(me)
 	_commander_ui.visible = true
@@ -2044,6 +2053,14 @@ func _refresh_commander(me: Node3D) -> void:
 	var reward: Label = box.get_node("Reward")
 	var report: Button = box.get_node("Report")
 	var promote: Button = box.get_node("Promote")
+	# ЭЛЬФ У СТАРЕЙШИНЫ (GDD 9a): то же окно, свои задания, без командования.
+	var title: Label = box.get_node("Title")
+	promote.visible = int(me.faction) != FACTIONS.Kind.ELVES
+	if int(me.faction) == FACTIONS.Kind.ELVES:
+		title.text = "Старейшина"
+		_refresh_elder(box, me)
+		return
+	title.text = "Командир стражи"
 	promote.disabled = not _world.commander.can_promote(me)
 	if not promote.disabled:
 		promote.text = "Принять командование"
@@ -2083,6 +2100,26 @@ func _refresh_commander(me: Node3D) -> void:
 	reward.text = "награда: %s" % RES.format_cost(ORDERS.reward_of(me.order_kind))
 	var ready_now: bool = me.order_progress >= ORDERS.target_of(me.order_kind)
 	report.text = "Доложить о выполнении" if ready_now else "Доложить (ещё не готово)"
+
+
+func _refresh_elder(box: Node, me: Node3D) -> void:
+	var order: Label = box.get_node("Order")
+	var progress: Label = box.get_node("Progress")
+	var reward: Label = box.get_node("Reward")
+	var report: Button = box.get_node("Report")
+	report.disabled = false
+	if me.order_kind < 0:
+		order.text = "Заданий нет. Поговори, и старейшина скажет, что нужно лесу."
+		progress.text = "выполнено заданий: %d" % me.orders_done
+		reward.text = ""
+		report.text = "Получить задание"
+		return
+	order.text = "Задание: %s\n%s" % [TASKS.name_of(me.order_kind), TASKS.brief_of(me.order_kind)]
+	progress.text = "прогресс: %s   выполнено заданий: %d" % [
+		TASKS.progress_text(me.order_kind, me.order_progress), me.orders_done]
+	reward.text = "награда: %s" % RES.format_cost(TASKS.reward_of(me.order_kind))
+	var ready_now: bool = me.order_progress >= TASKS.target_of(me.order_kind)
+	report.text = "Сдать задание" if ready_now else "Сдать (ещё не готово)"
 
 
 func _close_commander() -> void:

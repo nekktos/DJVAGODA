@@ -2474,6 +2474,7 @@ func request_rob_caravan() -> void:
 	if taken <= 0:
 		return
 	world_here.commander.report_caravan_lost(cart.global_position, int(cart.faction))
+	world_here.elder.report_caravan_hit(int(peer_id), int(cart.faction))
 	var world := get_parent().get_parent()
 	# Лошади встают рядом с обозом ЖИВЫМИ телами, а не числом в казне: увести
 	# их до дома — отдельная работа, и по дороге их могут отбить.
@@ -3007,6 +3008,14 @@ func at_commander() -> bool:
 	return commander.in_range(global_position)
 
 
+## Стоит ли рядом со старейшиной эльфов.
+func at_elder() -> bool:
+	var world := get_parent().get_parent()
+	if world == null or not ("elder" in world) or world.elder == null:
+		return false
+	return world.elder.in_range(global_position)
+
+
 func ask_report() -> void:
 	if Net.hosting():
 		request_report()
@@ -3023,6 +3032,12 @@ func request_report() -> void:
 		push_warning("Пир пытался докладывать чужим персонажем %d" % peer_id)
 		return
 	if not health.alive:
+		return
+	# Эльф докладывает старейшине (GDD 9a), страж — командиру.
+	if int(faction) == FACTIONS.Kind.ELVES:
+		var elder: Node3D = get_parent().get_parent().elder
+		if elder != null:
+			elder.report(self)
 		return
 	if faction != FACTIONS.Kind.GUARD:
 		return
