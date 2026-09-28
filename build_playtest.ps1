@@ -49,6 +49,15 @@ New-Item -ItemType Directory -Force (Join-Path $build "macos") | Out-Null
 Write-Host "`n=== Windows ==="
 & $Godot --headless --path $project $mode "Windows" (Join-Path $build "windows\DzhvaGoda.exe")
 if ($LASTEXITCODE -ne 0) { Write-Error "Экспорт под Windows не удался"; exit 1 }
+# Экспорт может оборваться ПОСЛЕ того, как exe уже скопирован, и до записи .pck.
+# 28.09 так и вышло: скрипт запустили изнутри PowerShell, предупреждение Godot о
+# номере версии в stderr стало ошибкой и оборвало экспорт. Код возврата при этом
+# проверить не успели, а exe без .pck при запуске пишет «Couldn't load project
+# data» — это увидел уже тестер. Запуск снаружи: powershell -File build_playtest.ps1.
+if (-not (Test-Path (Join-Path $build "windows\DzhvaGoda.pck"))) {
+    Write-Error "Экспорт под Windows оборвался: DzhvaGoda.pck не записан, сборка негодна"
+    exit 1
+}
 Copy-Item $readme (Join-Path $build "windows\README-PLAYTEST.md") -Force
 Copy-Item $form (Join-Path $build "windows\АНКЕТА.md") -Force
 
