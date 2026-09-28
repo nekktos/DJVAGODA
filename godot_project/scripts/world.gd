@@ -1114,6 +1114,18 @@ func absorb_guard() -> void:
 	print("[цель] стража перешла к злодею: постройки, бойцы, обозы, казна")
 
 
+## Сказать всем людям стороны. На экран — как приказ командира.
+func notify_side(faction: int, text: String) -> void:
+	if not Net.hosting():
+		return
+	print("[сторона %s] %s" % [FACTIONS.name_of(faction), text])
+	for player in players_of(faction):
+		if int(player.peer_id) == 1:
+			objective.announced.emit(text)
+		else:
+			objective.announce.rpc_id(int(player.peer_id), text)
+
+
 ## Обоз доехал: лошади снова свободны и годятся хоть в упряжку, хоть под седло.
 func _on_caravan_home(horses: int, faction: int) -> void:
 	var wallet: Node = treasury.of(faction)

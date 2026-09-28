@@ -22,7 +22,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "перехват"
-	expected_host = 8
+	expected_host = 10
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -44,6 +44,7 @@ func _run() -> void:
 	await _test_guard_sends_caravans()
 	await _test_intercept(me)
 	await _test_plunder(me)
+	await _test_full_storage(me)
 	finish()
 
 
@@ -191,6 +192,48 @@ func _test_plunder(me: Node3D) -> void:
 		"повозку без лошадей разграбляют: груз на землю, повозки нет",
 		"действие «%s», повозка %s, куч %d -> %d" % [can,
 			"есть" if is_instance_valid(cart) else "нет", piles_before, piles_after])
+
+
+## Полный склад: обоз не теряет груз, а стоит рядом и ждёт места, и людям
+## стороны говорят «построй ещё склад» (ответ автора от 29.09). Место
+## появилось — выгружается и уезжает.
+func _test_full_storage(me: Node3D) -> void:
+	var heard: Array[String] = []
+	var listen := func(text: String) -> void: heard.append(text)
+	_world.objective.announced.connect(listen)
+	var wallet: Node = _world.treasury.of(FACTIONS.Kind.VILLAIN)
+	var storage: Node3D = _world.storage_of(FACTIONS.Kind.VILLAIN)
+	# Склад забит железом под потолок.
+	var room: int = int(wallet.stored.capacity) - int(wallet.stored.get_amount(RES.Kind.IRON))
+	wallet.add_stored(RES.Kind.IRON, room)
+	var start: Vector3 = storage.global_position + Vector3(0.0, 0.0, 40.0)
+	var cart: Node3D = _world.spawn_caravan(PackedVector3Array([storage.global_position, start]),
+		int(me.peer_id), FACTIONS.Kind.VILLAIN, 1)
+	cart.position = start
+	cart.state = cart.State.TO_HOME
+	cart.cargo = RES.fit([0, 0, 0, 50])
+	me.teleport.rpc(storage.global_position + Vector3(-40.0, 1.0, 0.0))
+	for i in 60:
+		await get_tree().create_timer(0.25).timeout
+		if not is_instance_valid(cart) or bool(cart.waiting):
+			break
+	var kept: int = RES.at(cart.cargo, RES.Kind.IRON) if is_instance_valid(cart) else -1
+	check(is_instance_valid(cart) and bool(cart.waiting) and kept == 50
+			and heard.any(func(t: String) -> bool: return t.contains("Построй ещё склад")),
+		"у полного склада обоз стоит с грузом, и сторону зовут построить склад",
+		"обоз %s, ждёт %s, в телеге железа %d, объявлено: %s" % [is_instance_valid(cart),
+			is_instance_valid(cart) and bool(cart.waiting), kept, " | ".join(heard)])
+	wallet.raise_capacity(RES.STORAGE_BONUS)
+	var iron_before: int = int(wallet.get_amount(RES.Kind.IRON))
+	for i in 40:
+		await get_tree().create_timer(0.25).timeout
+		if not is_instance_valid(cart):
+			break
+	check(not is_instance_valid(cart) and int(wallet.get_amount(RES.Kind.IRON)) == iron_before + 50,
+		"место появилось — обоз выгрузился и уехал",
+		"обоз ещё стоит %s, железа %d -> %d" % [is_instance_valid(cart), iron_before,
+			int(wallet.get_amount(RES.Kind.IRON))])
+	_world.objective.announced.disconnect(listen)
 
 
 func _flat(at: Vector3) -> Vector2:

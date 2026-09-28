@@ -26,7 +26,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "хозяйство"
-	expected_host = 17
+	expected_host = 18
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -153,6 +153,21 @@ func _test_sends_caravan() -> void:
 	check(wallet.get_amount(RES.Kind.IRON) > before, "и разгружается в казну СТОРОНЫ",
 		"железо %d -> %d" % [before, wallet.get_amount(RES.Kind.IRON)])
 
+	# ПОЛНЫЙ СКЛАД (ответ автора от 29.09): обоз ИИ ждёт у склада — ИИ ставит
+	# ещё склад.
+	var storages_before := _count_storages()
+	wallet.grant(RES.fit([400, 400, 0, 0]))
+	sent.waiting = true
+	var extra := false
+	for i in 12:
+		await get_tree().create_timer(1.0).timeout
+		if _count_storages() > storages_before:
+			extra = true
+			break
+	sent.waiting = false
+	check(extra, "обоз ИИ ждёт у полного склада — ИИ ставит ещё склад",
+		"складов %d -> %d" % [storages_before, _count_storages()])
+
 
 ## Набирает войско, и оно попадает в общий отряд ИИ — а батраки в него не
 ## попадают. Это не мелочь: у батраков тоже нет владельца, и без проверки отряд
@@ -186,3 +201,11 @@ func _test_trains_and_joins_warband() -> void:
 	check(_world.warband._band(FACTIONS.Kind.VILLAIN).size() <= STEWARD.SQUAD_WANTED,
 		"войско ИИ не растёт бесконечно",
 		"%d при потолке %d" % [band.size(), STEWARD.SQUAD_WANTED])
+
+
+func _count_storages() -> int:
+	var count := 0
+	for node in get_tree().get_nodes_in_group("building"):
+		if int(node.faction) == FACTIONS.Kind.VILLAIN and int(node.kind) == RES.Building.STORAGE:
+			count += 1
+	return count

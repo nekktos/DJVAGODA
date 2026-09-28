@@ -108,6 +108,12 @@ signal came_home(horses: int)
 @export var horse_pool := 120.0
 ## Обоз стоит: лошадей нет или рядом враг.
 @export var halted := false
+## Обоз стоит у ПОЛНОГО склада и ждёт места (ответ автора от 29.09: «стоял
+## рядом, и было оповещение, чтоб игрок или ИИ построил склад»). Раньше груз
+## сверх потолка пропадал молча.
+@export var waiting := false
+## Как часто пробовать выгрузить остаток.
+const WAIT_RETRY := 3.0
 
 ## Хозяин и сторона — РЕПЛИЦИРУЮТСЯ (`Caravan.tscn`). До перехвата (GDD 9a)
 ## они не менялись и приезжали пакетом спавна; теперь перехваченный обоз меняет
@@ -273,8 +279,17 @@ func _physics_process(delta: float) -> void:
 		State.UNLOADING:
 			_timer -= delta
 			if _timer <= 0.0:
-				_unload_at_home()
-				state = State.FINISHED
+				if _unload_at_home():
+					waiting = false
+					state = State.FINISHED
+				else:
+					_timer = WAIT_RETRY
+					if not waiting:
+						waiting = true
+						var world_now := _world()
+						if world_now != null and world_now.has_method("notify_side"):
+							world_now.notify_side(faction,
+								"Склад полон: обоз стоит у склада с грузом. Построй ещё склад")
 		State.FINISHED:
 			_release_escort()
 			# Лошади возвращаются в конюшню и снова считаются свободными: их можно
@@ -659,29 +674,38 @@ func _load_at_mine() -> void:
 	print("[караван] загружен: %s — %s" % [mine.title(), _cargo_text()])
 
 
-func _unload_at_home() -> void:
+## Выгрузить в склад, сколько влезет. true — выгружено всё.
+func _unload_at_home() -> bool:
 	# Разгружаемся в казну СТОРОНЫ, а не владельцу-персонажу. Искать владельца
 	# среди игроков значит не заметить караван ИИ: у него владельца нет вовсе, и
 	# он привозил груз в никуда — молча, как когда-то батраки и склад ИИ.
 	var treasury: Node = _world().get_node_or_null("Treasury")
 	if treasury == null:
-		return
+		return true
 	var wallet: Node = treasury.of(faction)
 	if wallet == null:
-		return
+		return true
 	var delivered := 0
+	var left := RES.fit(cargo)
 	for kind in RES.COUNT:
 		# Караван разгружается СРАЗУ В СКЛАД: он для того и едет, а не чтобы
-		# набить карманы игроку (GDD раздел 2.3).
-		delivered += wallet.add_stored(kind, cargo[kind])
-	print("[караван] доставлено стороне «%s»: %d единиц"
-		% [FACTIONS.name_of(faction), delivered])
+		# набить карманы игроку (GDD раздел 2.3). Что не влезло — остаётся в
+		# телеге: обоз стоит и ждёт места.
+		var placed: int = int(wallet.add_stored(kind, left[kind]))
+		left[kind] -= placed
+		delivered += placed
+	cargo = left
+	if delivered > 0:
+		print("[караван] доставлено стороне «%s»: %d единиц" % [FACTIONS.name_of(faction), delivered])
+	if cargo_total() > 0:
+		return false
 	# ОПЫТ ЗА ДОЕХАВШИЙ ОБОЗ. Дорого намеренно: обоз идёт через полкарты, его
 	# можно потерять, и довести его — отдельная работа, а не побочный итог.
 	var here: Node = _world()
 	if here != null and here.has_method("award_faction_xp"):
 		here.award_faction_xp(faction, PROGRESS.XP_CARAVAN, "обоз")
 	cargo = RES.empty()
+	return true
 
 
 ## Принять урон. Вызывается ТОЛЬКО хостом — так же, как у персонажей.
@@ -877,5 +901,5 @@ func state_text() -> String:
 		State.TO_MINE: return "едет на шахту"
 		State.LOADING: return "грузится"
 		State.TO_HOME: return "везёт груз"
-		State.UNLOADING: return "разгружается"
+		State.UNLOADING: return "ждёт места на складе" if waiting else "разгружается"
 	return "прибыл"

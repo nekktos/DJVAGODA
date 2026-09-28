@@ -116,6 +116,7 @@ func _process(delta: float) -> void:
 		# на которую хватило золота, купится ему вслед и простоит без дела.
 		_buy_horses(faction)
 		_send_caravan(faction)
+		_extra_storage(faction)
 	# ОБОЗЫ СТРАЖИ (GDD 9a: «караваны есть и у людей, и у злодея»). Стройки и
 	# найма у стражи нет, пока её человек не стал командиром, но хозяйство
 	# дворца живёт и без него: склад, конюшня и поля стоят с начала партии, и
@@ -124,6 +125,33 @@ func _process(delta: float) -> void:
 	if _runs_guard_logistics():
 		_buy_horses(FACTIONS.Kind.GUARD)
 		_send_caravan(FACTIONS.Kind.GUARD)
+
+
+## Обоз стоит у полного склада — ставим ещё склад (ответ автора от 29.09:
+## «было оповещение, чтоб игрок или ИИ построил склад»). Один за раз: пока
+## строится, второй не закладываем.
+func _extra_storage(faction: int) -> void:
+	var world := get_parent()
+	var waiting := false
+	for cart in world.caravans_of(0):
+		if int(cart.faction) == faction and bool(cart.waiting):
+			waiting = true
+	if not waiting:
+		return
+	# Строящийся СКЛАД — ждём его; прочая стройка не мешает: обоз с грузом
+	# важнее казармы, и ждать её значило бы держать телегу у склада минуты.
+	for node in get_tree().get_nodes_in_group("building"):
+		if (int(node.faction) == faction and int(node.kind) == RES.Building.STORAGE
+				and float(node.progress) < 1.0):
+			return
+	if not _wallet(faction).can_afford(RES.BUILDING_COST[RES.Building.STORAGE]):
+		return
+	var spot := _find_spot(faction, RES.Building.STORAGE)
+	if spot == Vector3.INF:
+		return
+	_wallet(faction).spend(RES.BUILDING_COST[RES.Building.STORAGE])
+	world.spawn_building(RES.Building.STORAGE, spot, 0, faction)
+	print("[хозяйство] %s: склад полон, обоз ждёт — строит ещё склад" % FACTIONS.name_of(faction))
 
 
 ## Возит ли ИИ обозы стражи: пока у неё нет живого командира.
