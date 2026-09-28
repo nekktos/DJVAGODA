@@ -66,6 +66,7 @@ SUITES=(
 	"start:--starttest:0:"
 	"bootstrap:--bootstraptest:1:"
 	"mines:--minestest:0:"
+	"keys:--keystest:0:"
 	"playable0:--playabletest:0:"
 	"playable1:--playabletest:1:"
 	"playable2:--playabletest:2:"

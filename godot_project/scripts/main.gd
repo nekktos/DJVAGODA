@@ -68,6 +68,9 @@ const ORDERS := preload("res://scripts/orders.gd")
 const CARAVAN := preload("res://scripts/economy/caravan.gd")
 const ONBOARDING := preload("res://scripts/ui/onboarding.gd")
 const WAYPOINT := preload("res://scripts/ui/waypoint.gd")
+const KEYMAP := preload("res://scripts/ui/keymap.gd")
+const PAUSE_MENU := preload("res://scripts/ui/pause_menu.gd")
+const STYLE := preload("res://scripts/ui/style.gd")
 
 ## Человек ВЫБРАЛ сторону сам, а не получил её подстановкой из сейва.
 ##
@@ -78,6 +81,8 @@ const WAYPOINT := preload("res://scripts/ui/waypoint.gd")
 ## Подсказка первых минут и её маяк в мире. Личные: ничего не реплицируется,
 ## в сохранение не идёт — это объяснение одному человеку, а не часть партии.
 var _onboarding := ONBOARDING.new()
+## Меню паузы и клавиш (Esc). Собирается кодом при старте.
+var _settings: Control = null
 var _waypoint: Node3D = null
 var _faction_chosen := false
 
@@ -135,6 +140,10 @@ var _muted := false
 
 
 func _ready() -> void:
+	# Раскладку ставим ПЕРВОЙ: всё, что ниже, уже спрашивает действия, а не
+	# клавиши, и сохранённые переназначения должны действовать с первого кадра.
+	KEYMAP.install()
+	_build_settings()
 	Net.status_changed.connect(_on_status)
 	Net.session_started.connect(_on_session_started)
 	Net.session_ended.connect(_on_session_ended)
@@ -362,25 +371,25 @@ func _action_prompt(me: Node3D) -> String:
 		return refusal
 	var cart: Node3D = me.caravan_to_rob()
 	if cart != null and me.riding() == null:
-		return "E — выпрячь лошадей: %d" % int(cart.horses)
+		return "%s — выпрячь лошадей: %d" % [_k(&"interact"), int(cart.horses)]
 	if me.riding() != null:
-		return "E — спешиться"
+		return "%s — спешиться" % _k(&"interact")
 	if me.horse_nearby() != null:
-		return "E — сесть на лошадь"
+		return "%s — сесть на лошадь" % _k(&"interact")
 	var pile: Node3D = me.loot_nearby()
 	if pile != null:
-		return "E — подобрать: %s" % pile.summary()
+		return "%s — подобрать: %s" % [_k(&"interact"), pile.summary()]
 	if me.at_trader():
-		return "E — лавка: бинты и снаряжение (сейчас %s)" % WEAPONS.gear_name(me.gear_tier)
+		return "%s — лавка: бинты и снаряжение (сейчас %s)" % [_k(&"interact"), WEAPONS.gear_name(me.gear_tier)]
 	if me.at_commander():
-		return "E — командир: %s" % _order_hint(me)
+		return "%s — командир: %s" % [_k(&"interact"), _order_hint(me)]
 	if me.at_workbench():
-		return "E — верстак: протезы и коляска"
+		return "%s — верстак: протезы и коляска" % _k(&"interact")
 	if me.body.bleeding:
 		var progress: float = me.bandage_progress()
 		if progress > 0.0:
 			return "перевязка: %d%%" % int(progress * 100.0)
-		return "B — перевязать (стоя на месте)"
+		return "%s — перевязать (стоя на месте)" % _k(&"bandage")
 	if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
 		return "приказ: %s — %s" % [
 			ORDERS.name_of(me.order_kind),
@@ -405,7 +414,7 @@ func _strategy_prompt() -> String:
 	var boss: Node3D = _world.local_player()
 	if boss != null and boss.stock.get_amount(RES.Kind.IRON) <= 0:
 		return "Железо только в шахте на земле эльфов: построй склад (1), нажми C и отправь караван"
-	return "F1 — все клавиши"
+	return "%s — все клавиши · Esc — пауза и настройка клавиш" % _k(&"help")
 
 
 ## К какой шахте поедет обоз, если отправить его сейчас: к ближайшей к
@@ -449,171 +458,117 @@ func _volume_note() -> String:
 
 ## Полный список клавиш. Живёт под F1 и не занимает экран постоянно: список,
 ## висящий всегда, перестают читать на второй минуте.
+##
+## КЛАВИШИ БЕРУТСЯ ИЗ РАСКЛАДКИ, а не пишутся буквами: после переназначения
+## справка, говорящая «B — перевязать», врала бы.
 func _help_text() -> String:
 	var me: Node3D = _world.local_player()
 	var lines := PackedStringArray()
 	lines.append("[b]В бою[/b]")
-	lines.append("WASD — движение · Shift — бег · Space — прыжок · ЛКМ — удар · B — перевязать")
+	lines.append("%s — движение · %s — бег · %s — прыжок · %s — удар · %s — перевязать" % [
+		_keys([&"move_forward", &"move_left", &"move_back", &"move_right"]),
+		_k(&"sprint"), _k(&"jump"), _k(&"attack"), _k(&"bandage")])
 	if me != null and bool(FACTIONS.mobility_of(int(me.faction))["dash"]):
-		lines.append("ЭЛЬФ: второй прыжок в воздухе (Space ещё раз) · R — рывок")
-	if me != null:
-		lines.append(_weapon_hint(me).replace(
-			"WASD — движение, Space — прыжок, ЛКМ — удар   |   ", "оружие: "))
-		if FACTIONS.has_abilities(me.faction):
-			lines.append("заклинания: 4 / 5 / 6")
-	lines.append("E — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь")
-	lines.append("у постройки: наём у казарм, лошади в конюшне, обоз у склада · Y — перемирие")
-	lines.append("Tab — вид сверху · V — первое/третье лицо · F10 — в меню · тильда — консоль")
-	lines.append("M — звук выкл/вкл · минус и равно — тише и громче · P — прокачка")
+		lines.append("ЭЛЬФ: второй прыжок в воздухе (%s ещё раз) · %s — рывок" % [
+			_k(&"jump"), _k(&"dash")])
+	lines.append("оружие: %s" % _keys([&"weapon_1", &"weapon_2", &"weapon_3", &"weapon_4"]))
+	if me != null and FACTIONS.has_abilities(me.faction):
+		lines.append("заклинания: %s" % _keys([&"ability_1", &"ability_2", &"ability_3"]))
+	lines.append("%s — взаимодействие: постройка, груз, лавка, командир, верстак, лошадь" % _k(&"interact"))
+	lines.append("%s — вид сверху · %s — первое/третье лицо · %s — в меню · %s — консоль" % [
+		_k(&"toggle_camera"), _k(&"toggle_view"), _k(&"leave"), _k(&"console")])
+	lines.append("%s — звук · %s и %s — тише и громче · %s — прокачка · Esc — пауза и клавиши" % [
+		_k(&"mute"), _k(&"volume_down"), _k(&"volume_up"), _k(&"upgrade")])
 	lines.append("Опыт: за донесённую добычу, за убийства, за доехавшие обозы.")
 	lines.append("Стрелы и мана КОНЧАЮТСЯ. Стрелы — в лавке, мана копится сама.")
 	lines.append("Бег и прыжок тратят выносливость (полоса под здоровьем). Верхом — не тратят.")
 	lines.append("")
 	lines.append("[b]Сверху — только у злодея и командира стражи[/b]")
-	lines.append("WASD — камера · Q/E — поворот · колесо — зум")
-	lines.append("наём, лошади и обоз — у самих построек: подойди и нажми E")
-	lines.append("1..6 — строить: склад, казарма мечников, казарма лучников, конюшня, дом дружины, поле")
+	lines.append("%s — камера · %s / %s — поворот · колесо — зум" % [
+		_keys([&"move_forward", &"move_left", &"move_back", &"move_right"]),
+		_k(&"cam_rotate_left"), _k(&"cam_rotate_right")])
+	lines.append("наём, лошади и обоз — у самих построек: подойди и нажми %s" % _k(&"interact"))
+	var build := PackedStringArray()
+	for pair in BUILD_ACTIONS:
+		build.append("%s %s" % [_k(pair[0]), RES.BUILDING_NAMES[int(pair[1])]])
+	lines.append("строить: " + " · ".join(build))
 	lines.append("Дом дружины поднимает потолок отряда: без домов держишь только охрану.")
-	lines.append("B — нанять батрака · 7 / 8 / 9 / 0 / F — лесоруб / шахтёр / ополченец / строитель / фермер")
+	var roles := PackedStringArray()
+	for pair in ROLE_ACTIONS:
+		roles.append("%s %s" % [_k(pair[0]), LABOURER.ROLE_NAMES[int(pair[1])]])
+	lines.append("%s — нанять батрака · роли: %s" % [_k(&"hire_labourer"), " · ".join(roles)])
 	lines.append("Поле растит еду само; фермер её уносит на склад — без него поле стоит полным.")
-	lines.append("T / Y — нанять мечника / лучника · N — купить лошадь · F1-F4 — строй")
-	lines.append("G — отряд ко мне · H — отряд с обозом · ПКМ — отряду идти в точку")
-	lines.append("C — рисовать маршрут каравана, Enter — отправить · K — лошадей в упряжку")
+	lines.append("%s — отряд ко мне · %s — отряд с обозом · ПКМ — отряду идти в точку · строй: %s" % [
+		_k(&"squad_follow"), _k(&"squad_escort"),
+		_keys([&"formation_1", &"formation_2", &"formation_3", &"formation_4"])])
+	lines.append("%s — рисовать маршрут обоза, Enter — отправить" % _k(&"route"))
 	lines.append("")
 	lines.append("[b]Увечья и протезы[/b]")
-	lines.append("Оторванную конечность заменяет протез: E у верстака.")
+	lines.append("Оторванную конечность заменяет протез: %s у верстака." % _k(&"interact"))
 	lines.append("Некротический протез не покупается — он крафтится из чужих конечностей:")
 	lines.append("10 отрубленных рук на руку, 10 ног на ногу, 10 глаз на глаз.")
 	lines.append("Счёт трофеев (руки/ноги/глаза) виден слева внизу, когда он не пуст.")
-	lines.append("")
-	lines.append("[b]Клавиши B и цифры значат разное[/b] в бою и сверху. Режим — Tab.")
 	return "\n".join(lines)
 
 
+## Клавиша действия по раскладке — для справки и подсказок.
+func _k(action: StringName) -> String:
+	return KEYMAP.key_text(action)
+
+
+func _keys(actions: Array) -> String:
+	var parts := PackedStringArray()
+	for action in actions:
+		parts.append(KEYMAP.key_text(action))
+	return "/".join(parts)
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	# F1 — полный список клавиш. Работает в любом режиме: справку ищут именно
-	# тогда, когда не понимают, где находятся.
-	# ПРОКАЧКА ПО P. Панель открывается ГДЕ УГОДНО и в любом режиме: опыт —
-	# это про самого вожака, а не про место на карте, и гонять игрока к
-	# верстаку ради собственных мышц незачем.
-	if (event is InputEventKey and event.pressed and not event.echo
-			and event.physical_keycode == KEY_P and Net.active and not _console.visible):
+	# ВСЕ КЛАВИШИ — ДЕЙСТВИЯ РАСКЛАДКИ (`ui/keymap.gd`), а не зашитые коды. До
+	# неё здесь стояли сравнения с KEY_1, KEY_B и так далее, и переназначить их
+	# было нельзя в принципе.
+	#
+	# Пока открыто меню клавиш, оно ловит нажатие само: иначе клавиша, которую
+	# человек назначает, заодно и срабатывала бы.
+	if _settings != null and _settings.capturing():
+		return
+	# ПРОКАЧКА. Панель открывается ГДЕ УГОДНО и в любом режиме: опыт — это про
+	# самого вожака, а не про место на карте, и гонять игрока к верстаку ради
+	# собственных мышц незачем.
+	if event.is_action_pressed(&"upgrade") and Net.active and not _console.visible:
 		_toggle_upgrade()
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
+	# Справка работает в любом режиме: её ищут именно тогда, когда не понимают,
+	# где находятся.
+	if event.is_action_pressed(&"help") and not _console.visible:
 		_hud.toggle_help()
 		get_viewport().set_input_as_handled()
 		return
 	# Громкость. Работает всегда и везде, кроме открытой консоли: сделать тише
 	# нужно ровно тогда, когда звук мешает, а не тогда, когда до этого дошли
-	# руки. Клавиши читаем по ФИЗИЧЕСКОЙ позиции — на русской раскладке «M»
-	# иначе не нажать.
-	if event is InputEventKey and event.pressed and not event.echo and not _console.visible:
-		var sound_key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
-		if sound_key == KEY_M:
+	# руки.
+	if not _console.visible:
+		if event.is_action_pressed(&"mute"):
 			_muted = not _muted
 			_apply_volume()
 			get_viewport().set_input_as_handled()
 			return
-		if sound_key == KEY_MINUS:
+		if event.is_action_pressed(&"volume_down"):
 			_volume_db = maxf(VOLUME_FLOOR, _volume_db - VOLUME_STEP)
 			_muted = false
 			_apply_volume()
 			get_viewport().set_input_as_handled()
 			return
-		if sound_key == KEY_EQUAL:
+		if event.is_action_pressed(&"volume_up"):
 			_volume_db = minf(VOLUME_CEIL, _volume_db + VOLUME_STEP)
 			_muted = false
 			_apply_volume()
 			get_viewport().set_input_as_handled()
 			return
-	if Net.active and _world.strategy_mode and event is InputEventKey and event.pressed and not event.echo:
-		# Игровые клавиши читаем по ФИЗИЧЕСКОЙ позиции, а не по символу: keycode
-		# зависит от раскладки, и на русской раскладке управление отваливалось бы
-		# целиком. Для игры важно, какая клавиша нажата, а не что на ней написано.
-		var key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
-		if key == KEY_1:
-			_world.set_build_mode(true, RES.Building.STORAGE)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_2:
-			_world.set_build_mode(true, RES.Building.SWORD_BARRACKS)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_3:
-			_world.set_build_mode(true, RES.Building.ARCHER_BARRACKS)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_5:
-			_world.set_build_mode(true, RES.Building.HOUSE)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_6:
-			_world.set_build_mode(true, RES.Building.FARM)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_4:
-			_world.set_build_mode(true, RES.Building.STABLE)
-			get_viewport().set_input_as_handled()
-			return
-		# N — купить лошадь, K — сколько запрягать в следующий обоз.
-		#
-		# Роли батраков переехали с 4-7 на 5-8: четвёрка теперь строит конюшню.
-		# Держать номер постройки и номер роли на одной клавише нельзя — человек
-		# и так путается, что значат цифры в двух режимах.
-		if key == KEY_C:
-			_world.set_route_mode(not _world.route_controller.active)
-			get_viewport().set_input_as_handled()
-			return
-		if key >= KEY_F1 and key <= KEY_F4:
-			_squad_order("formation", key - KEY_F1)
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_G:
-			_squad_order("follow", 0)
-			get_viewport().set_input_as_handled()
-			return
-		# H — отправить отряд с обозом. Рядом с G (00abко мне00bb) намеренно: это две
-		# половины одного решения — держать войско при себе или при грузе.
-		if key == KEY_H:
-			var chief_h: Node3D = _world.local_player()
-			if chief_h != null:
-				chief_h.ask_escort_caravan()
-			get_viewport().set_input_as_handled()
-			return
-		if key == KEY_B:
-			var boss: Node3D = _world.local_player()
-			if boss != null:
-				boss.ask_hire_labourer()
-			get_viewport().set_input_as_handled()
-			return
-		# 6-9 переводят одного батрака на соответствующее дело. Выбора мышью в
-		# стратегическом режиме нет, и роль — это и есть «куда его отправить».
-		#
-		# Роли переезжают уже ВТОРОЙ раз, и по тому же правилу. Сперва жили на
-		# 4-7 и сдвинулись, когда появилась конюшня; теперь сдвинулись снова —
-		# из-за дома дружины. Правило: цифры подряд отданы ПОСТРОЙКАМ, роли
-		# начинаются сразу после последней. Держать на одной цифре и постройку,
-		# и роль нельзя: человек и так путается, что значат цифры в двух
-		# режимах.
-		# 7, 8, 9, 0 и F — по роли на клавишу, в порядке ROLE_NAMES.
-		if (key >= KEY_7 and key <= KEY_9) or key == KEY_0:
-			var chief: Node3D = _world.local_player()
-			if chief != null:
-				chief.ask_set_labourer_role(3 if key == KEY_0 else key - KEY_7)
-			get_viewport().set_input_as_handled()
-			return
-		# ФЕРМЕР НА БУКВЕ, А НЕ НА ЦИФРЕ, и это вынужденно. Построек стало шесть,
-		# ролей пять — одиннадцать клавиш на десять цифр. Правило «цифры подряд
-		# отданы постройкам» держим, а новую роль выносим на F: роли уже
-		# переезжали дважды, третий переезд дороже одной буквы.
-		if key == KEY_F:
-			var farm_chief: Node3D = _world.local_player()
-			if farm_chief != null:
-				farm_chief.ask_set_labourer_role(LABOURER.Role.FARMER)
-			get_viewport().set_input_as_handled()
-			return
+	if Net.active and _world.strategy_mode and not _console.visible and _strategy_key(event):
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		# Стройка и прокладка маршрута перехватывают ПКМ раньше — там это отмена.
 		if _try_squad_move_order():
@@ -652,7 +607,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# Тильда открывает консоль. Ловим до всего остального, чтобы она работала
 	# и в меню, и в бою.
-	if event is InputEventKey and event.pressed and not event.echo and _physical(event) == KEY_QUOTELEFT:
+	if event.is_action_pressed(&"console"):
 		_toggle_console()
 		get_viewport().set_input_as_handled()
 		return
@@ -674,17 +629,78 @@ func _unhandled_input(event: InputEvent) -> void:
 			_on_announced("Вид: %s" % ("от первого лица" if me.toggle_view() else "от третьего лица"))
 		get_viewport().set_input_as_handled()
 		return
+	# Esc — меню паузы: продолжить, клавиши, выйти. Раньше Esc только
+	# отпускал мышь, и найти, где настраивается управление, было негде.
 	if event.is_action_pressed(&"ui_cancel"):
-		_toggle_mouse()
+		_toggle_pause()
 		get_viewport().set_input_as_handled()
-	elif event is InputEventKey and event.pressed and not event.echo:
-		if _physical(event) == KEY_F10:
-			if Net.active:
-				Net.leave()
-			get_viewport().set_input_as_handled()
-		elif _physical(event) == KEY_F9:
-			_copy_steam_id()
-			get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(&"leave"):
+		if Net.active:
+			Net.leave()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo and _physical(event) == KEY_F9:
+		# Не в раскладке намеренно: это служебная клавиша хоста Steam, а не
+		# управление игрой.
+		_copy_steam_id()
+		get_viewport().set_input_as_handled()
+
+
+## Клавиши вида сверху. true — нажатие разобрано.
+##
+## Правило раскладки осталось прежним: цифры подряд отданы постройкам, роли
+## батраков идут сразу после последней, фермер — на букве. Но теперь это только
+## УМОЛЧАНИЯ: кто хочет иначе, переназначает в меню клавиш.
+func _strategy_key(event: InputEvent) -> bool:
+	for pair in BUILD_ACTIONS:
+		if event.is_action_pressed(pair[0]):
+			_world.set_build_mode(true, int(pair[1]))
+			return true
+	if event.is_action_pressed(&"route"):
+		_world.set_route_mode(not _world.route_controller.active)
+		return true
+	for i in 4:
+		if event.is_action_pressed(StringName("formation_%d" % (i + 1))):
+			_squad_order("formation", i)
+			return true
+	if event.is_action_pressed(&"squad_follow"):
+		_squad_order("follow", 0)
+		return true
+	var chief: Node3D = _world.local_player()
+	# H — отправить отряд с обозом. Рядом с G («ко мне») намеренно: это две
+	# половины одного решения — держать войско при себе или при грузе.
+	if event.is_action_pressed(&"squad_escort"):
+		if chief != null:
+			chief.ask_escort_caravan()
+		return true
+	if event.is_action_pressed(&"hire_labourer"):
+		if chief != null:
+			chief.ask_hire_labourer()
+		return true
+	for pair in ROLE_ACTIONS:
+		if event.is_action_pressed(pair[0]):
+			if chief != null:
+				chief.ask_set_labourer_role(int(pair[1]))
+			return true
+	return false
+
+
+## Какое действие ставит какую постройку и какую роль. Порядок — порядок
+## карточек в меню стройки и в панели батраков.
+const BUILD_ACTIONS := [
+	[&"build_storage", 0],
+	[&"build_sword", 1],
+	[&"build_archer", 2],
+	[&"build_stable", 3],
+	[&"build_house", 4],
+	[&"build_farm", 5],
+]
+const ROLE_ACTIONS := [
+	[&"role_lumberjack", 0],
+	[&"role_miner", 1],
+	[&"role_militia", 2],
+	[&"role_builder", 3],
+	[&"role_farmer", 4],
+]
 
 
 func _copy_steam_id() -> void:
@@ -700,6 +716,61 @@ func _toggle_mouse() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif Net.active and not _world.strategy_mode:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Меню паузы и клавиш. Кладём ПОСЛЕДНИМ в UI, чтобы оно было поверх всего.
+func _build_settings() -> void:
+	_settings = PAUSE_MENU.new()
+	_settings.name = "Pause"
+	$UI.add_child(_settings)
+	_settings.resume_requested.connect(_close_pause)
+	_settings.leave_requested.connect(func() -> void:
+		_close_pause()
+		if Net.active:
+			Net.leave())
+	# Клавиши доступны и из главного меню: настроить управление хотят ДО
+	# первой партии, а не посреди неё.
+	var keys := STYLE.button("Клавиши", 16)
+	keys.name = "KeysBtn"
+	keys.pressed.connect(func() -> void: _settings.show_keys(true))
+	$UI/Menu/Panel/VBox.add_child(keys)
+
+
+## Esc: сперва закрыть то, что открыто, и только потом — пауза.
+##
+## Порядок — от верхнего к нижнему: человек жмёт Esc, чтобы убрать то, что у
+## него перед глазами, а не чтобы поверх открытой лавки вылезла ещё и пауза.
+func _toggle_pause() -> void:
+	if _settings.visible:
+		_close_pause()
+		return
+	if _hud.help_panel.visible:
+		_hud.toggle_help()
+		return
+	if _trader.visible or _bench.visible or _commander_ui.visible:
+		_close_others()
+		return
+	if _upgrade.visible:
+		_close_upgrade()
+		return
+	if _building_ui.is_open():
+		_building_ui.close_panel()
+		return
+	if not Net.active:
+		return
+	_settings.show_pause()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_pause() -> void:
+	_settings.close()
+	if Net.active and not _world.strategy_mode and not _any_panel_open():
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _any_panel_open() -> bool:
+	return (_trader.visible or _bench.visible or _commander_ui.visible
+		or _upgrade.visible or _building_ui.is_open())
 
 
 func _on_transport_selected(index: int) -> void:
@@ -986,6 +1057,7 @@ const TEST_FLAGS := {
 	"--starttest": ["res://tools/start_test.gd", true],
 	"--bootstraptest": ["res://tools/bootstrap_test.gd", true],
 	"--minestest": ["res://tools/mines_test.gd", true],
+	"--keystest": ["res://tools/keys_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1316,53 +1388,15 @@ func _on_bench_chair() -> void:
 	_close_bench()
 
 
-## Подсказка по стройке в стратегическом режиме: что выбрано и почём.
-func _build_hint() -> String:
-	var controller: Node3D = _world.build_controller
-	var parts := PackedStringArray()
-	for i in RES.BUILDING_NAMES.size():
-		parts.append("%d — %s (%s)" % [
-			i + 1, RES.BUILDING_NAMES[i], RES.format_cost(RES.BUILDING_COST[i])
-		])
-	var route: Node3D = _world.route_controller
-	if route.active:
-		return "МАРШРУТ: ЛКМ — точка (%d), Enter ИЛИ двойной ЛКМ — отправить караван, ПКМ — отмена" % route.points().size()
-	if controller.active:
-		return "СТРОЙКА: %s — ЛКМ поставить, ПКМ отменить" % RES.BUILDING_NAMES[controller.kind]
-	var line := "стройка: " + "   ".join(parts)
-	var stocks := PackedStringArray()
-	for each in _world.mines:
-		stocks.append("%s: %s" % [each.title(), each.summary()])
-	line += "   |   C — маршрут каравана   |   %s" % " · ".join(stocks)
-	# Железо в мире добывается ТОЛЬКО шахтой и попадает на склад ТОЛЬКО
-	# караваном. Живой тестер этого не нашёл, упёрся в казарму и бросил
-	# сессию — поэтому пишем прямо, пока железа нет.
-	var boss: Node3D = _world.local_player()
-	if boss != null and boss.stock.get_amount(RES.Kind.IRON) <= 0:
-		line += "\nЖЕЛЕЗО берётся только из железной шахты на земле эльфов: построй склад (1), нажми C, поставь последнюю точку у шахты и отправь караван"
-
-	var mine_caravans: Array = []
-	var me: Node3D = _world.local_player()
-	if me != null:
-		mine_caravans = _world.caravans_of(me.peer_id)
-	for caravan in mine_caravans:
-		line += "
-караван: %s, здоровье %d" % [caravan.state_text(), int(caravan.health)]
-	return line
-
-
 ## Кто чем занят у злодея. Без этой строки батраки — невидимая механика: они
 ## работают где-то на карте, а игрок видит только, что ресурсы прибывают.
 ## Какой клавишей ставится эта роль. Держим ОДНИМ местом с обработчиком: подпись
 ## уже однажды разошлась с клавишами и показывала 4-7 там, где нажимать надо
 ## было 5-8.
 func _role_key(role: int) -> String:
-	match role:
-		LABOURER.Role.LUMBERJACK: return "7"
-		LABOURER.Role.MINER: return "8"
-		LABOURER.Role.MILITIA: return "9"
-		LABOURER.Role.BUILDER: return "0"
-		LABOURER.Role.FARMER: return "F"
+	for pair in ROLE_ACTIONS:
+		if int(pair[1]) == role:
+			return _k(pair[0])
 	return "?"
 
 
@@ -1391,7 +1425,7 @@ func _crew_hint() -> String:
 	if hungry > 0:
 		head += "   ГОЛОДНЫХ %d (работают вдвое медленнее, поставь поле — клавиша 6)" % hungry
 	var line := head + ": " + "   ".join(parts)
-	line += "   |   B — нанять (%s)" % RES.format_cost(RES.LABOURER_COST)
+	line += "   |   %s — нанять (%s)" % [_k(&"hire_labourer"), RES.format_cost(RES.LABOURER_COST)]
 	if carrying > 0:
 		line += "   несут: %d" % carrying
 

@@ -49,6 +49,7 @@ extends RefCounted
 
 const FACTIONS := preload("res://scripts/factions.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const KEYMAP := preload("res://scripts/ui/keymap.gd")
 const OBJECTIVE := preload("res://scripts/objective.gd")
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
 const COMMANDER := preload("res://scripts/commander.gd")
@@ -296,6 +297,23 @@ func _mine_entrance() -> Vector3:
 	return WORLD_BUILDER.mine_entrance(info["at"])
 
 
+## Клавиша действия по раскладке. Подсказки берут клавиши ОТСЮДА, а не пишут
+## буквами: после переназначения подсказка «нажми 1» врала бы.
+static func _k(action: StringName) -> String:
+	return KEYMAP.key_text(action)
+
+
+static func _walk_keys() -> String:
+	return "%s%s%s%s — идти, %s — бежать, %s — от первого лица" % [
+		_k(&"move_forward"), _k(&"move_left"), _k(&"move_back"), _k(&"move_right"),
+		_k(&"sprint"), _k(&"toggle_view")]
+
+
+static func _roles_keys() -> String:
+	return " / ".join(PackedStringArray([_k(&"role_lumberjack"), _k(&"role_miner"),
+		_k(&"role_militia"), _k(&"role_builder"), _k(&"role_farmer")]))
+
+
 ## Цепочка стороны целиком. Открыта наружу ради проверок: набор «онбординг»
 ## обходит все точки всех цепочек и спрашивает у навигации, дойдёт ли до них
 ## человек. Маяк, показывающий туда, куда не дойти, — худшая из подсказок.
@@ -316,7 +334,7 @@ func _villain_chain() -> Array:
 	return [
 		{
 			"text": "Ты злодей. Всё вокруг — твоя зона. Осмотрись: пробегись и оглядись",
-			"keys": "WASD — идти, Shift — бежать, V — от первого лица",
+			"keys": _walk_keys(),
 			"done": "moved",
 		},
 		{
@@ -325,32 +343,32 @@ func _villain_chain() -> Array:
 			# форта, дерево в роще. Без этого шага цепочка начиналась бы с
 			# «поставь склад», который поставить невозможно.
 			"text": "Строить пока не на что. Набери сам: камень и золото — в микро-шахте у форта, дерево — в роще",
-			"keys": "7 — молот, им камень бьётся вдвое · ЛКМ по залежи или дереву",
+			"keys": "%s — молот, им камень бьётся вдвое · %s по залежи или дереву" % [_k(&"weapon_4"), _k(&"attack")],
 			"done": "afford_storage",
 			"place": "микро-шахта",
 			"at": WORLD_BUILDER.MICRO_MINE_POS,
 		},
 		{
 			"text": "Строят и командуют СВЕРХУ. Открой вид сверху",
-			"keys": "Tab",
+			"keys": _k(&"toggle_camera"),
 			"done": "strategy",
 		},
 		{
 			"text": "Поставь склад у базы: без него добычу некуда возить",
-			"keys": "сверху: 1, затем ЛКМ по земле рядом с фортом",
+			"keys": "сверху: %s, затем ЛКМ по земле рядом с фортом" % _k(&"build_storage"),
 			"done": "storage",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
 			"text": "Найми батраков: они рубят, копают и строят сами",
-			"keys": "сверху: B — нанять, 7 / 8 / 9 / 0 / F — кем именно",
+			"keys": "сверху: %s — нанять, %s — кем именно" % [_k(&"hire_labourer"), _roles_keys()],
 			"done": "crew",
 		},
 		{
 			"text": "Поставь поле: еда растёт на нём сама, а фермер уносит её на склад",
-			"keys": "сверху: 6 — поле, нужно %s · F — поставить батрака фермером"
-				% _build_price(RES.Building.FARM),
+			"keys": "сверху: %s — поле, нужно %s · %s — поставить батрака фермером" % [
+				_k(&"build_farm"), _build_price(RES.Building.FARM), _k(&"role_farmer")],
 			"done": "farm",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
@@ -360,38 +378,38 @@ func _villain_chain() -> Array:
 			# (GDD 9a), а без лошади обоз не выедет: шаг «нарисуй маршрут»
 			# раньше этого был бы невыполним.
 			"text": "Обозу нужна лошадь, а лошадь продают в конюшне. Поставь её и купи первую",
-			"keys": "сверху: 4 — конюшня, нужно %s · у конюшни E — купить лошадь"
-				% _build_price(RES.Building.STABLE),
+			"keys": "сверху: %s — конюшня, нужно %s · у конюшни %s — купить лошадь" % [
+				_k(&"build_stable"), _build_price(RES.Building.STABLE), _k(&"interact")],
 			"done": "horse",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
 			"text": "Железа у форта нет. Оно в железной шахте в лесу эльфов — нарисуй туда маршрут обоза",
-			"keys": "сверху: C — рисовать, ЛКМ — точки, последняя у шахты, Enter — отправить",
+			"keys": "сверху: %s — рисовать, ЛКМ — точки, последняя у шахты, Enter — отправить" % _k(&"route"),
 			"done": "iron",
 			"place": "шахта",
 			"at": _mine_entrance(),
 		},
 		{
 			"text": "Воевать пока некем. Поставь казарму: бойцы берутся только из неё",
-			"keys": "сверху: 2 — казарма мечников, 3 — лучников, ЛКМ по земле · нужно %s"
-				% _build_price(RES.Building.SWORD_BARRACKS),
+			"keys": "сверху: %s — казарма мечников, %s — лучников, ЛКМ по земле · нужно %s" % [
+				_k(&"build_sword"), _k(&"build_archer"), _build_price(RES.Building.SWORD_BARRACKS)],
 			"done": "barracks",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
 			"text": "Поставь дом дружины: без него сторона держит только охрану, а не войско",
-			"keys": "сверху: 5 — дом дружины, нужно %s · каждый дом даёт ещё %d бойцов"
-				% [_build_price(RES.Building.HOUSE), RES.HOUSE_SLOTS],
+			"keys": "сверху: %s — дом дружины, нужно %s · каждый дом даёт ещё %d бойцов" % [
+				_k(&"build_house"), _build_price(RES.Building.HOUSE), RES.HOUSE_SLOTS],
 			"done": "house",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
 		{
 			"text": "Найми бойцов. Они пойдут за тобой — один ты дворец не возьмёшь",
-			"keys": "подойди к казарме и нажми E · сверху T — мечник, Y — лучник · отряд виден справа внизу",
+			"keys": "подойди к казарме и нажми %s — там наём · отряд виден справа внизу" % _k(&"interact"),
 			"done": "squad",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
@@ -412,7 +430,7 @@ func _villain_chain() -> Array:
 			# одной на сторону, и своя стоит у форта. Необязательным шаг
 			# остался: покупать никто не обязан.
 			"text": "Можно поднять снаряжение: урон больше на четверть, удар быстрее. Лавка своя, у форта",
-			"keys": "E у прилавка · цена %s · шаг необязательный" % _gear_price(),
+			"keys": "%s у прилавка · цена %s · шаг необязательный" % [_k(&"interact"), _gear_price()],
 			"done": "trader",
 			"skip": "gear",
 			"place": "своя лавка",
@@ -434,7 +452,7 @@ func _elf_chain() -> Array:
 	return [
 		{
 			"text": "Ты лесной эльф. Твой лес — юго-западный угол карты. Осмотрись",
-			"keys": "WASD — идти, Shift — бежать, V — от первого лица",
+			"keys": _walk_keys(),
 			"done": "moved",
 		},
 		{
@@ -443,14 +461,14 @@ func _elf_chain() -> Array:
 			# Лавка у них своя и в тридцати метрах — значит шаг про МЕСТО, а не
 			# про покупку.
 			"text": "Лавка — твоя и рядом. Запомни место: сюда носить награбленное и здесь же покупать",
-			"keys": "E у прилавка · денег пока нет, они с грабежа · чужие лавки тебя не обслужат",
+			"keys": "%s у прилавка · денег пока нет, они с грабежа · чужие лавки тебя не обслужат" % _k(&"interact"),
 			"done": "trader",
 			"place": "лавка",
 			"at": WORLD_BUILDER.TRADER_POS[FACTIONS.Kind.ELVES],
 		},
 		{
 			"text": "Живёшь ты грабежом. Чужие обозы идут через перекрёсток в центре",
-			"keys": "E у повозки — выпрячь лошадей",
+			"keys": "%s у повозки — выпрячь лошадей" % _k(&"interact"),
 			"done": "arrived",
 			"place": "перекрёсток",
 			"at": WORLD_BUILDER.WORKBENCH_POS,
@@ -470,12 +488,12 @@ func _guard_chain() -> Array:
 	return [
 		{
 			"text": "Ты охрана дворца. Дворец рядом с тобой, и он твой",
-			"keys": "WASD — идти, Shift — бежать, V — от первого лица",
+			"keys": _walk_keys(),
 			"done": "moved",
 		},
 		{
 			"text": "Приказы даёт командир. Подойди к нему и возьми первый",
-			"keys": "E у командира",
+			"keys": "%s у командира" % _k(&"interact"),
 			"done": "commander",
 			"place": "командир",
 			"at": COMMANDER.POSITION,
@@ -492,8 +510,9 @@ func _guard_chain() -> Array:
 			# Правило захвата страже нужнее всех, и с изнанки: её СОЛДАТЫ
 			# захвату не мешают вовсе. Чтобы сорвать захват, в круг обязан
 			# встать сам вожак — иначе злодей возьмёт дворец посреди гарнизона.
-			"keys": ("перемирие с эльфами — Y · чужой захват срывается только "
-				+ "тем, что ты сам стоишь в круге: %s") % _capture_rule(),
+			# Про перемирие здесь больше ни слова: его вырезали вместе с
+			# репутацией (GDD раздел 9), а подсказка продолжала звать жать Y.
+			"keys": "чужой захват срывается только тем, что ты сам стоишь в круге: %s" % _capture_rule(),
 			"live": "palace",
 			"place": "дворец",
 			"at": OBJECTIVE.PALACE,
