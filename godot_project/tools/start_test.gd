@@ -23,6 +23,7 @@ const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
+const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 
 ## Насколько далеко от центра микро-шахты ещё считается её залежью.
 const MICRO_RADIUS := 20.0
@@ -35,7 +36,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "старт"
-	expected_host = 7
+	expected_host = 8
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -60,6 +61,7 @@ func _run() -> void:
 	_test_micro_mine_is_not_enough_for_growth(micro)
 	_test_micro_mine_reachable()
 	_test_ridge_is_not_a_quarry()
+	_test_fort_yard_is_buildable()
 	finish()
 
 
@@ -201,3 +203,19 @@ func _test_ridge_is_not_a_quarry() -> void:
 		stray += 1
 	check(stray == 0, "у форта нет камня, кроме микро-шахты",
 		"посторонних залежей камня: %d" % stray)
+
+
+## Во дворе разрушенного форта строить можно, а на стену или руину — нет.
+##
+## Раньше во дворе стояли две целые деревянные глыбы, и ИИ ставил склад углом
+## на крышу одной из них: дом поднимался на десять метров, и обозы от него
+## ездили пустыми. Теперь глыб нет (руины низкие), а место под постройку с
+## перепадом больше `MAX_STEP` не годится.
+func _test_fort_yard_is_buildable() -> void:
+	var yard := Vector3(-274.0, 0.0, 296.0)
+	var wall := Vector3(-380.0, 0.0, 260.0)
+	var kind := RES.Building.STORAGE
+	var yard_ok: bool = BUILD_CONTROLLER.is_spot_buildable(_world, yard, kind)
+	var wall_ok: bool = BUILD_CONTROLLER.is_spot_buildable(_world, wall, kind)
+	check(yard_ok and not wall_ok, "во дворе форта строить можно, на стене — нет",
+		"двор %s, стена %s" % [yard_ok, wall_ok])

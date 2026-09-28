@@ -26,7 +26,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "хозяйство"
-	expected_host = 16
+	expected_host = 17
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -119,15 +119,28 @@ func _test_sends_caravan() -> void:
 	var sent: Node3D = null
 	for i in 45:
 		await get_tree().create_timer(1.0).timeout
-		var mine_caravans: Array = _world.caravans_of(0)
-		if not mine_caravans.is_empty():
-			sent = mine_caravans[0]
+		# Обоз ЗЛОДЕЯ, а не первый попавшийся: с 28.09 (GDD 9a) обозы водит и
+		# стража, и первым ИИ-обозом в мире оказывался её.
+		for cart in _world.caravans_of(0):
+			if int(cart.faction) == FACTIONS.Kind.VILLAIN:
+				sent = cart
+		if sent != null:
 			break
 	check(sent != null, "ИИ отправил караван", "караванов %d" % _world.caravans_of(0).size())
 	if sent == null:
 		return
 	check(int(sent.faction) == FACTIONS.Kind.VILLAIN, "караван принадлежит СТОРОНЕ",
 		FACTIONS.name_of(int(sent.faction)))
+	# И ДОЕДЕТ ДО ШАХТЫ: конец пути у входа, а не где-то по дороге. Обоз
+	# грузится только у шахты, и маршрут, оборвавшийся раньше, — это пустая
+	# телега. Так и было: склад ИИ стоял на крыше глыбы во дворе форта, путь
+	# от него обрывался через три точки, и обозы злодея ездили пустыми.
+	var end: Vector3 = sent.route[sent.route.size() - 1]
+	var mine: Node3D = _world.mine_near(end)
+	var gap: float = Vector2(end.x, end.z).distance_to(
+		Vector2(mine.global_position.x, mine.global_position.z))
+	check(gap <= sent.LOAD_REACH, "маршрут обоза ИИ кончается у шахты",
+		"конец в %.0f м от ближайшей шахты (%s), точек %d" % [gap, mine.title(), sent.route.size()])
 
 	# Разгрузку проверяем НАПРЯМУЮ, а не ждём круга: дорога до шахты и обратно
 	# занимает больше минуты, и набор упирался бы в предел по времени. Сломан был

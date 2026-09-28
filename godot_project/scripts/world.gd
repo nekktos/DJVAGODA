@@ -897,12 +897,52 @@ func spawn_caravan(route: PackedVector3Array, owner_id: int, faction := -1,
 	if node != null:
 		print("[караван] игрок %d отправил караван: точек %d (по карте %d), лошадей %d"
 			% [owner_id, route.size(), walked.size(), horses])
-		node.destroyed.connect(_on_caravan_destroyed.bind(node.faction))
+		# Сторону обоза читаем В МИГ СОБЫТИЯ, а не при спавне: перехваченный
+		# обоз (GDD 9a) по дороге меняет хозяина, и привязанная при спавне
+		# сторона засчитала бы разбитый обоз злодея как обоз стражи.
+		node.destroyed.connect(func(point: Vector3, cargo: PackedInt32Array, killer_id: int) -> void:
+			_on_caravan_destroyed(point, cargo, killer_id, int(node.faction)))
 		# Лошади уходят с обозом и возвращаются в конюшню, когда он доехал. На
 		# обратном пути их могут увести или убить — тогда возвращать нечего, и
 		# считать это должен сам обоз, а не отправитель.
-		node.came_home.connect(_on_caravan_home.bind(node.faction))
+		node.came_home.connect(func(team: int) -> void:
+			_on_caravan_home(team, int(node.faction)))
 	return node
+
+
+## Перехватить чужой обоз (GDD 9a): он едет на склад перехватчика. Только хост.
+##
+## ЛОШАДИ ПЕРЕХОДЯТ ВМЕСТЕ С ОБОЗОМ: живые из упряжки уходят из конюшни прежнего
+## хозяина и числятся у нового — как ушедшие в упряжку, а доехав, становятся
+## свободными. Убитые по дороге остаются потерей прежнего хозяина.
+##
+## Для стражи это ещё и приказ «перехватить караван»: перенаправить обоз злодея
+## к себе — ровно то, чего командир и хочет.
+func intercept_caravan(cart: Node3D, player: Node3D) -> bool:
+	if not Net.hosting() or cart == null or player == null:
+		return false
+	var side := int(player.faction)
+	var storage: Node3D = storage_of(side)
+	if storage == null:
+		return false
+	var old_side := int(cart.faction)
+	var walked := _walkable_route(PackedVector3Array([storage.global_position, cart.global_position]))
+	if walked.size() < 2:
+		return false
+	var team := int(cart.horses)
+	var old_wallet: Node = treasury.of(old_side)
+	if old_wallet != null:
+		old_wallet.horses = maxi(0, int(old_wallet.horses) - team)
+		old_wallet.horses_out = maxi(0, int(old_wallet.horses_out) - team)
+	var new_wallet: Node = treasury.of(side)
+	if new_wallet != null:
+		new_wallet.horses = int(new_wallet.horses) + team
+		new_wallet.horses_out = int(new_wallet.horses_out) + team
+	cart.redirect(side, int(player.peer_id), walked)
+	commander.report_caravan_destroyed(int(player.peer_id), old_side)
+	objective.log_event.rpc("Обоз «%s» перехвачен стороной «%s»" % [
+		FACTIONS.name_of(old_side), FACTIONS.name_of(side)])
+	return true
 
 
 ## Обоз доехал: лошади снова свободны и годятся хоть в упряжку, хоть под седло.

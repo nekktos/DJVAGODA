@@ -18,6 +18,18 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:cargo")
 properties/4/spawn = true
 properties/4/replication_mode = 1
+properties/5/path = NodePath(".:horses")
+properties/5/spawn = true
+properties/5/replication_mode = 1
+properties/6/path = NodePath(".:halted")
+properties/6/spawn = true
+properties/6/replication_mode = 1
+properties/7/path = NodePath(".:faction")
+properties/7/spawn = true
+properties/7/replication_mode = 1
+properties/8/path = NodePath(".:owner_id")
+properties/8/spawn = true
+properties/8/replication_mode = 1
 
 [node name="Caravan" type="Node3D"]
 script = ExtResource("1_caravan")

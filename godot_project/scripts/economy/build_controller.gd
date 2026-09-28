@@ -114,18 +114,31 @@ static func is_spot_buildable(context: Node3D, point: Vector3, building_kind: in
 	var half_z := size.z * 0.5
 	var space := context.get_world_3d().direct_space_state
 
-	# Земля под каждым углом обязана БЫТЬ. Перепад между углами больше не
-	# проверяем (см. шапку про сваи), но повиснуть в пустоте дом не должен:
-	# луч, не нашедший опоры, — это край карты или дыра, а не склон.
-	for dx in [-half_x, half_x]:
-		for dz in [-half_z, half_z]:
-			var probe := point + Vector3(dx, 0.0, dz)
-			var query := PhysicsRayQueryParameters3D.create(
-				probe + Vector3.UP * 60.0, probe + Vector3.DOWN * 60.0
-			)
-			query.collision_mask = 1
-			if space.intersect_ray(query).is_empty():
-				return false
+	# Земля под каждым углом обязана БЫТЬ: луч, не нашедший опоры, — это край
+	# карты или дыра, а не склон.
+	#
+	# И ПЕРЕПАД НЕ БОЛЬШЕ `MAX_STEP`. Склон дом переживает на сваях (см.
+	# шапку `building.gd`), а вот стену, скалу или руину под одним углом — нет:
+	# опора поднимает дом на самую высокую точку, и он встаёт НА КРЫШУ того, во
+	# что упёрся. Так и вышло с ИИ-злодеем: склад встал углом на глыбу во дворе
+	# форта, поднялся на десять метров, и обоз от него не мог проложить путь
+	# никуда — ездил пустым.
+	var lowest := INF
+	var highest := -INF
+	for probe_at in [Vector2(-half_x, -half_z), Vector2(half_x, -half_z),
+			Vector2(-half_x, half_z), Vector2(half_x, half_z), Vector2.ZERO]:
+		var probe := point + Vector3(probe_at.x, 0.0, probe_at.y)
+		var query := PhysicsRayQueryParameters3D.create(
+			probe + Vector3.UP * 60.0, probe + Vector3.DOWN * 60.0
+		)
+		query.collision_mask = 1
+		var hit: Dictionary = space.intersect_ray(query)
+		if hit.is_empty():
+			return false
+		lowest = minf(lowest, float(hit["position"].y))
+		highest = maxf(highest, float(hit["position"].y))
+	if highest - lowest > MAX_STEP:
+		return false
 
 	# Не залезаем на уже построенное.
 	for node in context.get_tree().get_nodes_in_group("building"):
@@ -139,6 +152,15 @@ static func is_spot_buildable(context: Node3D, point: Vector3, building_kind: in
 		if absf(delta.x) < gap_x and absf(delta.z) < gap_z:
 			return false
 	return true
+
+
+## Наибольший перепад земли под постройкой. Больше — под углом не склон, а
+## препятствие.
+##
+## Семь метров, а не меньше: край плато дворца — шесть, и дом на нём обязан
+## вставать на сваи (это проверяет набор «экономика»). А стены форта (16 м) и
+## глыбы, стоявшие во дворе (10 м), — уже не склон.
+const MAX_STEP := 7.0
 
 
 ## Игрок кликнул по земле в режиме стройки.

@@ -2257,6 +2257,7 @@ func loot_nearby() -> Node3D:
 # --- верхом ----------------------------------------------------------------
 
 const HORSE := preload("res://scripts/units/horse.gd")
+const CARAVAN_RULES := preload("res://scripts/economy/caravan.gd")
 
 ## На какой лошади едем. Пусто — идём пешком.
 @export var mount_path := NodePath()
@@ -2275,13 +2276,22 @@ func caravan_to_rob() -> Node3D:
 	for child in spawned.get_children():
 		if not child.has_method("capture_horses") or not ("faction" in child):
 			continue
-		if int(child.faction) == int(faction):
+		if child.global_position.distance_to(global_position) > ROB_RANGE:
 			continue
-		if not child.halted or int(child.horses) <= 0:
-			continue
-		if child.global_position.distance_to(global_position) <= ROB_RANGE:
+		if caravan_action(child) != "":
 			return child
 	return null
+
+
+## Что можно сделать с этим обозом: перехватить, увести лошадей, разграбить
+## или ничего. Правило одно на всех — `caravan.gd::action_for`.
+func caravan_action(cart: Node) -> String:
+	if cart == null or not is_instance_valid(cart):
+		return ""
+	var world := get_parent().get_parent()
+	var has_storage: bool = world != null and world.storage_of(int(faction)) != null
+	return CARAVAN_RULES.action_for(int(faction), int(cart.faction), int(cart.horses),
+		bool(cart.halted), int(cart.cargo_total()), has_storage)
 
 
 ## Дальше этого лошадей не выпрягают.
@@ -2307,8 +2317,17 @@ func request_rob_caravan() -> void:
 		return
 	var cart := caravan_to_rob()
 	if cart == null:
-		_refuse("выпрягать нечего: обоз должен стоять и быть чужим")
+		_refuse("с обозом ничего не сделать: он должен стоять и быть чужим")
 		return
+	var world_here := get_parent().get_parent()
+	match caravan_action(cart):
+		"intercept":
+			if world_here.intercept_caravan(cart, self):
+				_show_note("обоз перехвачен: едет на твой склад")
+			return
+		"plunder":
+			cart.plunder(int(peer_id))
+			return
 	var taken: int = cart.capture_horses()
 	if taken <= 0:
 		return

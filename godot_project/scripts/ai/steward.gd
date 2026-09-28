@@ -116,6 +116,34 @@ func _process(delta: float) -> void:
 		# на которую хватило золота, купится ему вслед и простоит без дела.
 		_buy_horses(faction)
 		_send_caravan(faction)
+	# ОБОЗЫ СТРАЖИ (GDD 9a: «караваны есть и у людей, и у злодея»). Стройки и
+	# найма у стражи нет, пока её человек не стал командиром, но хозяйство
+	# дворца живёт и без него: склад, конюшня и поля стоят с начала партии, и
+	# возит в них тот, кто ими распоряжается, — распорядитель. Как только у
+	# стражи появился командир, обозы — его дело, и ИИ их больше не шлёт.
+	if _runs_guard_logistics():
+		_buy_horses(FACTIONS.Kind.GUARD)
+		_send_caravan(FACTIONS.Kind.GUARD)
+
+
+## Возит ли ИИ обозы стражи: пока у неё нет живого командира.
+func _runs_guard_logistics() -> bool:
+	var commander: Node = get_parent().get_node_or_null("Commander")
+	if commander == null:
+		return false
+	return not commander.guard_has_leader()
+
+
+## Сколько обозов ИИ этой стороны в пути.
+##
+## По СТОРОНЕ, а не по владельцу: у всех обозов ИИ владелец ноль, и обоз
+## злодея под ИИ загораживал бы обоз стражи — «один в пути» считался на двоих.
+func _ai_caravans(faction: int) -> int:
+	var count := 0
+	for cart in get_parent().caravans_of(0):
+		if int(cart.faction) == faction:
+			count += 1
+	return count
 
 
 ## Ведём хозяйство только за незанятую сторону, которая умеет строить. Сел
@@ -345,7 +373,7 @@ func _send_caravan(faction: int) -> void:
 	var storage := _ready_building(faction, RES.Building.STORAGE)
 	if storage == null:
 		return
-	if world.caravans_of(0).size() >= CARAVANS_WANTED:
+	if _ai_caravans(faction) >= CARAVANS_WANTED:
 		return
 	var target: Node3D = _pick_mine(faction)
 	if target == null:

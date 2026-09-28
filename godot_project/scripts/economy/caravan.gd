@@ -109,11 +109,19 @@ signal came_home(horses: int)
 ## Обоз стоит: лошадей нет или рядом враг.
 @export var halted := false
 
-var owner_id := 1
+## Хозяин и сторона — РЕПЛИЦИРУЮТСЯ (`Caravan.tscn`). До перехвата (GDD 9a)
+## они не менялись и приезжали пакетом спавна; теперь перехваченный обоз меняет
+## и то и другое посреди пути, и клиент обязан это увидеть.
+##
+## Вместе с ними по сети теперь идут `horses` и `halted`. Раньше не шли вовсе, и
+## у игрока-КЛИЕНТА подсказка «выпрячь лошадей» не появлялась никогда: он видел
+## каждый обоз «едущим» и «без упряжки» — его копия так и стояла с данными
+## спавна.
+@export var owner_id := 1
 ## Сторона каравана. Владельца может не быть вовсе — караван ИИ принадлежит
-## СТОРОНЕ, как батраки и гарнизон, — а разгружаться и портить отношения он
-## обязан одинаково с игроцким.
-var faction := 0
+## СТОРОНЕ, как батраки и гарнизон, — а разгружаться он обязан одинаково с
+## игроцким.
+@export var faction := 0
 var route: PackedVector3Array = PackedVector3Array()
 
 ## Охрана: кто едет вместе с повозкой (GDD, решение по ходу шага 8).
@@ -242,6 +250,10 @@ func _physics_process(delta: float) -> void:
 		# Клиент только сглаживает присланное.
 		position = position.lerp(sync_position, clampf(delta * 12.0, 0.0, 1.0))
 		rotation.y = lerp_angle(rotation.y, sync_yaw, clampf(delta * 8.0, 0.0, 1.0))
+		# Упряжку рисует по присланному числу: лошадей убили или увели на
+		# хосте — у клиента они исчезают тоже.
+		if _harness.size() != horses:
+			_rebuild_harness()
 		return
 
 	match state:
@@ -709,6 +721,81 @@ func capture_horses() -> int:
 	_rebuild_harness()
 	print("[караван] лошадей уведено: %d" % taken)
 	return taken
+
+
+## Что сторона `actor` может сделать с этим обозом, подойдя вплотную.
+##
+## ОДНО ПРАВИЛО ДЛЯ ВСЕХ: игрок, подсказка и хост спрашивают здесь, и
+## разойтись им не в чем. Пустая строка — ничего.
+##
+## - «intercept» — ПЕРЕХВАТ (GDD 9a): злодей берёт обоз стражи и наоборот и
+##   гонит его на СВОЙ склад, с грузом и лошадьми. Только у соперников по
+##   хозяйству и только при своём складе: гнать некуда — не перехватишь;
+## - «rob» — увести лошадей живыми. Так грабят эльфы: склада у них нет;
+## - «plunder» — РАЗГРАБИТЬ повозку без лошадей: груз высыпается на землю,
+##   разбивать телегу для этого не нужно.
+##
+## Всё — только у стоящего обоза: на ходу не перехватывают и не выпрягают.
+static func action_for(actor: int, cart_faction: int, horse_count: int, stopped: bool,
+		load_total: int, has_storage: bool) -> String:
+	if actor == cart_faction or not stopped:
+		return ""
+	if horse_count > 0:
+		if rivals(actor, cart_faction) and has_storage:
+			return "intercept"
+		return "rob"
+	if load_total > 0:
+		return "plunder"
+	return ""
+
+
+## Соперники по хозяйству: злодей и стража. У обоих склады и обозы, и
+## каждый может увести обоз другого к себе.
+static func rivals(a: int, b: int) -> bool:
+	var pair := [FACTIONS.Kind.VILLAIN, FACTIONS.Kind.GUARD]
+	return a != b and pair.has(a) and pair.has(b)
+
+
+func cargo_total() -> int:
+	var total := 0
+	for value in cargo:
+		total += int(value)
+	return total
+
+
+## Перехват: обоз сменил хозяина и едет на новый склад. Только на хосте.
+##
+## `walked` — путь от НОВОГО склада до места, где обоз сейчас: ехать домой он
+## умеет только по маршруту задом наперёд, и новый маршрут составлен так, чтобы
+## его обратный путь вёл к перехватчику.
+##
+## Прежняя охрана отпускается: она служила другой стороне.
+func redirect(new_faction: int, new_owner: int, walked: PackedVector3Array) -> void:
+	if not Net.hosting() or walked.size() < 2:
+		return
+	_release_escort()
+	faction = new_faction
+	owner_id = new_owner
+	route = walked
+	_leg = 0
+	state = State.TO_HOME
+	halted = false
+	print("[караван] перехвачен стороной «%s», едет на её склад: %s"
+		% [FACTIONS.name_of(new_faction), _cargo_text()])
+
+
+## Разграбить: груз на землю, повозка остаётся ломом. Только на хосте.
+##
+## Тот же путь, что у разбитой телеги (`destroyed`): мир высыпает груз кучей,
+## командир засчитывает приказ, — второй дороги для того же итога не заводим.
+func plunder(by_peer: int) -> void:
+	if not Net.hosting() or not _alive:
+		return
+	_alive = false
+	print("[караван] разграблен игроком %d, груз высыпан: %s" % [by_peer, _cargo_text()])
+	destroyed.emit(global_position, cargo, by_peer)
+	_release_escort()
+	queue_free()
 
 
 ## Перерисовать упряжку под текущее число лошадей.

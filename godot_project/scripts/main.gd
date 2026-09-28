@@ -394,6 +394,13 @@ func _action_prompt(me: Node3D) -> Dictionary:
 		return {"text": refusal}
 	var cart: Node3D = me.caravan_to_rob()
 	if cart != null and me.riding() == null:
+		match me.caravan_action(cart):
+			"intercept":
+				return {"key": &"interact", "icon": "cart",
+					"text": "перехватить обоз: поедет на твой склад с грузом и лошадьми"}
+			"plunder":
+				return {"key": &"interact", "icon": "res_%d" % _richest(cart.cargo),
+					"text": "разграбить повозку: груз на землю"}
 		return {"key": &"interact", "icon": "horse", "text": "выпрячь лошадей: %d" % int(cart.horses)}
 	if me.riding() != null:
 		return {"key": &"interact", "icon": "horse", "text": "спешиться"}
@@ -424,15 +431,20 @@ func _action_prompt(me: Node3D) -> Dictionary:
 
 ## Картинка кучи — по самому обильному в ней ресурсу.
 func _pile_icon(pile: Node3D) -> String:
+	if "contents" in pile:
+		return "res_%d" % _richest(pile.contents)
+	return "res_%d" % RES.Kind.WOOD
+
+
+func _richest(amounts: Array) -> int:
 	var best := RES.Kind.WOOD
 	var most := -1
-	if "contents" in pile:
-		for kind in RES.COUNT:
-			var amount: int = RES.at(pile.contents, kind)
-			if amount > most:
-				most = amount
-				best = kind
-	return "res_%d" % best
+	for kind in RES.COUNT:
+		var amount: int = RES.at(amounts, kind)
+		if amount > most:
+			most = amount
+			best = kind
+	return best
 
 
 ## То же для стратегического режима: там «доступное действие» — это включённый
@@ -1216,6 +1228,7 @@ const TEST_FLAGS := {
 	"--minestest": ["res://tools/mines_test.gd", true],
 	"--keystest": ["res://tools/keys_test.gd", true],
 	"--hudtest": ["res://tools/hud_test.gd", true],
+	"--intercepttest": ["res://tools/intercept_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
