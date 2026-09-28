@@ -41,6 +41,12 @@ func _run() -> void:
 		_world.spawn_labourer(int(me.faction), home + Vector3(4.0, 0.0, 4.0), home, role)
 	await get_tree().create_timer(1.0).timeout
 
+	# Заклинание на откате и лошадь под боком: так на кадре видны и затемнение
+	# слота, и строка действия с клавишей и картинкой.
+	me.sync_ability_cd[4] = 9.0
+	me.mana = 20.0
+	_world.spawn_horse(me.global_position + me.global_transform.basis.z * -2.5)
+	await get_tree().create_timer(0.8).timeout
 	await _shot("01_бой")
 	_world.set_strategy_mode(true)
 	await get_tree().create_timer(1.5).timeout

@@ -21,6 +21,8 @@ const KEYMAP := preload("res://scripts/ui/keymap.gd")
 const ICONS := preload("res://scripts/ui/icons.gd")
 const STYLE := preload("res://scripts/ui/style.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
+const ABILITIES := preload("res://scripts/combat/abilities.gd")
 
 const TEST_PATH := "user://keys_hudtest.cfg"
 
@@ -30,7 +32,7 @@ var _main: Node
 
 func start(world: Node3D) -> void:
 	tag = "интерфейс"
-	expected_host = 12
+	expected_host = 17
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -57,6 +59,10 @@ func _run() -> void:
 	await _test_prompt_above_bar()
 
 	_world.set_strategy_mode(false)
+	await get_tree().process_frame
+	await _test_hotbar(me)
+	await _test_action_row(me)
+
 	KEYMAP.reset_all()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	KEYMAP.config_path = KEYMAP.DEFAULT_PATH
@@ -219,6 +225,79 @@ func _test_route_card() -> void:
 	_world.set_route_mode(false)
 	check(usable and on, "карточка обоза включает прокладку маршрута",
 		"активна %s, маршрут %s" % [usable, on])
+
+
+## Боевая полоса: только в бою, выбранное оружие выделено, откат затемняет
+## слот, счётчики — правда.
+func _test_hotbar(me: Node3D) -> void:
+	var bar: Control = _main._hotbar
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var shown_in_fight: bool = bar.visible
+	var weapons := 0
+	for slot in 4:
+		if FACTIONS.weapon_on_slot(int(me.faction), slot) >= 0:
+			weapons += 1
+	var cells := 0
+	for slot in 4:
+		if bar.find_child("Weapon%d" % slot, true, false) != null:
+			cells += 1
+	check(shown_in_fight and cells == weapons, "в бою видна боевая полоса со всем оружием стороны",
+		"видна %s, слотов %d из %d" % [shown_in_fight, cells, weapons])
+
+	var second: int = FACTIONS.weapon_on_slot(int(me.faction), 1)
+	me.sync_weapon = second
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var cell: Panel = bar.find_child("Weapon1", true, false)
+	var edge: Color = (cell.get_theme_stylebox("panel") as StyleBoxFlat).border_color
+	var first_edge: Color = (bar.find_child("Weapon0", true, false).get_theme_stylebox("panel") as StyleBoxFlat).border_color
+	check(edge == STYLE.ACCENT and first_edge != STYLE.ACCENT, "выбранное оружие выделено рамкой, прочее — нет",
+		"рамка у второго %s, у первого %s" % [edge, first_edge])
+	me.sync_weapon = FACTIONS.weapon_on_slot(int(me.faction), 0)
+
+	var kind: int = FACTIONS.ability_on_slot(int(me.faction), 0)
+	me.sync_ability_cd[kind] = ABILITIES.cooldown_of(kind) * 0.5
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var spell: Panel = bar.find_child("Ability0", true, false)
+	var shade: ColorRect = spell.get_node("Shade")
+	var cooling: bool = shade.visible and (spell.get_node("Seconds") as Label).text != ""
+	me.sync_ability_cd[kind] = 0.0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var ready: bool = not shade.visible
+	check(cooling and ready, "откат заклинания затемняет слот и показывает секунды, готовое — чистое",
+		"на откате %s, готово %s" % [cooling, ready])
+
+	me.arrows = 17
+	me.body.bandages = 2
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var arrows: String = (bar.find_child("Arrows", true, false).get_child(1) as Label).text
+	var bandages: String = (bar.find_child("Bandages", true, false).get_child(1) as Label).text
+	check(arrows == "17" and bandages == "2", "стрелы и бинты на полосе — сколько есть",
+		"стрел «%s», бинтов «%s»" % [arrows, bandages])
+
+
+## Строка действия: клавиша в рамке — та, что в раскладке, и картинка того,
+## с чем имеешь дело. Лошадь рядом — «[E] (лошадь) сесть на лошадь».
+func _test_action_row(me: Node3D) -> void:
+	var horse: Node3D = _world.spawn_horse(me.global_position + Vector3(1.5, 0.0, 0.0))
+	await get_tree().create_timer(0.5).timeout
+	var hud: Control = _main._hud
+	var cap_text := ""
+	for child in hud.action_key.get_children():
+		if not child.is_queued_for_deletion():
+			cap_text = (child.get_child(0) as Label).text
+	var near: bool = me.horse_nearby() != null
+	check(near and hud.action_row.visible and cap_text == KEYMAP.key_text(&"interact")
+			and hud.action_icon.texture != null,
+		"строка действия — клавиша из раскладки и картинка",
+		"лошадь рядом %s, строка видна %s, клавиша «%s», картинка %s" % [
+			near, hud.action_row.visible, cap_text, hud.action_icon.texture != null])
+	if is_instance_valid(horse):
+		horse.queue_free()
 
 
 ## Строка действия поднимается над панелью: иначе «СТРОЙКА: ЛКМ поставить»

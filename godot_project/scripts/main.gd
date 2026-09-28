@@ -74,6 +74,7 @@ const STYLE := preload("res://scripts/ui/style.gd")
 const ICONS := preload("res://scripts/ui/icons.gd")
 const RESOURCE_BAR := preload("res://scripts/ui/resource_bar.gd")
 const COMMAND_BAR := preload("res://scripts/ui/command_bar.gd")
+const HOTBAR := preload("res://scripts/ui/hotbar.gd")
 
 ## Человек ВЫБРАЛ сторону сам, а не получил её подстановкой из сейва.
 ##
@@ -91,6 +92,8 @@ var _icons: Node = null
 ## Полоса запасов (левый верх) и панель команд вида сверху (левый низ).
 var _res_bar: Control = null
 var _command_bar: Control = null
+## Боевая полоса: оружие, заклинания, стрелы, бинты (низ по центру).
+var _hotbar: Control = null
 var _waypoint: Node3D = null
 var _faction_chosen := false
 
@@ -312,10 +315,9 @@ func _refresh_hud() -> void:
 		_hud.set_spells("")
 		return
 
-	# Стрелы показываем ВСЕГДА, а не только с луком в руках: колчан — это то,
-	# что планируют заранее, и узнавать о пустоте в момент выстрела поздно.
-	var note := "%s · стрел %d · бинтов %d · опыт %d" % [
-		WEAPONS.NAMES[me.sync_weapon], me.arrows, me.body.bandages, int(me.experience)]
+	# Оружие, стрелы и бинты — картинками в боевой полосе (`ui/hotbar.gd`).
+	# Здесь остаётся то, чему там места нет: опыт и трофеи.
+	var note := "опыт %d" % int(me.experience)
 	# Трофеи показываем только когда они есть: пустая строчка «рук 0, ног 0»
 	# висела бы у всех и всегда, а нужна она одному злодею с топором.
 	var haul: int = me.trophies[0] + me.trophies[1] + me.trophies[2]
@@ -328,14 +330,20 @@ func _refresh_hud() -> void:
 	_hud.set_vitals(me.health.current, 100.0, note, wounds)
 	_hud.set_stamina(me.sync_stamina / me.STAMINA_MAX)
 	_hud.set_right(right)
-	var magic := ""
-	if FACTIONS.has_abilities(me.faction):
-		# Мана впереди списка заклинаний: без неё список — это перечень того,
-		# чего нельзя.
-		magic = "мана %d/%d" % [int(me.mana), int(me.MANA_MAX)]
-		magic += "\n" + _abilities_hint(me).replace("магия: ", "")
-	_hud.set_spells(magic)
-	_hud.set_prompt(_action_prompt(me))
+	# Мана — полосой под выносливостью, заклинания — в боевой полосе. Строкой
+	# остаётся только то, что картинкой не сказать: сколько ещё действует клич.
+	_hud.set_mana(me.mana / me.MANA_MAX if FACTIONS.has_abilities(me.faction) else -1.0)
+	var buff := ""
+	if me.sync_buff_left > 0.0:
+		buff = "клич действует ещё %.0f с" % ceil(me.sync_buff_left)
+	_hud.set_spells(buff)
+	var action: Dictionary = _action_prompt(me)
+	if action.has("key") or action.has("icon"):
+		var key_text := _k(action["key"]) if action.has("key") else ""
+		var picture: Texture2D = _icons.icon(action["icon"]) if action.has("icon") else null
+		_hud.set_action(key_text, picture, String(action.get("text", "")))
+	else:
+		_hud.set_prompt(String(action.get("text", "")))
 
 
 ## Подсказка первых минут: шаг в панели наверху и маяк над местом, куда идти.
@@ -374,39 +382,57 @@ func _aim_waypoint(at: Vector3, place_name: String, gap: float) -> void:
 	_waypoint.show_gap(gap)
 
 
-## Что можно сделать ПРЯМО СЕЙЧАС. Одна строка и только самое близкое: полный
-## список возможностей живёт под F1, а здесь то, до чего игрок дотянулся рукой.
-func _action_prompt(me: Node3D) -> String:
+## Что можно сделать ПРЯМО СЕЙЧАС. Одно действие и только самое близкое:
+## полный список возможностей живёт под справкой.
+##
+## Словарь, а не строка: «key» — действие раскладки (его клавиша рисуется в
+## рамке), «icon» — ключ иконки того, с чем имеешь дело, «text» — что будет.
+## Отказ и прочие простые строки идут одним «text».
+func _action_prompt(me: Node3D) -> Dictionary:
 	var refusal: String = _refusal_line().strip_edges()
 	if refusal != "":
-		return refusal
+		return {"text": refusal}
 	var cart: Node3D = me.caravan_to_rob()
 	if cart != null and me.riding() == null:
-		return "%s — выпрячь лошадей: %d" % [_k(&"interact"), int(cart.horses)]
+		return {"key": &"interact", "icon": "horse", "text": "выпрячь лошадей: %d" % int(cart.horses)}
 	if me.riding() != null:
-		return "%s — спешиться" % _k(&"interact")
+		return {"key": &"interact", "icon": "horse", "text": "спешиться"}
 	if me.horse_nearby() != null:
-		return "%s — сесть на лошадь" % _k(&"interact")
+		return {"key": &"interact", "icon": "horse", "text": "сесть на лошадь"}
 	var pile: Node3D = me.loot_nearby()
 	if pile != null:
-		return "%s — подобрать: %s" % [_k(&"interact"), pile.summary()]
+		return {"key": &"interact", "icon": _pile_icon(pile), "text": "подобрать: %s" % pile.summary()}
 	if me.at_trader():
-		return "%s — лавка: бинты и снаряжение (сейчас %s)" % [_k(&"interact"), WEAPONS.gear_name(me.gear_tier)]
+		return {"key": &"interact", "icon": "res_%d" % RES.Kind.GOLD,
+			"text": "лавка (снаряжение сейчас %s)" % WEAPONS.gear_name(me.gear_tier)}
 	if me.at_commander():
-		return "%s — командир: %s" % [_k(&"interact"), _order_hint(me)]
+		return {"key": &"interact", "icon": "guard", "text": "командир: %s" % _order_hint(me)}
 	if me.at_workbench():
-		return "%s — верстак: протезы и коляска" % _k(&"interact")
+		return {"key": &"interact", "icon": "wpn_%d" % WEAPONS.Kind.HAMMER, "text": "верстак: протезы и коляска"}
 	if me.body.bleeding:
 		var progress: float = me.bandage_progress()
 		if progress > 0.0:
-			return "перевязка: %d%%" % int(progress * 100.0)
-		return "%s — перевязать (стоя на месте)" % _k(&"bandage")
+			return {"icon": "bandage", "text": "перевязка: %d%%" % int(progress * 100.0)}
+		return {"key": &"bandage", "icon": "bandage", "text": "перевязать (держать, стоя на месте)"}
 	if int(me.faction) == FACTIONS.Kind.GUARD and me.order_kind >= 0:
-		return "приказ: %s — %s" % [
+		return {"icon": "guard", "text": "приказ: %s — %s" % [
 			ORDERS.name_of(me.order_kind),
 			ORDERS.progress_text(me.order_kind, me.order_progress),
-		]
-	return ""
+		]}
+	return {"text": ""}
+
+
+## Картинка кучи — по самому обильному в ней ресурсу.
+func _pile_icon(pile: Node3D) -> String:
+	var best := RES.Kind.WOOD
+	var most := -1
+	if "contents" in pile:
+		for kind in RES.COUNT:
+			var amount: int = RES.at(pile.contents, kind)
+			if amount > most:
+				most = amount
+				best = kind
+	return "res_%d" % best
 
 
 ## То же для стратегического режима: там «доступное действие» — это включённый
@@ -757,6 +783,20 @@ func _build_bars() -> void:
 	_command_bar.offset_bottom = -_hud.MARGIN
 	_command_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_command_bar.visible = false
+	_hotbar = HOTBAR.new()
+	_hotbar.name = "Hotbar"
+	_hud.add_child(_hotbar)
+	_hotbar.setup(_world, _icons)
+	# Низ по центру: растёт в обе стороны от середины и вверх от края.
+	_hotbar.anchor_left = 0.5
+	_hotbar.anchor_right = 0.5
+	_hotbar.anchor_top = 1.0
+	_hotbar.anchor_bottom = 1.0
+	_hotbar.offset_top = -_hud.MARGIN
+	_hotbar.offset_bottom = -_hud.MARGIN
+	_hotbar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_hotbar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_hotbar.visible = false
 	# Меню паузы должно остаться поверх полос: переносим его в конец.
 	$UI.move_child(_settings, -1)
 
@@ -770,15 +810,26 @@ func _refresh_bars() -> void:
 	if not Net.active:
 		_res_bar.visible = false
 		_command_bar.visible = false
+		_hotbar.visible = false
 		_hud.set_prompt_lift(0.0)
+		_hud.set_right_lift(0.0)
 		return
 	_command_bar.refresh()
+	_hotbar.refresh()
 	var cost: Array = _command_bar.hovered_cost
 	if cost.is_empty() and _world.build_controller.active:
 		cost = RES.BUILDING_COST[int(_world.build_controller.kind)]
 	_res_bar.highlight_shortfall(cost)
 	_res_bar.refresh()
-	_hud.set_prompt_lift(_command_bar.size.y + 8.0 if _command_bar.visible else 0.0)
+	# Строка действия встаёт над тем, что сейчас внизу: сверху это панель
+	# команд, в бою — боевая полоса.
+	var lift := 0.0
+	if _command_bar.visible:
+		lift = _command_bar.size.y + 8.0
+	elif _hotbar.visible:
+		lift = _hotbar.size.y - 30.0
+	_hud.set_prompt_lift(maxf(0.0, lift))
+	_hud.set_right_lift(_hotbar.size.y + 8.0 if _hotbar.visible else 0.0)
 
 
 ## Меню паузы и клавиш. Кладём ПОСЛЕДНИМ в UI, чтобы оно было поверх всего.

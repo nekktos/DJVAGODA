@@ -32,6 +32,7 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const ABILITIES := preload("res://scripts/combat/abilities.gd")
+const STYLE := preload("res://scripts/ui/style.gd")
 
 ## Картинки интерфейса — Kenney UI Pack 2.0, лицензия CC0 (см. LICENSE.txt рядом
 ## с ними). Из тысячи с лишним файлов набора взяты четыре: рамка панели, две
@@ -66,9 +67,19 @@ var vitals_box: VBoxContainer
 var vitals_panel: PanelContainer
 var health_bar: ProgressBar
 var stamina_bar: ProgressBar
+## Мана — синей полосой под выносливостью. Только у сторон с магией.
+var mana_bar: ProgressBar
+## Строка действия: «клавиша», картинка, текст. Рядом с `prompt`, который
+## остался для простых строк (отказы, режимы вида сверху).
+var action_row: HBoxContainer
+var action_key: PanelContainer
+var action_icon: TextureRect
+var action_text: Label
 var health_text: Label
 var body_text: Label
 var right_box: VBoxContainer
+## Панель хозяйства целиком: её поднимают над боевой полосой.
+var right_panel: PanelContainer
 var prompt: Label
 ## Прицел. Рисуется кодом, а не картинкой: четыре чёрточки и точка — это
 ## четыре ColorRect, и менять их проще, чем искать файл.
@@ -197,6 +208,21 @@ func _build() -> void:
 	stamina_bar.add_theme_stylebox_override("fill", fill)
 	vitals_box.add_child(stamina_bar)
 
+	mana_bar = ProgressBar.new()
+	mana_bar.custom_minimum_size = Vector2(240.0, 11.0)
+	mana_bar.show_percentage = false
+	mana_bar.max_value = 100.0
+	var mana_back := StyleBoxFlat.new()
+	mana_back.bg_color = Color(0.08, 0.08, 0.10, 0.85)
+	mana_back.set_corner_radius_all(3)
+	var mana_fill := StyleBoxFlat.new()
+	mana_fill.bg_color = Color(0.35, 0.55, 1.0)
+	mana_fill.set_corner_radius_all(3)
+	mana_bar.add_theme_stylebox_override("background", mana_back)
+	mana_bar.add_theme_stylebox_override("fill", mana_fill)
+	mana_bar.visible = false
+	vitals_box.add_child(mana_bar)
+
 	health_text = Label.new()
 	health_text.add_theme_font_size_override("font_size", 16)
 	health_text.add_theme_color_override("font_color", TEXT_MAIN)
@@ -209,6 +235,7 @@ func _build() -> void:
 
 	# Хозяйство: правый низ. Смотрят реже и осознанно.
 	var right := _panel()
+	right_panel = right
 	right.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	right.position = Vector2(-MARGIN, -MARGIN)
 	right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -232,6 +259,32 @@ func _build() -> void:
 	prompt.offset_top = -84.0
 	prompt.offset_bottom = -56.0
 	add_child(prompt)
+
+	# Строка действия с картинкой. Стоит там же, где `prompt`, и показывается
+	# вместо него, когда действие есть: «[E] (лошадь) сесть на лошадь».
+	action_row = HBoxContainer.new()
+	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_row.add_theme_constant_override("separation", 8)
+	action_row.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	action_row.offset_top = -92.0
+	action_row.offset_bottom = -56.0
+	action_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	action_row.visible = false
+	add_child(action_row)
+	action_key = PanelContainer.new()
+	action_row.add_child(action_key)
+	action_icon = TextureRect.new()
+	action_icon.custom_minimum_size = Vector2(36.0, 36.0)
+	action_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	action_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	action_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	action_row.add_child(action_icon)
+	action_text = Label.new()
+	action_text.add_theme_font_size_override("font_size", 20)
+	action_text.add_theme_color_override("font_color", ACCENT)
+	action_text.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	action_text.add_theme_constant_override("outline_size", 4)
+	action_row.add_child(action_text)
 
 	# Заклинания — тоже ЛИЧНОЕ состояние, поэтому живут рядом со здоровьем, а не
 	# у правого края. У края они вдобавок обрезались: строка длинная, а места
@@ -406,12 +459,46 @@ func set_right(lines: PackedStringArray) -> void:
 func set_prompt_lift(pixels: float) -> void:
 	prompt.offset_bottom = -56.0 - pixels
 	prompt.offset_top = -84.0 - pixels
+	action_row.offset_bottom = -56.0 - pixels
+	action_row.offset_top = -92.0 - pixels
+
+
+## Поднять панель хозяйства на столько пикселей. В бою внизу по центру стоит
+## боевая полоса, и на экране 1280 правый край панели налезал на неё.
+func set_right_lift(pixels: float) -> void:
+	right_panel.offset_bottom = -MARGIN - pixels
+	right_panel.offset_top = -MARGIN - pixels
 
 
 ## Одна строка о том, что доступно прямо сейчас. Пусто — прячем.
 func set_prompt(text: String) -> void:
 	prompt.text = text
 	prompt.visible = text != ""
+	action_row.visible = false
+
+
+## Действие с картинкой: клавиша в рамке, иконка того, с чем имеешь дело, и
+## текст. Клавиша пустая — рамки нет (приказ стражи читают, а не нажимают).
+func set_action(key_text: String, icon: Texture2D, text: String) -> void:
+	prompt.visible = false
+	action_row.visible = text != ""
+	action_text.text = text
+	action_icon.texture = icon
+	action_icon.visible = icon != null
+	for child in action_key.get_children():
+		child.queue_free()
+	action_key.visible = key_text != ""
+	if key_text != "":
+		var cap := STYLE.keycap(key_text, 18)
+		# Рамку отдаёт сама клавиша — внешнюю панель делаем прозрачной.
+		action_key.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		action_key.add_child(cap)
+
+
+## Мана: доля от полной. Отрицательное — полосу прячем (у стороны нет магии).
+func set_mana(part: float) -> void:
+	mana_bar.visible = part >= 0.0
+	mana_bar.value = clampf(part, 0.0, 1.0) * 100.0
 
 
 ## Заклинания с откатами. Пусто — прячем: у стражи их нет вовсе.

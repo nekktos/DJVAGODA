@@ -20,6 +20,12 @@ extends Node
 const RES := preload("res://scripts/economy/resources.gd")
 const LOOK := preload("res://scripts/economy/building_look.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
+const WEAPONS := preload("res://scripts/combat/weapons.gd")
+const WEAPON_VISUAL := preload("res://scripts/combat/weapon_visual.gd")
+const ABILITIES := preload("res://scripts/combat/abilities.gd")
+
+## Мелочь для боевой полосы: стрелы, бинт, опыт, мана.
+const TRINKETS := ["arrows", "bandage", "xp", "mana"]
 
 ## Размер снимка. Иконки в меню от 24 до 80 пикселей, и 128 хватает с запасом:
 ## уменьшенная картинка читается лучше увеличенной.
@@ -35,6 +41,7 @@ const MODELS := {
 	"guard": "res://assets/people/Guard.glb",
 	"horse": "res://assets/animals/Horse.glb",
 	"cart": "res://assets/props/cart.glb",
+	"wolf": "res://assets/animals/Wolf.glb",
 }
 
 ## Плашки-заглушки: цвет по роду иконки. Пока снимков нет (первые кадры) и
@@ -79,6 +86,12 @@ static func keys() -> PackedStringArray:
 	for role in LABOURER.ROLE_NAMES.size():
 		out.append("role_%d" % role)
 	for key in MODELS:
+		out.append(key)
+	for kind in WEAPONS.NAMES.size():
+		out.append("wpn_%d" % kind)
+	for kind in ABILITIES.COUNT:
+		out.append("abl_%d" % kind)
+	for key in TRINKETS:
 		out.append(key)
 	return out
 
@@ -127,6 +140,19 @@ func _subject(key: String) -> Node3D:
 		return LOOK.build(kind, RES.BUILDING_SIZE[kind])
 	if key.begins_with("role_"):
 		return _model(LABOURER.ROLE_MODELS[int(key.get_slice("_", 1))])
+	if key.begins_with("wpn_"):
+		# Оружие — тем же кодом, что в руках у персонажа (`weapon_visual.gd`).
+		# Оно лежит вдоль оси Z; наклоняем, чтобы на снимке шло по диагонали.
+		var holder := Node3D.new()
+		var weapon := Node3D.new()
+		weapon.rotation = Vector3(deg_to_rad(-45.0), 0.0, 0.0)
+		holder.add_child(weapon)
+		WEAPON_VISUAL._build(weapon, int(key.get_slice("_", 1)), 1)
+		return holder
+	if key.begins_with("abl_"):
+		return _ability_sign(int(key.get_slice("_", 1)))
+	if key in TRINKETS:
+		return _trinket(key)
 	if MODELS.has(key):
 		return _model(MODELS[key])
 	return null
@@ -171,7 +197,7 @@ func _stage(subject: Node3D, key: String) -> SubViewport:
 	var radius := maxf(0.5, bounds.size.length() * 0.5)
 	# ЛЮДИ — ПОРТРЕТОМ, по пояс. Во весь рост человек в квадрате выходит
 	# тонкой палочкой: на первом снимке лесоруба от шахтёра было не отличить.
-	if key.begins_with("role_") or (MODELS.has(key) and key not in ["horse", "cart"]):
+	if key.begins_with("role_") or (MODELS.has(key) and key not in ["horse", "cart", "wolf"]):
 		centre = Vector3(centre.x, bounds.position.y + bounds.size.y * 0.72, centre.z)
 		radius = maxf(0.3, bounds.size.y * 0.32)
 	# Люди и звери — спереди и чуть сверху, постройки и кучи — на три четверти
@@ -179,6 +205,11 @@ func _stage(subject: Node3D, key: String) -> SubViewport:
 	var looking := Vector3(0.9, 0.9, 1.3)
 	if MODELS.has(key) or key.begins_with("role_"):
 		looking = Vector3(0.35, 0.25, 1.0)
+	if key.begins_with("wpn_"):
+		# Сбоку: наклонённое оружие видно во всю длину.
+		looking = Vector3(1.0, 0.1, 0.05)
+	if key.begins_with("abl_") or key in TRINKETS:
+		looking = Vector3(0.25, 0.35, 1.0)
 	var camera := Camera3D.new()
 	camera.fov = 30.0
 	var distance := radius / sin(deg_to_rad(camera.fov * 0.5)) * 1.02
@@ -225,6 +256,119 @@ func _bounds(subject: Node3D) -> AABB:
 	if first:
 		return AABB(Vector3(-1, 0, -1), Vector3(2, 2, 2))
 	return total
+
+
+# --- знаки заклинаний и мелочь ---------------------------------------------
+
+## Знак заклинания. Моделей у заклинаний нет, кроме волка у призыва, и знаки
+## собраны из простых тел, но СВЕТЯТСЯ цветом школы: зелёное — эльфийское
+## лечение и клич, фиолетовое — проклятия злодея.
+func _ability_sign(kind: int) -> Node3D:
+	var root := Node3D.new()
+	var green := Color(0.35, 0.95, 0.45)
+	var violet := Color(0.70, 0.35, 0.95)
+	match kind:
+		ABILITIES.Kind.HEAL:
+			root.add_child(_glow_box(Vector3(0.3, 1.0, 0.3), green))
+			root.add_child(_glow_box(Vector3(1.0, 0.3, 0.3), green))
+		ABILITIES.Kind.RALLY:
+			# Рог: конус раструбом вверх.
+			var horn := MeshInstance3D.new()
+			var cone := CylinderMesh.new()
+			cone.top_radius = 0.38
+			cone.bottom_radius = 0.06
+			cone.height = 1.0
+			horn.mesh = cone
+			horn.material_override = _glow(Color(0.95, 0.78, 0.30))
+			horn.rotation = Vector3(0.0, 0.0, deg_to_rad(-30.0))
+			root.add_child(horn)
+		ABILITIES.Kind.SUMMON:
+			var wolf := _model(MODELS["wolf"])
+			if wolf != null:
+				root.add_child(wolf)
+		ABILITIES.Kind.PARALYSIS:
+			# Путы: два сцепленных кольца.
+			for i in 2:
+				var ring := MeshInstance3D.new()
+				var torus := TorusMesh.new()
+				torus.inner_radius = 0.22
+				torus.outer_radius = 0.34
+				ring.mesh = torus
+				ring.material_override = _glow(violet)
+				ring.position = Vector3(-0.2 + 0.4 * i, 0.0, 0.0)
+				ring.rotation = Vector3(deg_to_rad(90.0 * i), 0.0, 0.0)
+				root.add_child(ring)
+		ABILITIES.Kind.WITHER:
+			# Череп: шар и два тёмных глаза.
+			var skull := _sphere(0.5, Color(0.55, 0.45, 0.60))
+			skull.material_override = _glow(Color(0.50, 0.30, 0.55))
+			root.add_child(skull)
+			for side in [-0.18, 0.18]:
+				var eye := _sphere(0.11, Color(0.05, 0.02, 0.06))
+				eye.position = Vector3(side, 0.05, 0.43)
+				root.add_child(eye)
+		ABILITIES.Kind.BLIND:
+			# Глаз, перечёркнутый.
+			var eye_white := _sphere(0.45, Color(0.92, 0.90, 0.86))
+			eye_white.scale = Vector3(1.0, 0.6, 0.5)
+			root.add_child(eye_white)
+			var pupil := _sphere(0.16, Color(0.05, 0.05, 0.05))
+			pupil.position = Vector3(0.0, 0.0, 0.2)
+			root.add_child(pupil)
+			var slash := _glow_box(Vector3(1.2, 0.12, 0.12), violet)
+			slash.position = Vector3(0.0, 0.0, 0.3)
+			slash.rotation = Vector3(0.0, 0.0, deg_to_rad(35.0))
+			root.add_child(slash)
+	return root
+
+
+func _trinket(key: String) -> Node3D:
+	var root := Node3D.new()
+	match key:
+		"arrows":
+			for i in 3:
+				var shaft := _cylinder(0.025, 1.0, Color(0.55, 0.40, 0.22))
+				shaft.position = Vector3(-0.12 + 0.12 * i, 0.0, 0.0)
+				shaft.rotation = Vector3(0.0, 0.0, deg_to_rad(20.0))
+				root.add_child(shaft)
+				var tip := _box(Vector3(0.07, 0.14, 0.07), Color(0.75, 0.76, 0.80), 0.6)
+				tip.position = shaft.position + Vector3(-0.17, 0.47, 0.0)
+				tip.rotation = shaft.rotation
+				root.add_child(tip)
+		"bandage":
+			var roll := _cylinder(0.3, 0.4, Color(0.95, 0.93, 0.88))
+			roll.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+			root.add_child(roll)
+			var mark := _glow_box(Vector3(0.1, 0.34, 0.02), Color(0.85, 0.15, 0.15))
+			mark.position = Vector3(0.0, 0.0, 0.21)
+			root.add_child(mark)
+			var mark2 := _glow_box(Vector3(0.34, 0.1, 0.02), Color(0.85, 0.15, 0.15))
+			mark2.position = Vector3(0.0, 0.0, 0.21)
+			root.add_child(mark2)
+		"xp":
+			var gem := _box(Vector3(0.5, 0.5, 0.5), Color(0.98, 0.80, 0.30), 0.7)
+			gem.material_override = _glow(Color(0.98, 0.80, 0.30))
+			gem.rotation = Vector3(deg_to_rad(45.0), deg_to_rad(45.0), 0.0)
+			root.add_child(gem)
+		"mana":
+			var drop := _sphere(0.4, Color(0.35, 0.55, 1.0))
+			drop.material_override = _glow(Color(0.35, 0.55, 1.0))
+			root.add_child(drop)
+	return root
+
+
+func _glow(color: Color) -> StandardMaterial3D:
+	var mat := _material(color)
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 0.6
+	return mat
+
+
+func _glow_box(size: Vector3, color: Color) -> MeshInstance3D:
+	var out := _box(size, color)
+	out.material_override = _glow(color)
+	return out
 
 
 # --- кучи ресурсов ----------------------------------------------------------
