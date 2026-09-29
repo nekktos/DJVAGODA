@@ -15,6 +15,9 @@ extends "res://tools/test_base.gd"
 const FACTIONS := preload("res://scripts/factions.gd")
 const WEAPONS := preload("res://scripts/combat/weapons.gd")
 
+## Чистое поле посреди карты: ни домов, ни гарнизонов.
+const OPEN_GROUND := Vector3(0.0, 1.0, 100.0)
+
 var _world: Node3D
 
 
@@ -69,7 +72,10 @@ func _run_host(mine: Node3D, other: Node3D) -> void:
 		# своего ДОМА (GDD 9a), и стрелок, поставленный в двадцати метрах к
 		# югу, оказывался по другую сторону дома: стрела и шар честно
 		# упирались в стену. Проверяется оружие, а не то, где стоят дома.
-		other.teleport.rpc(FACTIONS.SPAWN[int(other.faction)])
+		# И не у базы вовсе: с 29.09 гарнизон стороны без казармы сидит дома
+		# (warband.gd::_still_settling), и шар через раз взрывался о бойца на
+		# линии огня. Чистое поле посреди карты — там никто не стоит.
+		other.teleport.rpc(OPEN_GROUND)
 		await get_tree().process_frame
 		await get_tree().process_frame
 

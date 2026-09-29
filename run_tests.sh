@@ -87,10 +87,11 @@ SUITES=(
 	"grades:--gradestest:0:"
 	"aidefense:--aidefensetest:1:"
 	"longgame:--longgametest:1:"
+	"longgame2:--longgametest:2:"
 )
 
 # Только по имени: долгая партия идёт минуты и в общий прогон не входит.
-MANUAL=(longgame)
+MANUAL=(longgame longgame2)
 
 mkdir -p "$LOGS"
 [ -x "$GODOT" ] || { echo "Не найден Godot: $GODOT (задай через GODOT=...)"; exit 1; }

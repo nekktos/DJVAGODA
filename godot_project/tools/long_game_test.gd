@@ -13,7 +13,8 @@ extends "res://tools/test_base.gd"
 ## отдельности, на подложенных ресурсах. Здесь ничего не подкладывается: мир
 ## идёт сам, и видно, где цепочка рвётся и сколько занимает каждое звено.
 ##
-## Набор идёт за эльфов: злодей и стража гарантированно под ИИ.
+## Набор идёт за эльфов: злодей и стража гарантированно под ИИ. Вариант
+## `longgame2` — за стражу: тогда против злодея играют эльфы под ИИ.
 ##
 ## ВРЕМЯ УСКОРЕНО. Двадцать пять игровых минут в реальном времени — это
 ## двадцать пять минут на прогон. `Engine.time_scale` поднимается вместе с
@@ -112,6 +113,10 @@ func _sample(game: float) -> void:
 		note("%2d мин: звеньев %d, казна %s, батраков %d, бойцов %d, обозов %d"
 			% [int(game / 60.0), _reached.size(), _stock_line(wallet),
 				_world.labourers_of(SIDE).size(), _soldiers(), carts])
+		var elf_hero: Node3D = _world.ai_hero_of(FACTIONS.Kind.ELVES)
+		note("     эльфы: домов %d, живых эльфов %d, вожак ИИ %s"
+			% [_world.elf_houses().size(), _world.living_elves(),
+				"жив" if elf_hero != null and bool(elf_hero.health.alive) else "нет"])
 		for cart in _world.caravans_of(0):
 			if int(cart.faction) == SIDE:
 				note("     обоз: состояние %d в %s, стоит %s, ждёт у склада %s, груз %d"
