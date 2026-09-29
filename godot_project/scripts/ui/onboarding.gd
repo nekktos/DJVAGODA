@@ -182,6 +182,8 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return int(me.stock.horses) > 0
 		"house":
 			return world.squad_capacity(int(me.faction)) > RES.SQUAD_BASE
+		"forge":
+			return _has_building(world, int(me.faction), RES.Building.FORGE)
 		"squad":
 			return not world.units_of(int(me.peer_id)).is_empty()
 		"stable":
@@ -214,6 +216,8 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 ## цели партии человек не доберётся.
 func _skipped(step: Dictionary, me: Node3D) -> bool:
 	var rule := String(step.get("skip", ""))
+	if rule == "forge":
+		return not me.stock.can_afford(RES.BUILDING_COST[RES.Building.FORGE])
 	if rule == "armor":
 		var price: Array = me.next_armor_cost()
 		return price.is_empty() or not me.stock.can_afford(price)
@@ -275,7 +279,9 @@ func _build_price(kind: int) -> String:
 	if cost.is_empty():
 		return ""
 	var parts := PackedStringArray()
-	var names := ["дерева", "камня", "золота", "железа", "еды"]
+	# Родительный падеж — по ресурсу на каждый вид из RES.Kind. Уголь шестой:
+	# без него цена в угле уронила бы подсказку на обращении за край списка.
+	var names := ["дерева", "камня", "золота", "железа", "еды", "угля"]
 	for i in RES.COUNT:
 		if RES.at(cost, i) > 0:
 			parts.append("%d %s" % [RES.at(cost, i), names[i]])
@@ -410,6 +416,18 @@ func _villain_chain() -> Array:
 			"text": "Найми бойцов. Они пойдут за тобой — один ты дворец не возьмёшь",
 			"keys": "подойди к казарме и нажми %s — там наём · отряд виден справа внизу" % _k(&"interact"),
 			"done": "squad",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
+		},
+		{
+			# КУЗНЯ И УГОЛЬ (GDD 9a): без этого шага закалка оружия пряталась бы
+			# за клавишей, о которой никто не сказал. Необязательный: уголь
+			# возят обозом из леса эльфов, и первым делом он не нужен.
+			"text": "Кузня закаляет оружие за железо и уголь. Уголь — в угольной шахте в лесу эльфов, везёт обоз",
+			"keys": "сверху: %s — кузня, нужно %s · у кузни %s — закалить · шаг необязательный" % [
+				_k(&"build_forge"), _build_price(RES.Building.FORGE), _k(&"interact")],
+			"done": "forge",
+			"skip": "forge",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},
