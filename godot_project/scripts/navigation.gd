@@ -60,6 +60,9 @@ const AGENT_MAX_SLOPE := 45.0
 
 ## Группа, из которой берётся геометрия для выпечки.
 const SOURCE_GROUP := "navsource"
+## Постройки — отдельной группой: их разбираем при каждой перепечке, а
+## неподвижную карту — один раз.
+const BUILDING_GROUP := "navbuilding"
 
 ## Сколько полигонов поиску разрешено перебрать, прежде чем сдаться.
 ##
@@ -97,10 +100,21 @@ var _answer := NavigationPathQueryResult3D.new()
 const REBAKE_DELAY := 2.0
 ## Когда перепечь; меньше нуля — не нужно.
 var _dirty_at := -1.0
-## Временные источники геометрии на время выпечки: стволы леса живут в сетке,
-## но не в сцене (см. `forest.bake_obstacles`). Отдаёт узел, который после
-## разбора геометрии удаляется, или null.
-var extra_sources: Callable
+## Разобранная неподвижная карта со стволами леса — запоминаем при первой
+## выпечке. Разбирать её заново на каждую перепечку значило держать главный
+## поток 80-90 мс (замер): полкарты коробок и 1700 временных стволов. Запинка
+## в бою на каждую поставленную где-то постройку. Теперь заново разбираются
+## одни постройки, а печётся в потоке.
+##
+## Цена: срубленное после старта дерево остаётся в сетке препятствием до
+## конца партии — как и было до перепечки. Ствол узкий, путь его огибает.
+var _static_source: NavigationMeshSourceGeometryData3D
+## Полигонов в первой выпечке, по карте без поставленных построек. С ним
+## сверяются перепечки: потерянный лес уносит треть сетки.
+var first_polygons := 0
+var _baking := false
+## Задача выпечки в пуле потоков; меньше нуля — нет.
+var _task := -1
 ## Сколько раз испечённая сетка ВОШЛА В ДЕЛО. По нему автопроверки ждут
 ## перепечки. Считаем не конец выпечки, а следующую итерацию карты: сервер
 ## навигации подхватывает сетку сам и не сразу, и путь, спрошенный в тот же
@@ -108,6 +122,9 @@ var extra_sources: Callable
 var bakes := 0
 ## Номер итерации карты на конец выпечки; меньше нуля — ждать нечего.
 var _baked_at_iteration := -1
+## Сколько последняя перепечка держала главный поток: разбор построек идёт в
+## нём, в потоке — сама выпечка.
+var _stall_ms := 0
 
 
 ## Испечь сетку по уже построенной карте. Зовёт `world.gd` сразу после
@@ -119,32 +136,25 @@ func bake(terrain: Node3D) -> void:
 		push_error("Навигация: карты нет, печь нечего")
 		return
 	terrain.add_to_group(SOURCE_GROUP)
-
-	var mesh := NavigationMesh.new()
-	mesh.cell_size = CELL_SIZE
-	mesh.cell_height = CELL_HEIGHT
-	mesh.agent_radius = AGENT_RADIUS
-	mesh.agent_height = AGENT_HEIGHT
-	mesh.agent_max_climb = AGENT_MAX_CLIMB
-	mesh.agent_max_slope = AGENT_MAX_SLOPE
-	# Берём КОЛЛИЗИЮ, а не видимые меши. Это не мелочь: у дерева и коробки
-	# ресурса меш есть, а собирать по мешам значит запечь заодно дорожную
-	# разметку и прочую плоскую мишуру.
-	mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
-	mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
-	mesh.geometry_source_group_name = SOURCE_GROUP
+	var mesh := _new_mesh(SOURCE_GROUP)
 
 	_region = NavigationRegion3D.new()
 	_region.name = "NavRegion"
-	_region.navigation_mesh = mesh
-	_region.bake_finished.connect(_on_bake_finished)
 	add_child(_region)
 
 	var started := Time.get_ticks_msec()
 	# Печём СИНХРОННО. В потоке было бы вежливее, но тогда первые секунды партии
 	# ИИ ходил бы без сетки, а автопроверки стали бы зависеть от того, успел ли
 	# поток. Мир строится один раз при входе в сессию — там эта пауза уместна.
-	_region.bake_navigation_mesh(false)
+	_static_source = NavigationMeshSourceGeometryData3D.new()
+	NavigationServer3D.parse_source_geometry_data(mesh, _static_source, terrain)
+	var first := NavigationMeshSourceGeometryData3D.new()
+	first.merge(_static_source)
+	first.merge(_parse_buildings())
+	NavigationServer3D.bake_from_source_geometry_data(mesh, first)
+	_region.navigation_mesh = mesh
+	first_polygons = mesh.get_polygon_count()
+	_on_bake_finished()
 	# Сетка испечена, но сервер навигации регистрирует область и синхронизирует
 	# карту в конце кадра. Спросить путь раньше — получить ошибку «запрос до
 	# первой синхронизации»; ловится это только тем, кто спрашивает путь в
@@ -165,35 +175,94 @@ func mark_dirty() -> void:
 	_dirty_at = Time.get_ticks_msec() / 1000.0 + REBAKE_DELAY
 
 
+## Сетка с нашими настройками, пустая.
+func _new_mesh(group: String) -> NavigationMesh:
+	var mesh := NavigationMesh.new()
+	mesh.cell_size = CELL_SIZE
+	mesh.cell_height = CELL_HEIGHT
+	mesh.agent_radius = AGENT_RADIUS
+	mesh.agent_height = AGENT_HEIGHT
+	mesh.agent_max_climb = AGENT_MAX_CLIMB
+	mesh.agent_max_slope = AGENT_MAX_SLOPE
+	# Берём КОЛЛИЗИЮ, а не видимые меши. Это не мелочь: у дерева и коробки
+	# ресурса меш есть, а собирать по мешам значит запечь заодно дорожную
+	# разметку и прочую плоскую мишуру.
+	mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+	mesh.geometry_source_group_name = group
+	return mesh
+
+
+## Разобрать постройки: их коробки и препятствия (`building.gd`).
+func _parse_buildings() -> NavigationMeshSourceGeometryData3D:
+	var data := NavigationMeshSourceGeometryData3D.new()
+	NavigationServer3D.parse_source_geometry_data(_new_mesh(BUILDING_GROUP), data, self)
+	return data
+
+
 func _process(_delta: float) -> void:
 	if _baked_at_iteration >= 0 and _region != null:
 		var map := _region.get_navigation_map()
 		if NavigationServer3D.map_get_iteration_id(map) > _baked_at_iteration:
 			_baked_at_iteration = -1
 			bakes += 1
-	if _dirty_at < 0.0 or _region == null or _region.is_baking():
+	if _dirty_at < 0.0 or _region == null or _baking:
 		return
 	if Time.get_ticks_msec() / 1000.0 < _dirty_at:
 		return
 	_dirty_at = -1.0
-	# Геометрию движок разбирает сразу, в этом же вызове, а печёт уже в
-	# потоке. Поэтому временные стволы можно убирать, не дожидаясь конца.
-	var temporary: Node = extra_sources.call() if extra_sources.is_valid() else null
-	_region.bake_navigation_mesh(true)
-	if temporary != null:
-		temporary.queue_free()
+	var started := Time.get_ticks_usec()
+	var data := NavigationMeshSourceGeometryData3D.new()
+	data.merge(_static_source)
+	data.merge(_parse_buildings())
+	# Печём в НОВУЮ сетку: старая остаётся в деле, пока новая не готова.
+	var fresh := _new_mesh(SOURCE_GROUP)
+	_baking = true
+	# Печём СВОЕЙ задачей в пуле потоков, а не `..._async`: обратный вызов
+	# той приходит через главный поток, и дождаться её на выходе нельзя —
+	# полный прогон падал в Godot на выходе, если ИИ-эльф ставил дом за секунду
+	# до конца набора. Свою задачу `_exit_tree` дожидается честно.
+	# Через слабую ссылку — чтобы задача не держала узел.
+	var me: WeakRef = weakref(self)
+	_task = WorkerThreadPool.add_task(func() -> void:
+		NavigationServer3D.bake_from_source_geometry_data(fresh, data)
+		var nav: Object = me.get_ref()
+		if nav != null:
+			nav.call_deferred("_apply_rebake", fresh))
+	_stall_ms = (Time.get_ticks_usec() - started) / 1000
+
+
+## Выйти посреди выпечки нельзя: поток доделает сетку и позовёт обратно, а
+## движок к тому времени погасит сервер навигации. Полный прогон так и упал —
+## ИИ-эльф поставил дом за секунду до конца набора, и Godot вылетел на выходе.
+## Ждём выпечку: это меньше секунды и только на выходе.
+func _exit_tree() -> void:
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+
+
+func _apply_rebake(fresh: NavigationMesh) -> void:
+	_baking = false
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
+	if _region == null:
+		return
+	_region.navigation_mesh = fresh
+	_on_bake_finished()
 
 
 func _on_bake_finished() -> void:
 	_baked_at_iteration = NavigationServer3D.map_get_iteration_id(_region.get_navigation_map())
 	if bakes > 0:
-		print("[навигация] сетка перепечена, полигонов %d"
-			% _region.navigation_mesh.get_polygon_count())
+		print("[навигация] сетка перепечена, полигонов %d, главный поток занят %d мс"
+			% [_region.navigation_mesh.get_polygon_count(), _stall_ms])
 
 
 ## Нечего перепекать, ничего не печётся и испечённое уже в деле.
 func settled() -> bool:
-	return (_region != null and _dirty_at < 0.0 and not _region.is_baking()
+	return (_region != null and _dirty_at < 0.0 and not _baking
 		and _baked_at_iteration < 0)
 
 

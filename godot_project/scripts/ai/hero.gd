@@ -92,8 +92,6 @@ const REPATH_DISTANCE := 6.0
 
 ## Насколько близко надо подойти к точке пути, чтобы считать её пройденной.
 const WAYPOINT_RADIUS := 2.5
-## Насколько шире постройки ставить точку обхода у её угла.
-const DETOUR_MARGIN := 2.5
 
 var _think_left := 0.0
 ## Путь героя по навигационной сетке и место в нём.
@@ -409,57 +407,51 @@ func _vein_radius(vein: Node3D) -> float:
 ## спрашиваем ближайшее проходимое место рядом с ней. Пути нет вовсе — идём
 ## напрямую: пусть лучше упрётся, чем встанет насовсем.
 func _next_step(hero: Node3D, goal: Vector3) -> Vector3:
-	return _around_buildings(hero.global_position, _path_step(hero, goal))
+	# Вблизи — прямо, но только если прямую не режет постройка. Сетка знает
+	# постройки (navigation.gd), а прямая — нет: набор «ИИ-снаряжение» поймал
+	# вожака, который полторы минуты упирался в стену своего склада по дороге в
+	# кузню. Обход углами постройки, придуманный тогда, дрожал на границе
+	# DIRECT_RANGE: такт по сетке, такт к углу, и вожак топтался на месте.
+	if (_flat(hero.global_position, goal) <= DIRECT_RANGE
+			and not _building_between(hero.global_position, goal)):
+		_path.clear()
+		_path_goal = Vector3.INF
+		return goal
+
+	var world := get_parent()
+	if not ("navigation" in world) or not world.navigation.is_ready():
+		return goal
+
+	if _path.is_empty() or _path_index >= _path.size() 			or _path_goal.distance_to(goal) > REPATH_DISTANCE:
+		_path = world.navigation.path_between(
+			hero.global_position, world.navigation.closest_point(goal))
+		_path_index = 0
+		_path_goal = goal
+
+	while _path_index < _path.size():
+		var point: Vector3 = _path[_path_index]
+		if _flat(point, hero.global_position) > WAYPOINT_RADIUS:
+			return point
+		_path_index += 1
+	return goal
 
 
-## Обойти постройку, которая стоит поперёк пути.
-##
-## Сетку навигации пекут один раз, при старте, и поставленных потом построек в
-## ней нет. А вблизи цели герой и вовсе идёт по прямой. Набор «ИИ-снаряжение»
-## поймал это на деле: вожак шёл в кузню, склад стоял между ними, и вожак
-## полторы минуты упирался в стену склада. Поэтому, если отрезок до следующей
-## точки режет чужую постройку, идём сперва к её углу: к тому, откуда путь
-## до цели короче всего.
-func _around_buildings(from: Vector3, to: Vector3) -> Vector3:
+## Режет ли прямую до цели какая-нибудь постройка. Та, в которой сама цель
+## (идём в кузню, к складу), не в счёт.
+func _building_between(from: Vector3, to: Vector3) -> bool:
 	var start := Vector2(from.x, from.z)
 	var finish := Vector2(to.x, to.z)
-	var blocker: Node3D = null
-	var blocker_gap := INF
 	for node in get_tree().get_nodes_in_group("building"):
 		var building := node as Node3D
 		if building == null or not is_instance_valid(building):
 			continue
 		var centre := Vector2(building.global_position.x, building.global_position.z)
 		var half := _footprint(building)
-		# Цель в самой постройке (идём в кузню, к складу) — её не обходим.
 		if absf(finish.x - centre.x) <= half.x and absf(finish.y - centre.y) <= half.y:
 			continue
-		if not _segment_hits_box(start - centre, finish - centre, half):
-			continue
-		var gap: float = start.distance_to(centre)
-		if gap < blocker_gap:
-			blocker_gap = gap
-			blocker = building
-	if blocker == null:
-		return to
-	var centre := Vector2(blocker.global_position.x, blocker.global_position.z)
-	var half := _footprint(blocker)
-	var wide := half + Vector2(DETOUR_MARGIN, DETOUR_MARGIN)
-	var best := to
-	var best_length := INF
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var corner := centre + Vector2(wide.x * sx, wide.y * sz)
-			# Угол, у которого уже стоим, — пройден: иначе замерли бы на нём.
-			if start.distance_to(corner) < 1.0:
-				continue
-			if _segment_hits_box(start - centre, corner - centre, half):
-				continue
-			var length: float = start.distance_to(corner) + corner.distance_to(finish)
-			if length < best_length:
-				best_length = length
-				best = Vector3(corner.x, to.y, corner.y)
-	return best
+		if _segment_hits_box(start - centre, finish - centre, half):
+			return true
+	return false
 
 
 func _footprint(building: Node3D) -> Vector2:
@@ -486,31 +478,6 @@ func _segment_hits_box(a: Vector2, b: Vector2, half: Vector2) -> bool:
 			else:
 				t1 = minf(t1, t)
 	return t0 <= t1
-
-
-func _path_step(hero: Node3D, goal: Vector3) -> Vector3:
-	if hero.global_position.distance_to(goal) <= DIRECT_RANGE:
-		_path.clear()
-		_path_goal = Vector3.INF
-		return goal
-
-	var world := get_parent()
-	if not ("navigation" in world) or not world.navigation.is_ready():
-		return goal
-
-	if _path.is_empty() or _path_index >= _path.size() \
-			or _path_goal.distance_to(goal) > REPATH_DISTANCE:
-		_path = world.navigation.path_between(
-			hero.global_position, world.navigation.closest_point(goal))
-		_path_index = 0
-		_path_goal = goal
-
-	while _path_index < _path.size():
-		var point: Vector3 = _path[_path_index]
-		if _flat(point, hero.global_position) > WAYPOINT_RADIUS:
-			return point
-		_path_index += 1
-	return goal
 
 
 ## Чем держать: вплотную — молотом, издали — огненным шаром.

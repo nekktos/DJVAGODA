@@ -159,8 +159,6 @@ func _ready() -> void:
 	var trunks: Node3D = forest.bake_obstacles(_terrain)
 	navigation.bake(_terrain)
 	trunks.queue_free()
-	# Перепекать сетку под новые постройки — с теми же стволами.
-	navigation.extra_sources = func() -> Node: return forest.bake_obstacles(_terrain)
 	build_controller.place_requested.connect(_on_place_requested)
 	route_controller.route_sent.connect(_on_route_sent)
 	_place_mines()

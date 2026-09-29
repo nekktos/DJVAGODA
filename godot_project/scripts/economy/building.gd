@@ -10,8 +10,8 @@ extends Node3D
 ## встанет сюда же на Этапе 5.
 ##
 
-## Группа источников геометрии для сетки навигации (navigation.gd::SOURCE_GROUP).
-const NAV_SOURCE := "navsource"
+## Группа построек для сетки навигации (navigation.gd::BUILDING_GROUP).
+const NAV_SOURCE := "navbuilding"
 const RES := preload("res://scripts/economy/resources.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")

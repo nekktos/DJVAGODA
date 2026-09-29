@@ -220,10 +220,15 @@ func _test_building_is_an_obstacle() -> void:
 	path = _nav().path_between(from, to)
 	check(path.size() >= 2 and _length(path) < from.distance_to(to) * 1.05,
 		"снесли — путь снова прямой", "%.0f м" % _length(path))
+	# Сверяем с ПЕРВОЙ выпечкой, а не с сеткой перед постройкой: та уже
+	# перепечена под стартовые дома, и потеряй перепечка лес, обе сетки были бы
+	# без него и совпали бы — проверка так однажды и прошла вхолостую.
 	var polygons_after: int = _nav().polygon_count()
-	check(absi(polygons_after - polygons_before) <= polygons_before / 50,
+	var first: int = _nav().first_polygons
+	check(absi(polygons_after - first) <= first / 50 and absi(polygons_before - first) <= first / 50,
 		"перепеченная сетка та же, что при старте, — стволы леса на месте",
-		"полигонов было %d, стало %d" % [polygons_before, polygons_after])
+		"полигонов в первой выпечке %d, перед постройкой %d, после сноса %d"
+			% [first, polygons_before, polygons_after])
 
 
 func _wait_rebake(bakes_before: int) -> void:
