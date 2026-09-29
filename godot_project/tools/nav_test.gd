@@ -30,7 +30,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "навигация"
-	expected_host = 15
+	expected_host = 19
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -49,6 +49,7 @@ func _run() -> void:
 	_test_every_base_has_a_way_out()
 	_test_open_ground_is_straight()
 	_test_unreachable()
+	await _test_building_is_an_obstacle()
 	finish()
 
 
@@ -169,6 +170,75 @@ func _test_unreachable() -> void:
 		"смещение %.0f м" % near.distance_to(inside))
 	var path: PackedVector3Array = _nav().path_between(Vector3(0.0, 0.0, 0.0), near)
 	check(path.size() >= 2, "к ней прокладывается путь", "точек %d" % path.size())
+
+
+## Постройка, поставленная по ходу партии, — препятствие.
+##
+## Сетку пекли один раз при старте, и новый склад в ней не значился: вожак ИИ
+## полторы минуты упирался в стену своего склада. Ставим постройку поперёк
+## прямого пути по чистому полю и ждём перепечки: путь обязан её обойти. Потом
+## сносим — и сетка обязана стать прежней, СО стволами леса: их в сцене нет,
+## они подкладываются только на время выпечки, и забыть их легко.
+func _test_building_is_an_obstacle() -> void:
+	const RES := preload("res://scripts/economy/resources.gd")
+	var from := Vector3(-40.0, 0.0, 100.0)
+	var to := Vector3(40.0, 0.0, 100.0)
+	var at := Vector3(0.0, 0.0, 100.0)
+	var half := Vector2(RES.BUILDING_SIZE[RES.Building.STORAGE].x,
+		RES.BUILDING_SIZE[RES.Building.STORAGE].z) * 0.5
+	# Сперва дать успокоиться перепечке под дома, стоящие с начала партии:
+	# иначе дождались бы её, а не своей.
+	await _wait_settled()
+	var polygons_before: int = _nav().polygon_count()
+	var bakes: int = _nav().bakes
+	var building: Node3D = _world.spawn_building(RES.Building.STORAGE, at, 0,
+		FACTIONS.Kind.VILLAIN, true)
+	await _wait_rebake(bakes)
+	var path: PackedVector3Array = _nav().path_between(from, to)
+	var through := false
+	for i in range(1, path.size()):
+		for step in 20:
+			var p: Vector3 = path[i - 1].lerp(path[i], float(step) / 20.0)
+			if absf(p.x - at.x) < half.x and absf(p.z - at.z) < half.y:
+				through = true
+	check(path.size() >= 2 and not through, "путь обходит поставленную постройку",
+		"точек %d, сквозь постройку %s" % [path.size(), through])
+	# Ни острова на крыше: ближайшая к середине постройки точка сетки — на
+	# земле, и от неё есть путь. Так обоз ИИ ищет дорогу от своего склада.
+	var near: Vector3 = _nav().closest_point(at)
+	var out: PackedVector3Array = _nav().path_between(near, to)
+	var last: Vector3 = out[out.size() - 1] if out.size() > 0 else near
+	var reached: bool = out.size() >= 2 and Vector2(last.x, last.z).distance_to(Vector2(to.x, to.z)) < 3.0
+	# Высоту меряем от земли рядом: поле тут не на нуле.
+	var ground: float = _nav().closest_point(from).y
+	check(near.y < ground + 2.0 and reached, "у постройки нет острова сетки на крыше",
+		"ближайшая точка на %.1f м выше земли, путь от неё дошёл: %s" % [near.y - ground, reached])
+
+	bakes = _nav().bakes
+	building.take_damage(1.0e9, 0, "building", at, Vector3.FORWARD)
+	await _wait_rebake(bakes)
+	path = _nav().path_between(from, to)
+	check(path.size() >= 2 and _length(path) < from.distance_to(to) * 1.05,
+		"снесли — путь снова прямой", "%.0f м" % _length(path))
+	var polygons_after: int = _nav().polygon_count()
+	check(absi(polygons_after - polygons_before) <= polygons_before / 50,
+		"перепеченная сетка та же, что при старте, — стволы леса на месте",
+		"полигонов было %d, стало %d" % [polygons_before, polygons_after])
+
+
+func _wait_rebake(bakes_before: int) -> void:
+	var waited := 0.0
+	while _nav().bakes <= bakes_before and waited < 15.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	await _wait_settled()
+
+
+func _wait_settled() -> void:
+	var waited := 0.0
+	while not _nav().settled() and waited < 15.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
 
 
 func _length(path: PackedVector3Array) -> float:

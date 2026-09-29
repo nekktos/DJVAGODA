@@ -10,6 +10,8 @@ extends Node3D
 ## встанет сюда же на Этапе 5.
 ##
 
+## Группа источников геометрии для сетки навигации (navigation.gd::SOURCE_GROUP).
+const NAV_SOURCE := "navsource"
 const RES := preload("res://scripts/economy/resources.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
@@ -80,6 +82,11 @@ func _ready() -> void:
 	body.add_child(shape)
 	add_child(body)
 	add_to_group("building")
+	# Постройка — препятствие в сетке навигации (navigation.gd). Сетку печёт
+	# только хост.
+	if Net.hosting():
+		add_to_group(NAV_SOURCE)
+		_add_nav_obstacle(size)
 
 	# Пока строится — коробка-каркас, растущая из земли. Дом появляется
 	# готовым: стены, которые вылезают из-под земли по пояс, читаются как
@@ -218,6 +225,27 @@ func _ramp(parent: Node3D, size: Vector3, drop: float) -> void:
 	shape.transform = Transform3D(Basis(Vector3.RIGHT, angle), at)
 	body.add_child(shape)
 	parent.add_child(body)
+
+
+## Вырезать себя из сетки навигации ЦЕЛИКОМ, с крышей.
+##
+## Одной коллизии мало: плоская крыша склада 12 на 10 метров — годное место
+## для агента, и сетка пекла на ней островок. Ближайшей точкой сетки к
+## середине склада оказывалась крыша (семь метров вверх ближе восьми вбок), и
+## путь обоза ИИ от склада обрывался на первом шаге: набор «хозяйство» поймал
+## маршрут, кончавшийся в четырёхстах метрах от шахты. Препятствие отбрасывает
+## всю геометрию в своём объёме, а границы отодвигает на радиус агента.
+func _add_nav_obstacle(size: Vector3) -> void:
+	var obstacle := NavigationObstacle3D.new()
+	obstacle.avoidance_enabled = false
+	obstacle.affect_navigation_mesh = true
+	obstacle.position = Vector3(0.0, -1.0, 0.0)
+	obstacle.height = size.y + 3.0
+	var hx := size.x * 0.5
+	var hz := size.z * 0.5
+	obstacle.vertices = PackedVector3Array([Vector3(-hx, 0.0, -hz), Vector3(hx, 0.0, -hz),
+		Vector3(hx, 0.0, hz), Vector3(-hx, 0.0, hz)])
+	add_child(obstacle)
 
 
 ## RID собственного тела: нужен, чтобы исключать себя из лучей.

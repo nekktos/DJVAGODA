@@ -19,6 +19,13 @@ extends Node
 ## готовые позиции. Поэтому и печём мы только у хоста: клиенту сетка не нужна, а
 ## печь её — это секунды на ровном месте.
 ##
+## ПОСТРОЙКИ СЕТКА ЗНАЕТ — и те, что поставлены по ходу партии. Сперва сетку
+## пекли один раз, при старте, и новый склад в ней не значился: путь шёл
+## сквозь него, а вблизи цели бойцы и вожак ИИ и вовсе шли напрямую. Набор
+## «ИИ-снаряжение» поймал вожака злодея, полторы минуты упиравшегося в стену
+## собственного склада. Теперь поставленная или снесённая постройка просит
+## перепечь сетку (`mark_dirty`), и печётся она в потоке: игра не встаёт.
+##
 ## ЧЕГО СЕТКА НЕ ЗНАЕТ: деревьев. Лес — это MultiMesh с 1700 стволами, из
 ## которых объёмными в каждый момент лишь те, что рядом с игроками
 ## (`forest.gd`). Их в сетку не запечь: они появляются и исчезают. Бойцы об них
@@ -85,6 +92,23 @@ var _ready_to_path := false
 var _query := NavigationPathQueryParameters3D.new()
 var _answer := NavigationPathQueryResult3D.new()
 
+## Перепекать не сразу, а через столько секунд после последней перемены:
+## распорядитель ИИ ставит постройки пачкой, и печь на каждую незачем.
+const REBAKE_DELAY := 2.0
+## Когда перепечь; меньше нуля — не нужно.
+var _dirty_at := -1.0
+## Временные источники геометрии на время выпечки: стволы леса живут в сетке,
+## но не в сцене (см. `forest.bake_obstacles`). Отдаёт узел, который после
+## разбора геометрии удаляется, или null.
+var extra_sources: Callable
+## Сколько раз испечённая сетка ВОШЛА В ДЕЛО. По нему автопроверки ждут
+## перепечки. Считаем не конец выпечки, а следующую итерацию карты: сервер
+## навигации подхватывает сетку сам и не сразу, и путь, спрошенный в тот же
+## кадр, шёл ещё по старой — проверка обхода постройки падала через раз.
+var bakes := 0
+## Номер итерации карты на конец выпечки; меньше нуля — ждать нечего.
+var _baked_at_iteration := -1
+
 
 ## Испечь сетку по уже построенной карте. Зовёт `world.gd` сразу после
 ## `WorldBuilder.build()` — раньше нечего печь, позже незачем ждать.
@@ -113,6 +137,7 @@ func bake(terrain: Node3D) -> void:
 	_region = NavigationRegion3D.new()
 	_region.name = "NavRegion"
 	_region.navigation_mesh = mesh
+	_region.bake_finished.connect(_on_bake_finished)
 	add_child(_region)
 
 	var started := Time.get_ticks_msec()
@@ -131,6 +156,51 @@ func bake(terrain: Node3D) -> void:
 	_ready_to_path = true
 	print("[навигация] сетка испечена за %d мс, полигонов %d"
 		% [Time.get_ticks_msec() - started, mesh.get_polygon_count()])
+
+
+## Постройка встала или снесена — перепечь сетку чуть погодя.
+func mark_dirty() -> void:
+	if not Net.hosting() or _region == null:
+		return
+	_dirty_at = Time.get_ticks_msec() / 1000.0 + REBAKE_DELAY
+
+
+func _process(_delta: float) -> void:
+	if _baked_at_iteration >= 0 and _region != null:
+		var map := _region.get_navigation_map()
+		if NavigationServer3D.map_get_iteration_id(map) > _baked_at_iteration:
+			_baked_at_iteration = -1
+			bakes += 1
+	if _dirty_at < 0.0 or _region == null or _region.is_baking():
+		return
+	if Time.get_ticks_msec() / 1000.0 < _dirty_at:
+		return
+	_dirty_at = -1.0
+	# Геометрию движок разбирает сразу, в этом же вызове, а печёт уже в
+	# потоке. Поэтому временные стволы можно убирать, не дожидаясь конца.
+	var temporary: Node = extra_sources.call() if extra_sources.is_valid() else null
+	_region.bake_navigation_mesh(true)
+	if temporary != null:
+		temporary.queue_free()
+
+
+func _on_bake_finished() -> void:
+	_baked_at_iteration = NavigationServer3D.map_get_iteration_id(_region.get_navigation_map())
+	if bakes > 0:
+		print("[навигация] сетка перепечена, полигонов %d"
+			% _region.navigation_mesh.get_polygon_count())
+
+
+## Нечего перепекать, ничего не печётся и испечённое уже в деле.
+func settled() -> bool:
+	return (_region != null and _dirty_at < 0.0 and not _region.is_baking()
+		and _baked_at_iteration < 0)
+
+
+func polygon_count() -> int:
+	if _region == null or _region.navigation_mesh == null:
+		return 0
+	return _region.navigation_mesh.get_polygon_count()
 
 
 ## Путь от точки до точки по карте. Пустой массив — идти некуда: либо сетки

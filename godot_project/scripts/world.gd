@@ -159,6 +159,8 @@ func _ready() -> void:
 	var trunks: Node3D = forest.bake_obstacles(_terrain)
 	navigation.bake(_terrain)
 	trunks.queue_free()
+	# Перепекать сетку под новые постройки — с теми же стволами.
+	navigation.extra_sources = func() -> Node: return forest.bake_obstacles(_terrain)
 	build_controller.place_requested.connect(_on_place_requested)
 	route_controller.route_sent.connect(_on_route_sent)
 	_place_mines()
@@ -869,6 +871,7 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1,
 		print("[стройка] %s стороны «%s» в %s" % [RES.BUILDING_NAMES[kind], FACTIONS.name_of(side), point])
 		node.completed.connect(_on_building_completed.bind(node))
 		node.destroyed_on_server.connect(_on_building_destroyed)
+		navigation.mark_dirty()
 	return node
 
 
@@ -879,6 +882,7 @@ func _on_building_destroyed(building: Node3D, killer_id: int) -> void:
 		return
 	commander.report_building_down(building, killer_id)
 	objective.check_victories()
+	navigation.mark_dirty()
 
 
 ## Достроенный склад поднимает владельцу потолок хранения — по GDD это
