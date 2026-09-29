@@ -71,6 +71,8 @@ const SIGHT := 34.0
 
 ## Ближний бой до этого расстояния, дальше — огненный шар.
 const MELEE_REACH := 4.0
+## Ближе этого огненным шаром не бьём: взрыв достанет и самого.
+const SAFE_SPELL_GAP := WEAPONS.SPELL_BLAST_RADIUS + 3.0
 
 ## Порог «меня дожимают»: доля здоровья, ниже которой пора парализовать того,
 ## кто ближе всех. Половина — потому что паралич держит 3 с, и позже он уже не
@@ -225,7 +227,19 @@ func _drive(faction: int, hero: Node3D) -> void:
 		_choose_weapon(hero, gap)
 		# Бьём, когда цель в пределах того, чем сейчас держим.
 		var reach: float = MELEE_REACH if WEAPONS.is_melee(hero.sync_weapon) else SIGHT
-		input["attack"] = gap <= reach and not _own_cart_in_swing(faction, hero)
+		if not WEAPONS.is_melee(hero.sync_weapon) and gap <= SAFE_SPELL_GAP:
+			reach = 0.0
+		var fire: bool = gap <= reach and not _own_cart_in_swing(faction, hero)
+		if fire and not WEAPONS.is_melee(hero.sync_weapon):
+			# Шар летит туда, куда смотрит КОРПУС, а корпус повёрнут к точке
+			# пути. Бросая, поворачиваемся к цели — и бросаем, только если
+			# вблизи ничего не стоит на пути: шар, взорвавшийся о стену или
+			# своего бойца в двух шагах, достаёт и бросившего. Так вожак злодея
+			# в «долгой партии» дважды убил сам себя, окончательно.
+			var aim: Vector3 = target.global_position - hero.global_position
+			hero.rotation.y = atan2(-aim.x, -aim.z)
+			fire = _clear_throw(hero, target)
+		input["attack"] = fire
 		var spell := _choose_spell(faction, hero, enemies, target)
 		if spell >= 0:
 			input["ability"] = spell
@@ -261,6 +275,20 @@ func _home_threat(faction: int, hero: Node3D) -> Node3D:
 				best_gap = gap
 				best = enemy
 	return best
+
+
+## Чист ли путь шара на расстояние его взрыва.
+func _clear_throw(hero: Node3D, target: Node3D) -> bool:
+	var space: PhysicsDirectSpaceState3D = hero.get_world_3d().direct_space_state
+	if space == null:
+		return false
+	var from: Vector3 = hero.aim_origin()
+	var dir: Vector3 = (target.global_position + Vector3.UP * 1.0 - from).normalized()
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * SAFE_SPELL_GAP)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	query.exclude = hero.own_collision_rids()
+	return space.intersect_ray(query).is_empty()
 
 
 ## Своя телега под замахом. Удар бьёт всё в секторе, своё тоже, — так задумано
@@ -550,8 +578,13 @@ func _segment_hits_box(a: Vector2, b: Vector2, half: Vector2) -> bool:
 
 
 ## Чем держать: вплотную — молотом, издали — огненным шаром.
+##
+## Огненный шар — только дальше, чем бьёт его взрыв, с запасом. Взрыв задевает
+## и того, кто бросил: «долгая партия» поймала вожака злодея, который швырнул
+## шар во врага в пяти метрах и погиб от него сам («-1 убит игроком -1»), —
+## окончательно. Ближе — молот, и надо подойти.
 func _choose_weapon(hero: Node3D, gap: float) -> void:
-	var wanted: int = WEAPONS.Kind.HAMMER if gap <= MELEE_REACH else WEAPONS.Kind.SPELL
+	var wanted: int = WEAPONS.Kind.HAMMER if gap <= SAFE_SPELL_GAP else WEAPONS.Kind.SPELL
 	if FACTIONS.allows_weapon(int(hero.faction), wanted):
 		hero.sync_weapon = wanted
 

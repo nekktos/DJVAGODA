@@ -308,8 +308,21 @@ func _fortify(faction: int) -> void:
 	weakest.apply_upgrade()
 
 
+## Сколько ртов кормит одно поле (см. предложения игроков: «одно поле кормит
+## примерно пятерых»).
+const MOUTHS_PER_FIELD := 5
+
+
 ## Чего у стороны ещё нет. -1 — построено всё.
+##
+## Сверх очереди — ещё поле, когда ртов больше, чем поля прокормят. «Долгая
+## партия» застала злодея с девятью батраками на одном поле: артель голодала,
+## работала вдвое медленнее, и развитие встало. Только когда первое поле уже
+## есть — стартовую очередь это не трогает.
 func _next_building(faction: int) -> int:
+	var fields := _count_all(faction, RES.Building.FARM)
+	if fields > 0 and fields * MOUTHS_PER_FIELD < _crew(faction).size():
+		return RES.Building.FARM
 	for kind in BUILD_ORDER:
 		if _building_of(faction, kind) == null:
 			return kind
@@ -420,6 +433,15 @@ func _apply_roles(crew: Array, wanted: PackedInt32Array) -> void:
 					break
 			if not moved:
 				return
+
+
+## Сколько построек такого вида у стороны, считая недостроенные.
+func _count_all(faction: int, kind: int) -> int:
+	var found := 0
+	for node in get_tree().get_nodes_in_group("building"):
+		if ("faction" in node) and ("kind" in node) and int(node.faction) == faction 				and int(node.kind) == kind:
+			found += 1
+	return found
 
 
 ## Сколько достроенных построек такого вида у стороны.
