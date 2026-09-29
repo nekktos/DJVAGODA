@@ -26,6 +26,8 @@ const HITBOX_LAYER := 4
 
 ## Достроено (на любом пире, после репликации).
 signal completed
+## По постройке ударили, а она устояла. Только хост: мир решает, кому сказать.
+signal hit_on_server(building: Node3D)
 ## Разрушено. Эмитится ТОЛЬКО на хосте — он решает судьбу постройки.
 signal destroyed_on_server(building: Node3D, killer_id: int)
 
@@ -87,7 +89,7 @@ func _ready() -> void:
 	# дерева на конюшню не стало, а без конюшни нет ни лошади, ни обоза, и ИИ
 	# за двадцать пять минут не вышел из разрушенного форта. Бить поле можно
 	# по-прежнему: зона попаданий у него своя (`_build_hit_zone`).
-	if kind != RES.Building.FARM:
+	if not RES.walkable(kind):
 		var body := StaticBody3D.new()
 		var shape := CollisionShape3D.new()
 		var box_shape := BoxShape3D.new()
@@ -354,6 +356,7 @@ func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3,
 	health = maxf(0.0, health - amount)
 	show_hit.rpc(point, dir, amount)
 	if health > 0.0:
+		hit_on_server.emit(self)
 		return
 	print("[стройка] %s игрока %d разрушена игроком %d" % [label(), owner_id, attacker_id])
 	destroyed_on_server.emit(self, attacker_id)

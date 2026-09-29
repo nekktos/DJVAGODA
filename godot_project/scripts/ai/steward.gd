@@ -509,8 +509,8 @@ func _send_caravan(faction: int) -> void:
 ## К какой шахте слать обоз: за тем, чего у стороны меньше всего.
 ##
 ## Железо, камень и золото — то, на что ИИ реально тратит (стройка, казармы,
-## наём). Уголь пока ни на что не идёт, и возить его ИИ незачем. Равенство
-## решается в пользу железа: без него нет казарм.
+## наём); уголь — когда есть кузня. Равенство решается в пользу железа: без
+## него нет казарм.
 func _pick_mine(faction: int) -> Node3D:
 	var world := get_parent()
 	if not ("mines" in world):
@@ -518,7 +518,13 @@ func _pick_mine(faction: int) -> Node3D:
 	var wallet := _wallet(faction)
 	var best: Node3D = null
 	var best_have := INF
-	for kind in [RES.Kind.IRON, RES.Kind.STONE, RES.Kind.GOLD]:
+	var wanted := [RES.Kind.IRON, RES.Kind.STONE, RES.Kind.GOLD]
+	# С кузней — и уголь: без него горн холоден, и закалка ИИ недоступна
+	# («долгая партия» дошла до кузни на 17-й минуте и так и не закалила
+	# оружие — угля ИИ не возил вовсе).
+	if _ready_building(faction, RES.Building.FORGE) != null:
+		wanted.append(RES.Kind.COAL)
+	for kind in wanted:
 		var target: Node3D = world.mine_of(kind)
 		if target == null:
 			continue

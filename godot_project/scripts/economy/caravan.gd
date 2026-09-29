@@ -390,7 +390,7 @@ func _advance(delta: float, backwards: bool) -> bool:
 func _avoid_buildings(dir: Vector3, target: Vector3) -> Vector3:
 	var push := Vector3.ZERO
 	for node in get_tree().get_nodes_in_group("building"):
-		if not is_instance_valid(node):
+		if not is_instance_valid(node) or RES.walkable(int(node.kind)):
 			continue
 		var size: Vector3 = RES.BUILDING_SIZE[int(node.kind)]
 		var half_x: float = size.x * 0.5
@@ -437,7 +437,7 @@ func _avoid_buildings(dir: Vector3, target: Vector3) -> Vector3:
 ## достаёт с шести (WAYPOINT_REACH), а ближе — уже нет.
 func _blocked_point(point: Vector3) -> bool:
 	for node in get_tree().get_nodes_in_group("building"):
-		if not is_instance_valid(node):
+		if not is_instance_valid(node) or RES.walkable(int(node.kind)):
 			continue
 		var size: Vector3 = RES.BUILDING_SIZE[int(node.kind)]
 		if _is_terminal(node, size.x * 0.5, size.z * 0.5):

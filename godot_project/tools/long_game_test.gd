@@ -112,6 +112,11 @@ func _sample(game: float) -> void:
 		note("%2d мин: звеньев %d, казна %s, батраков %d, бойцов %d, обозов %d"
 			% [int(game / 60.0), _reached.size(), _stock_line(wallet),
 				_world.labourers_of(SIDE).size(), _soldiers(), carts])
+		for cart in _world.caravans_of(0):
+			if int(cart.faction) == SIDE:
+				note("     обоз: состояние %d в %s, стоит %s, ждёт у склада %s, груз %d"
+					% [int(cart.state), (cart as Node3D).global_position.round(),
+						bool(cart.halted), bool(cart.waiting), int(cart.cargo_total())])
 
 
 func _mark(key: String, game: float, ok: bool) -> void:

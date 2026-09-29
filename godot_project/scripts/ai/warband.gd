@@ -145,6 +145,8 @@ var _cart := {}
 var _think_t := 0.0
 ## Сторона -> состояние отряда.
 var _state := {}
+## Стороны, чей отряд сейчас идёт не в набег, а к своему хозяйству — отбивать.
+var _defending := {}
 ## Сторона -> куда идёт якорь строя.
 var _goal := {}
 ## Сторона -> где якорь строя сейчас.
@@ -410,6 +412,21 @@ func _think(faction: int) -> void:
 		_set_state(faction, State.FIGHT)
 		_goal[faction] = here
 		return
+
+	# Враг у своего хозяйства — идём отбивать, а не стоим у якоря. «Долгая
+	# партия» застала четверых стражников, которые две с половиной минуты
+	# рубили конюшню злодея в сорока метрах от его гарнизона: тот ждал врага в
+	# двадцати двух метрах от своей точки сбора и так и не двинулся. Набег,
+	# который уже идёт далеко, не бросаем: его ведёт своя логика.
+	var threat: Vector3 = _home_threat(faction, base)
+	var raiding: bool = was == State.MARCH and not _defending.get(faction, false)
+	if threat.is_finite() and not raiding:
+		if _goal.get(faction, Vector3.INF).distance_to(threat) > ARRIVE_RADIUS:
+			_set_route(faction, threat)
+		_defending[faction] = true
+		_set_state(faction, State.MARCH)
+		return
+	_defending.erase(faction)
 
 	match was:
 		State.FIGHT:
@@ -727,6 +744,53 @@ func _elves_fair_game(faction: int, target_side: int) -> bool:
 ## Проредили ли отряд настолько, что пора домой.
 func _spent(band: Array) -> bool:
 	return float(band.size()) < GARRISON.SIZE * RETREAT_FRACTION
+
+
+## Сколько от своей постройки или батрака враг уже считается угрозой хозяйству.
+const DEFEND_RADIUS := 30.0
+## Дальше этого от базы хозяйство не отбиваем: там уже не своё хозяйство, а
+## поход, и уводить весь гарнизон за одним батраком-шахтёром незачем.
+const DEFEND_RANGE := 220.0
+
+
+## Враг у своего хозяйства: у постройки или батрака стороны, недалеко от базы.
+## Возвращает место, куда идти; INF — угрозы нет.
+func _home_threat(faction: int, base: Vector3) -> Vector3:
+	var posts := []
+	for node in get_tree().get_nodes_in_group("building"):
+		if is_instance_valid(node) and "faction" in node and int(node.faction) == faction:
+			posts.append((node as Node3D).global_position)
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if is_instance_valid(unit) and "sync_role" in unit and int(unit.faction) == faction:
+			posts.append((unit as Node3D).global_position)
+	var hostiles := []
+	for player in get_parent().get_node("Players").get_children():
+		if ("faction" in player) and FACTIONS.hostile(faction, int(player.faction)) 				and player.health.alive:
+			hostiles.append(player)
+	for unit in get_tree().get_nodes_in_group("unit"):
+		if is_instance_valid(unit) and ("faction" in unit) 				and FACTIONS.hostile(faction, int(unit.faction)):
+			hostiles.append(unit)
+	var best := Vector3.INF
+	var best_gap := INF
+	for enemy in hostiles:
+		var at: Vector3 = (enemy as Node3D).global_position
+		var from_base: float = _flat_distance(at, base)
+		if from_base > DEFEND_RANGE:
+			continue
+		for post in posts:
+			if _flat_distance(at, post) <= DEFEND_RADIUS:
+				if from_base < best_gap:
+					best_gap = from_base
+					best = at
+				break
+	return best
+
+
+## Что написать о состоянии отряда. Оборона хозяйства — не набег.
+func state_name(faction: int) -> String:
+	if _defending.get(faction, false):
+		return "защищает хозяйство"
+	return STATE_NAMES[state_of(faction)]
 
 
 ## Есть ли враг вплотную к строю.

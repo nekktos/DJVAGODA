@@ -121,6 +121,12 @@ const GRADE_COST := {
 }
 
 
+## Проходима ли постройка насквозь. Поле — пашня, а не стена: по нему ходят,
+## и обходить его не должен никто — ни боец, ни обоз, ни вожак ИИ.
+static func walkable(kind: int) -> bool:
+	return kind == Building.FARM
+
+
 static func gradeable(kind: int) -> bool:
 	return not (kind in ELF_HOUSES) and kind != Building.FARM
 

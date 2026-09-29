@@ -1294,6 +1294,7 @@ const TEST_FLAGS := {
 	"--longgametest": ["res://tools/long_game_test.gd", true],
 	"--villaintoughtest": ["res://tools/villain_guard_test.gd", true],
 	"--gradestest": ["res://tools/grades_test.gd", true],
+	"--aidefensetest": ["res://tools/ai_defense_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1770,7 +1771,7 @@ func _ai_hint() -> String:
 			continue
 		parts.append("%s — %s (%d)" % [
 			FACTIONS.name_of(faction),
-			WARBAND.STATE_NAMES[_world.warband.state_of(faction)],
+			_world.warband.state_name(faction),
 			_world.garrison.size_of(faction),
 		])
 	if parts.is_empty():

@@ -540,7 +540,7 @@ func _building_between(from: Vector3, to: Vector3) -> bool:
 	var finish := Vector2(to.x, to.z)
 	for node in get_tree().get_nodes_in_group("building"):
 		var building := node as Node3D
-		if building == null or not is_instance_valid(building):
+		if building == null or not is_instance_valid(building) or RES.walkable(int(building.kind)):
 			continue
 		var centre := Vector2(building.global_position.x, building.global_position.z)
 		var half := _footprint(building)

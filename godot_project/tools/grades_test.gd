@@ -22,7 +22,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "ступени построек"
-	expected_host = 8
+	expected_host = 9
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -85,6 +85,9 @@ func _run() -> void:
 		if is_instance_valid(unit) and int(unit.faction) == FACTIONS.Kind.GUARD:
 			pawn = unit
 			break
+	var heard := []
+	var listen := func(text: String) -> void: heard.append(text)
+	_world.objective.announced.connect(listen)
 	var before: float = float(storage.health)
 	if pawn != null:
 		storage.take_damage(100.0, 0, "building", storage.global_position, Vector3.FORWARD,
@@ -92,6 +95,18 @@ func _run() -> void:
 	var lost: float = before - float(storage.health)
 	check(pawn != null and lost > 0.0 and lost <= 25.0,
 		"пешка стражи ломает постройку злодея в малую долю силы", "удар 100 снял %.1f" % lost)
+	# Второй удар сразу вслед — о нём уже не напоминают.
+	if pawn != null:
+		storage.take_damage(100.0, 0, "building", storage.global_position, Vector3.FORWARD,
+			false, -1, pawn)
+	await get_tree().process_frame
+	_world.objective.announced.disconnect(listen)
+	var alerts := 0
+	for text in heard:
+		if "под ударом" in String(text):
+			alerts += 1
+	check(alerts == 1, "стороне говорят, что её постройку бьют, — один раз, а не на каждый удар",
+		"сообщений %d: %s" % [alerts, heard])
 	finish()
 
 

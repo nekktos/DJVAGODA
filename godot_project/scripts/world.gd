@@ -869,8 +869,32 @@ func spawn_building(kind: int, point: Vector3, owner_id: int, faction := -1,
 		print("[стройка] %s стороны «%s» в %s" % [RES.BUILDING_NAMES[kind], FACTIONS.name_of(side), point])
 		node.completed.connect(_on_building_completed.bind(node))
 		node.destroyed_on_server.connect(_on_building_destroyed)
+		node.hit_on_server.connect(_on_building_hit)
 		navigation.mark_dirty()
 	return node
+
+
+## Как часто напоминать об одной и той же постройке под ударом, мс.
+const HIT_ALERT_MS := 30000
+## Постройка -> когда о ней последний раз предупреждали (мс).
+var _hit_alerts := {}
+
+
+## Постройку бьют — сказать стороне (решение автора от 29.09: жёсткий старт,
+## «стойте за свой форт сами»). Живой игрок далеко, у обоза или в бою, и без
+## этого узнавал о набеге, только вернувшись к пепелищу. Раз в полминуты на
+## постройку: удар за ударом — не новость.
+func _on_building_hit(building: Node3D) -> void:
+	if not Net.hosting() or not is_instance_valid(building):
+		return
+	var id := building.get_instance_id()
+	var now := Time.get_ticks_msec()
+	if now - int(_hit_alerts.get(id, -HIT_ALERT_MS)) < HIT_ALERT_MS:
+		return
+	_hit_alerts[id] = now
+	notify_side(int(building.faction), "%s под ударом! Прочность %d из %d" % [
+		RES.BUILDING_NAMES[int(building.kind)], int(building.health),
+		int(building.max_health())])
 
 
 ## Постройка разрушена. Для стражи это половина условия поражения (GDD раздел 7):
