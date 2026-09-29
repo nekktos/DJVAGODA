@@ -19,7 +19,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "ИИ-эльфы"
-	expected_host = 3
+	expected_host = 4
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -63,4 +63,12 @@ func _run() -> void:
 	check(built != null and near < 80.0, "и ставит новый дом у поселения",
 		"домов %d -> %d, до середины поселения %.0f м" % [houses_before,
 			_world.elf_houses().size(), near])
+
+	# Зелье пьёт, как пил бы человек: здоровья мало, зелье есть.
+	elf.potions_heal = 1
+	elf.health.current = elf.health.maximum() * 0.2
+	await get_tree().create_timer(2.0).timeout
+	check(int(elf.potions_heal) == 0 and elf.health.current > elf.health.maximum() * 0.2,
+		"ИИ-эльф при малом здоровье пьёт зелье лечения",
+		"зелий %d, здоровье %.0f" % [int(elf.potions_heal), elf.health.current])
 	finish()

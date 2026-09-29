@@ -2025,6 +2025,12 @@ func next_gear_cost() -> Array:
 	return trade_cost(table[next])
 
 
+## Название ступени оружия у своей стороны: у эльфов из лавки, у прочих — из
+## кузни.
+func gear_title(tier: int) -> String:
+	return WEAPONS.gear_name(tier, int(faction) != FACTIONS.Kind.ELVES)
+
+
 ## Цена следующей ступени доспеха у своей стороны. Пусто — выше некуда.
 func next_armor_cost() -> Array:
 	return trade_cost(RES.armor_cost(int(faction), armor_tier + 1))
@@ -2116,7 +2122,7 @@ func request_forge_gear() -> void:
 			" — уголь возят обозом с угольной шахты" if RES.at(cost, RES.Kind.COAL) > int(stock.get_amount(RES.Kind.COAL)) else ""])
 		return
 	gear_tier += 1
-	print("[кузня] игрок %d закалил оружие: %s" % [peer_id, WEAPONS.gear_name(gear_tier)])
+	print("[кузня] игрок %d закалил оружие: %s" % [peer_id, gear_title(gear_tier)])
 
 
 ## Выпить зелье: 0 — лечения, 1 — маны.

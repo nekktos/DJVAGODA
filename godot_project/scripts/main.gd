@@ -430,7 +430,7 @@ func _action_prompt(me: Node3D) -> Dictionary:
 		return {"key": &"interact", "icon": _pile_icon(pile), "text": "подобрать: %s" % pile.summary()}
 	if me.at_trader():
 		return {"key": &"interact", "icon": "res_%d" % RES.Kind.GOLD,
-			"text": "лавка (снаряжение сейчас %s)" % WEAPONS.gear_name(me.gear_tier)}
+			"text": "лавка (снаряжение сейчас %s)" % me.gear_title(me.gear_tier)}
 	if me.at_commander():
 		return {"key": &"interact", "icon": "guard", "text": "командир: %s" % _order_hint(me)}
 	if me.at_elder():
@@ -1290,6 +1290,7 @@ const TEST_FLAGS := {
 	"--shoptest": ["res://tools/shop_test.gd", true],
 	"--eldertest": ["res://tools/elder_test.gd", true],
 	"--elfaitest": ["res://tools/elf_ai_test.gd", true],
+	"--aigeartest": ["res://tools/ai_gear_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
@@ -1952,7 +1953,7 @@ func _refresh_trader(me: Node3D) -> void:
 	# свой (GDD 9a): у эльфов травы, зелья, луки и лёгкая броня; у злодея и
 	# стражи — бинты, стрелы и латы, чёрные и серебряные.
 	box.get_node("Stock").text = "оружие: %s · доспех: %s · лавка стороны «%s»" % [
-		WEAPONS.gear_name(me.gear_tier), RES.armor_name(side, int(me.armor_tier)),
+		me.gear_title(me.gear_tier), RES.armor_name(side, int(me.armor_tier)),
 		FACTIONS.name_of(me.trader_faction())]
 	box.get_node("Note").text = ("Эльфийская лавка: травы, зелья, луки и лёгкая броня — за золото."
 		if elf else "Бинты, стрелы и латы. Оружие закаляют в кузне — за железо и уголь.")
@@ -1990,7 +1991,7 @@ func _refresh_trader(me: Node3D) -> void:
 		gear.disabled = true
 	else:
 		gear.text = "Эльфийское оружие: %s — %s" % [
-			WEAPONS.gear_name(me.gear_tier + 1), RES.format_cost(cost)]
+			me.gear_title(me.gear_tier + 1), RES.format_cost(cost)]
 		gear.disabled = not me.stock.can_afford(cost)
 
 	var armor: Button = box.get_node("Armor")

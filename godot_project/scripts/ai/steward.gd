@@ -52,6 +52,8 @@ const BUILD_ORDER := [
 	RES.Building.HOUSE,
 	RES.Building.SWORD_BARRACKS,
 	RES.Building.ARCHER_BARRACKS,
+	# Кузня последней: закалка — роскошь, когда войско уже есть (GDD 9a).
+	RES.Building.FORGE,
 ]
 
 ## Сколько батраков ИИ нанимает, пока нет ни одной лошади. Золото микро-шахты —

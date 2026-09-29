@@ -41,6 +41,11 @@ const ELF_ANGLES := 12
 ## Лес для рубки: не дальше этого от середины поселения — ИИ-эльф не уходит
 ## рубить за полкарты, оставив дом без присмотра.
 const ELF_WOODS := 110.0
+## Покупать и закалять ИИ идёт, только когда в казне ВДВОЕ больше цены: казна
+## общая со стороной, и латы вожака не должны отнимать у неё батраков и лошадей.
+const SURPLUS := 2.0
+## Пить зелье лечения ниже этой доли здоровья.
+const POTION_AT := 0.4
 
 ## Насколько далеко от микро-шахты ещё её залежь.
 const MICRO_RADIUS := 20.0
@@ -87,6 +92,8 @@ const REPATH_DISTANCE := 6.0
 
 ## Насколько близко надо подойти к точке пути, чтобы считать её пройденной.
 const WAYPOINT_RADIUS := 2.5
+## Насколько шире постройки ставить точку обхода у её угла.
+const DETOUR_MARGIN := 2.5
 
 var _think_left := 0.0
 ## Путь героя по навигационной сетке и место в нём.
@@ -137,6 +144,11 @@ func _sync_heroes() -> void:
 ## вместо клавиатуры. Ни одной новой точки входа в него мы не заводим.
 func _drive(faction: int, hero: Node3D) -> void:
 	var world := get_parent()
+	# Зелье — как пил бы человек: здоровья мало, зелье есть. В самом начале:
+	# чем бы вожак ни был занят, раненый пьёт.
+	if (int(hero.potions_heal) > 0 and hero.health.current
+			< hero.health.maximum() * POTION_AT):
+		hero.request_use_potion(0)
 	var enemies := _enemies_near(faction, hero.global_position)
 	var target: Node3D = _closest(hero.global_position, enemies)
 
@@ -153,6 +165,10 @@ func _drive(faction: int, hero: Node3D) -> void:
 			_mine(hero, vein)
 			return
 		if faction == FACTIONS.Kind.ELVES and _elf_build(hero):
+			return
+		# Снаряжение — как у игрока: закалить оружие в своей кузне, купить
+		# доспех в своей лавке. Только без врагов рядом и при запасе в казне.
+		if _gear_errand(faction, hero):
 			return
 
 	# Куда идти. Есть враг — на него, нет — к якорю своего отряда.
@@ -199,6 +215,49 @@ func _drive(faction: int, hero: Node3D) -> void:
 			input["ability"] = spell
 
 	hero.scripted_input = input
+
+
+## Сходить за снаряжением: в кузню — закалить оружие, в лавку — доспех.
+## true — занят этим.
+func _gear_errand(faction: int, hero: Node3D) -> bool:
+	var world := get_parent()
+	var forge: Node3D = world.barracks_of(faction, RES.Building.FORGE)
+	var gear_cost: Array = hero.next_gear_cost()
+	if forge != null and faction != FACTIONS.Kind.ELVES and _rich(hero, gear_cost):
+		if hero.building_at_hand(RES.Building.FORGE) == forge:
+			hero.scripted_input = {"move": Vector2.ZERO, "jump": false}
+			hero.request_forge_gear()
+		else:
+			_walk_to(hero, forge.global_position)
+		return true
+	var armor_cost: Array = hero.next_armor_cost()
+	if _rich(hero, armor_cost):
+		if hero.at_trader():
+			hero.scripted_input = {"move": Vector2.ZERO, "jump": false}
+			hero.request_trade(RES.Trade.ARMOR)
+		else:
+			_walk_to(hero, world.trader_position(faction))
+		return true
+	# Эльфу — зелье лечения про запас, если нет ни одного.
+	if (faction == FACTIONS.Kind.ELVES and int(hero.potions_heal) == 0
+			and _rich(hero, RES.POTION_HEAL_COST)):
+		if hero.at_trader():
+			hero.scripted_input = {"move": Vector2.ZERO, "jump": false}
+			hero.request_trade(RES.Trade.POTION_HEAL)
+		else:
+			_walk_to(hero, world.trader_position(faction))
+		return true
+	return false
+
+
+## Есть ли в казне вдвое больше цены. Пустая цена — выше некуда, не идём.
+func _rich(hero: Node3D, cost: Array) -> bool:
+	if cost.is_empty():
+		return false
+	for kind in RES.COUNT:
+		if float(hero.stock.get_amount(kind)) < float(RES.at(cost, kind)) * SURPLUS:
+			return false
+	return true
 
 
 ## ИИ-эльф строит дом, как игрок: рубит лес, пока не хватает, и ставит дом у
@@ -350,6 +409,86 @@ func _vein_radius(vein: Node3D) -> float:
 ## спрашиваем ближайшее проходимое место рядом с ней. Пути нет вовсе — идём
 ## напрямую: пусть лучше упрётся, чем встанет насовсем.
 func _next_step(hero: Node3D, goal: Vector3) -> Vector3:
+	return _around_buildings(hero.global_position, _path_step(hero, goal))
+
+
+## Обойти постройку, которая стоит поперёк пути.
+##
+## Сетку навигации пекут один раз, при старте, и поставленных потом построек в
+## ней нет. А вблизи цели герой и вовсе идёт по прямой. Набор «ИИ-снаряжение»
+## поймал это на деле: вожак шёл в кузню, склад стоял между ними, и вожак
+## полторы минуты упирался в стену склада. Поэтому, если отрезок до следующей
+## точки режет чужую постройку, идём сперва к её углу: к тому, откуда путь
+## до цели короче всего.
+func _around_buildings(from: Vector3, to: Vector3) -> Vector3:
+	var start := Vector2(from.x, from.z)
+	var finish := Vector2(to.x, to.z)
+	var blocker: Node3D = null
+	var blocker_gap := INF
+	for node in get_tree().get_nodes_in_group("building"):
+		var building := node as Node3D
+		if building == null or not is_instance_valid(building):
+			continue
+		var centre := Vector2(building.global_position.x, building.global_position.z)
+		var half := _footprint(building)
+		# Цель в самой постройке (идём в кузню, к складу) — её не обходим.
+		if absf(finish.x - centre.x) <= half.x and absf(finish.y - centre.y) <= half.y:
+			continue
+		if not _segment_hits_box(start - centre, finish - centre, half):
+			continue
+		var gap: float = start.distance_to(centre)
+		if gap < blocker_gap:
+			blocker_gap = gap
+			blocker = building
+	if blocker == null:
+		return to
+	var centre := Vector2(blocker.global_position.x, blocker.global_position.z)
+	var half := _footprint(blocker)
+	var wide := half + Vector2(DETOUR_MARGIN, DETOUR_MARGIN)
+	var best := to
+	var best_length := INF
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var corner := centre + Vector2(wide.x * sx, wide.y * sz)
+			# Угол, у которого уже стоим, — пройден: иначе замерли бы на нём.
+			if start.distance_to(corner) < 1.0:
+				continue
+			if _segment_hits_box(start - centre, corner - centre, half):
+				continue
+			var length: float = start.distance_to(corner) + corner.distance_to(finish)
+			if length < best_length:
+				best_length = length
+				best = Vector3(corner.x, to.y, corner.y)
+	return best
+
+
+func _footprint(building: Node3D) -> Vector2:
+	var size: Vector3 = RES.BUILDING_SIZE[int(building.kind)]
+	return Vector2(size.x, size.z) * 0.5
+
+
+## Режет ли отрезок a–b прямоугольник ±half с серединой в нуле.
+func _segment_hits_box(a: Vector2, b: Vector2, half: Vector2) -> bool:
+	var d := b - a
+	var t0 := 0.0
+	var t1 := 1.0
+	for axis in 2:
+		var p := [-d[axis], d[axis]]
+		var q := [a[axis] + half[axis], half[axis] - a[axis]]
+		for k in 2:
+			if absf(p[k]) < 0.0001:
+				if q[k] < 0.0:
+					return false
+				continue
+			var t: float = q[k] / p[k]
+			if p[k] < 0.0:
+				t0 = maxf(t0, t)
+			else:
+				t1 = minf(t1, t)
+	return t0 <= t1
+
+
+func _path_step(hero: Node3D, goal: Vector3) -> Vector3:
 	if hero.global_position.distance_to(goal) <= DIRECT_RANGE:
 		_path.clear()
 		_path_goal = Vector3.INF

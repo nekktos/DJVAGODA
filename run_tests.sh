@@ -75,6 +75,7 @@ SUITES=(
 	"shop:--shoptest:0:"
 	"elder:--eldertest:1:"
 	"elfai:--elfaitest:0:"
+	"aigear:--aigeartest:1:"
 	"playable0:--playabletest:0:"
 	"playable1:--playabletest:1:"
 	"playable2:--playabletest:2:"

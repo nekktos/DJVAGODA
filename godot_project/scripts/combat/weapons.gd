@@ -152,6 +152,9 @@ static func uses_arrows(kind: int) -> bool:
 ## нет. Если позже понадобится точность Daggerfall, разворачивать будем отсюда.
 const GEAR_TIERS := 3
 const GEAR_NAMES := ["простое", "калёное", "эльфийское"]
+## Та же лестница у кузни злодея и стражи: «эльфийское» из людского горна
+## звучало бы нелепо, а игрок видит это слово на кнопке закалки.
+const FORGED_NAMES := ["простое", "калёное", "булатное"]
 ## Множитель урона по уровню снаряжения.
 const GEAR_DAMAGE := [1.0, 1.25, 1.55]
 ## Множитель отката: меньше единицы — бьют чаще.
@@ -166,5 +169,6 @@ static func gear_cooldown(tier: int) -> float:
 	return GEAR_COOLDOWN[clampi(tier, 0, GEAR_TIERS - 1)]
 
 
-static func gear_name(tier: int) -> String:
-	return GEAR_NAMES[clampi(tier, 0, GEAR_TIERS - 1)]
+static func gear_name(tier: int, forged: bool = false) -> String:
+	var names: Array = FORGED_NAMES if forged else GEAR_NAMES
+	return names[clampi(tier, 0, GEAR_TIERS - 1)]
