@@ -114,6 +114,24 @@ func _run() -> void:
 	await _shot("11_укрепить")
 	main._building_ui.close_panel()
 	print("[снимки интерфейса] готово: %s" % out_dir)
+	# Дома эльфов у их поселения: как выглядят и где стоят.
+	var houses: Array = _world.elf_houses()
+	if not houses.is_empty():
+		var centre := Vector3.ZERO
+		for house in houses:
+			centre += (house as Node3D).global_position
+		centre /= float(houses.size())
+		eye.look_at_from_position(centre + Vector3(0.0, 22.0, 48.0), centre + Vector3(0.0, 2.0, 0.0))
+		eye.current = true
+		main._hud.visible = false
+		await get_tree().create_timer(1.0).timeout
+		await _shot("12_дома_эльфов")
+		var one: Vector3 = (houses[0] as Node3D).global_position
+		eye.look_at_from_position(one + Vector3(4.0, 6.0, 17.0), one + Vector3(0.0, 4.0, 0.0))
+		await get_tree().create_timer(0.5).timeout
+		await _shot("13_дом_эльфов_вблизи")
+		main._hud.visible = true
+		eye.current = false
 	get_tree().quit()
 
 

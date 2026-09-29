@@ -33,6 +33,8 @@ const WORLD_SCALE := {
 	"dark_stone": 6.0,
 	"marble": 9.0,
 	"wood": 3.0,
+	"elf_wood": 2.5,
+	"bark": 2.0,
 	"rock": 11.0,
 	"roof": 2.2,
 	"plaster": 4.0,
@@ -74,6 +76,11 @@ static func _draw(key: String) -> ImageTexture:
 			_veins(img, Color(0.86, 0.84, 0.79), Color(0.66, 0.64, 0.62))
 		"wood":
 			_planks(img, Color(0.49, 0.35, 0.22), Color(0.31, 0.21, 0.13))
+		"elf_wood":
+			# Светлое, серебристое дерево эльфов — не бурые доски людских сараев.
+			_planks(img, Color(0.80, 0.74, 0.60), Color(0.62, 0.55, 0.42))
+		"bark":
+			_planks(img, Color(0.36, 0.27, 0.19), Color(0.22, 0.16, 0.11))
 		"rock":
 			_speckle(img, Color(0.47, 0.44, 0.41), Color(0.29, 0.27, 0.26))
 		"roof":

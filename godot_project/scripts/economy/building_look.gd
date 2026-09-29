@@ -145,39 +145,115 @@ static func _block(root: Node3D, at: Vector3, box_size: Vector3, mat: Material) 
 ## листвы. Каменный — на каменном цоколе и с каменными стенами: прочность по
 ## материалу должна читаться глазом, а не только числом.
 static func _elf_house(root: Node3D, size: Vector3, stone: bool) -> void:
-	var wall_mat: StandardMaterial3D = TEXTURES.of("stone" if stone else "wood")
-	var leg_mat: StandardMaterial3D = TEXTURES.of("stone" if stone else "wood")
-	var lift := size.y * 0.45
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var leg := MeshInstance3D.new()
-			var pole := CylinderMesh.new()
-			pole.top_radius = 0.7 if stone else 0.35
-			pole.bottom_radius = pole.top_radius
-			pole.height = lift
-			leg.mesh = pole
-			leg.material_override = leg_mat
-			leg.position = Vector3(sx * size.x * 0.38, lift * 0.5, sz * size.z * 0.38)
-			root.add_child(leg)
-	var body := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(size.x * 0.9, size.y - lift, size.z * 0.9)
-	body.mesh = box
-	body.material_override = wall_mat
-	body.position = Vector3(0.0, lift + box.size.y * 0.5, 0.0)
-	root.add_child(body)
-	var roof := MeshInstance3D.new()
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.0
-	cone.bottom_radius = size.x * 0.72
-	cone.height = size.y * 0.6
-	roof.mesh = cone
-	var leaves := StandardMaterial3D.new()
-	leaves.albedo_color = Color(0.24, 0.44, 0.24)
-	leaves.roughness = 0.9
-	roof.material_override = leaves
-	roof.position = Vector3(0.0, size.y + cone.height * 0.5 - 0.2, 0.0)
-	root.add_child(roof)
+	# ДОМ НА ДЕРЕВЕ. Прежде это была коробка на сваях под зелёным конусом, и
+	# автор сказал прямо: «дома эльфов должны выглядеть как дома эльфов». Эльфы
+	# живут В лесу, а не на вырубке: дом обнимает живой ствол, стоит на круглой
+	# площадке, крыт куполом листвы и светится тёплыми окнами и фонариками.
+	# Каменный — на каменном цоколе и с каменными стенами: прочность по
+	# материалу читается глазом.
+	var walls: StandardMaterial3D = TEXTURES.of("stone" if stone else "elf_wood")
+	var planks: StandardMaterial3D = TEXTURES.of("elf_wood")
+	var bark: StandardMaterial3D = TEXTURES.of("bark")
+	var leaves := _flat_mat(Color(0.30, 0.52, 0.27), 0.9)
+	var deep_leaves := _flat_mat(Color(0.20, 0.40, 0.22), 0.9)
+	var vine := _flat_mat(Color(0.26, 0.47, 0.22), 0.9)
+	var glow := _flat_mat(Color(1.0, 0.82, 0.45), 0.5)
+	glow.emission_enabled = true
+	glow.emission = Color(1.0, 0.72, 0.35)
+	glow.emission_energy_multiplier = 1.6
+
+	var radius: float = minf(size.x, size.z) * 0.5
+	var lift: float = size.y * 0.35
+	var room_h: float = size.y - lift
+
+	# Живой ствол сквозь дом и крона над ним.
+	_cylinder(root, Vector3(0.0, size.y * 0.8, 0.0), 1.0, 1.25, size.y * 1.6, bark)
+	for crown in [Vector3(0.0, size.y * 1.62, 0.0), Vector3(1.8, size.y * 1.45, 0.9),
+			Vector3(-1.6, size.y * 1.5, -1.1)]:
+		_sphere(root, crown, radius * 0.55, deep_leaves)
+
+	# Опора: резные сваи с вьюнком — у каменного вместо свай цоколь.
+	if stone:
+		_cylinder(root, Vector3(0.0, lift * 0.5, 0.0), radius * 0.78, radius * 0.86, lift, walls)
+	else:
+		for i in 6:
+			var angle := TAU * float(i) / 6.0
+			var at := Vector3(cos(angle), 0.0, sin(angle)) * radius * 0.72
+			_cylinder(root, at + Vector3(0.0, lift * 0.5, 0.0), 0.22, 0.32, lift, planks)
+			_cylinder(root, at + Vector3(0.12, lift * 0.45, 0.12), 0.07, 0.07, lift * 0.9, vine)
+
+	# Круглая площадка с перилами-фонариками.
+	_cylinder(root, Vector3(0.0, lift, 0.0), radius * 0.98, radius * 0.98, 0.35, planks)
+	for i in 8:
+		var angle := TAU * (float(i) + 0.5) / 8.0
+		var at := Vector3(cos(angle), 0.0, sin(angle)) * radius * 0.92
+		_cylinder(root, at + Vector3(0.0, lift + 0.6, 0.0), 0.06, 0.06, 1.2, planks)
+		if i % 2 == 0:
+			_sphere(root, at + Vector3(0.0, lift + 1.3, 0.0), 0.2, glow)
+
+	# Круглый сруб вокруг ствола.
+	var room_r: float = radius * 0.66
+	_cylinder(root, Vector3(0.0, lift + room_h * 0.4, 0.0), room_r, room_r, room_h * 0.8, walls)
+	# Дверь-арка по фасаду (+Z) и круглые окна.
+	var door := MeshInstance3D.new()
+	var door_box := BoxMesh.new()
+	door_box.size = Vector3(1.3, 2.2, 0.3)
+	door.mesh = door_box
+	door.material_override = _flat_mat(Color(0.28, 0.2, 0.12), 0.8)
+	door.position = Vector3(0.0, lift + 1.2, room_r)
+	root.add_child(door)
+	_sphere(root, Vector3(0.0, lift + 2.3, room_r), 0.65, door.material_override)
+	for angle in [PI * 0.25, PI * 0.75, PI * 1.25, PI * 1.75]:
+		var at := Vector3(sin(angle), 0.0, cos(angle)) * room_r
+		_sphere(root, at + Vector3(0.0, lift + room_h * 0.45, 0.0), 0.45, glow)
+
+	# Купол листвы вместо крыши.
+	var dome := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = room_r * 1.35
+	sphere.height = room_r * 1.6
+	sphere.is_hemisphere = true
+	dome.mesh = sphere
+	dome.material_override = leaves
+	dome.position = Vector3(0.0, lift + room_h * 0.8, 0.0)
+	root.add_child(dome)
+
+	# Лесенка на землю — с фасада.
+	for step in 5:
+		var t := float(step) / 5.0
+		_block(root, Vector3(0.0, lift * (1.0 - t) - 0.1, radius * (1.0 + t * 0.45)),
+			Vector3(1.4, 0.18, 0.55), planks)
+
+
+static func _cylinder(root: Node3D, at: Vector3, top: float, bottom: float, height: float,
+		mat: Material) -> void:
+	var mesh := MeshInstance3D.new()
+	var shape := CylinderMesh.new()
+	shape.top_radius = top
+	shape.bottom_radius = bottom
+	shape.height = height
+	mesh.mesh = shape
+	mesh.material_override = mat
+	mesh.position = at
+	root.add_child(mesh)
+
+
+static func _sphere(root: Node3D, at: Vector3, r: float, mat: Material) -> void:
+	var mesh := MeshInstance3D.new()
+	var shape := SphereMesh.new()
+	shape.radius = r
+	shape.height = r * 2.0
+	mesh.mesh = shape
+	mesh.material_override = mat
+	mesh.position = at
+	root.add_child(mesh)
+
+
+static func _flat_mat(color: Color, roughness: float) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = roughness
+	return mat
 
 
 ## Казармы деревянные, склад и конюшня каменные. Дерево у казарм не случайно:
