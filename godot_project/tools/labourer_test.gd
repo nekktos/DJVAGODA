@@ -18,6 +18,7 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const RES := preload("res://scripts/economy/resources.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
 const MINE := preload("res://scripts/economy/mine.gd")
+const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 
 ## В пределах какого расстояния от базы лес считается «своим».
 const GROVE_RADIUS := 160.0
@@ -469,8 +470,11 @@ func _test_farm_feeds_the_side(me: Node3D) -> void:
 		"на недостроенном поле ничего не растёт",
 		"выросло %d" % (int(site.grown[RES.Kind.FOOD]) if site != null else -1))
 
+	# Место — по правилу стройки, как у игрока. Прежнее «база минус 34 по z»
+	# ложилось поверх стены донжона: пока поле было сплошной коробкой, фермер
+	# стоял на её крыше, а с проходимым полем упал к стене донжона и упёрся.
 	var field: Node3D = _world.spawn_building(RES.Building.FARM,
-		base + Vector3(0.0, 0.0, -34.0), int(me.peer_id), side, true)
+		_free_spot(base, RES.Building.FARM), int(me.peer_id), side, true)
 	# Ждём с запасом на скорость поля: RES.FARM_RATE намеренно невелика, и трёх
 	# секунд ей не хватает даже на одну единицу. Считаем от самой скорости, а не
 	# от числа: её ещё будут крутить по playtest.
@@ -504,6 +508,19 @@ func _test_farm_feeds_the_side(me: Node3D) -> void:
 			break
 	check(delivered, "еда доносится до склада стороны",
 		"еда %d -> %d" % [before, wallet.get_amount(RES.Kind.FOOD)])
+
+
+## Годное место под постройку кольцами вокруг точки — тем же правилом, что у
+## игрока и у распорядителя ИИ.
+func _free_spot(around: Vector3, kind: int) -> Vector3:
+	for radius in [30.0, 44.0, 58.0, 72.0]:
+		for i in 12:
+			var angle := TAU * float(i) / 12.0
+			var at := around + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+			at.y = 0.0
+			if BUILD_CONTROLLER.is_spot_buildable(_world, at, kind):
+				return at
+	return around
 
 
 ## Артель ест, а без еды голодает — и умирает не сразу.

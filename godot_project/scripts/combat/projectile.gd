@@ -87,12 +87,19 @@ func _pierce_scale(target: Node3D, aoe: bool) -> float:
 	return lerpf(scale, 1.0, WEAPONS.CROSSBOW_PIERCE) / scale
 
 
-func _collect_exclusions() -> void:
+## Кто выстрелил: боец по пути в сцене, персонаж — по номеру пира. null —
+## стрелка уже нет (убит, пока летела стрела).
+func _shooter() -> Node:
 	var shooter: Node = null
 	if not shooter_path.is_empty():
 		shooter = get_node_or_null(NodePath(shooter_path))
 	if shooter == null:
 		shooter = get_parent().get_parent().get_node_or_null("Players/%d" % shooter_id)
+	return shooter
+
+
+func _collect_exclusions() -> void:
+	var shooter: Node = _shooter()
 	if shooter == null or not shooter.has_method("own_collision_rids"):
 		return
 	_exclude = shooter.own_collision_rids()
@@ -151,7 +158,7 @@ func _resolve_hit(hit: Dictionary) -> void:
 					* WEAPONS.gear_damage(gear_tier))
 				damage *= _pierce_scale(target, false)
 				target.take_damage(damage, shooter_id, zone.zone, point, _velocity.normalized(),
-					false, kind)
+					false, kind, _shooter())
 		else:
 			# Воткнулась в землю или стену — просто показать.
 			_show_impact.rpc(point, false)
@@ -191,7 +198,8 @@ func _explode(point: Vector3) -> void:
 		if damage > 0.5:
 			var dir: Vector3 = (target.global_position - point).normalized()
 			# Флаг «по площади»: рассыпной строй именно его и гасит.
-			target.take_damage(damage, shooter_id, zone.zone, zone.global_position, dir, true, kind)
+			target.take_damage(damage, shooter_id, zone.zone, zone.global_position, dir, true, kind,
+				_shooter())
 
 	_show_impact.rpc(point, true)
 

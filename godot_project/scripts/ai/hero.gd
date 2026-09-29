@@ -60,6 +60,8 @@ const THINK_INTERVAL := 0.5
 ## Дальше этого от якоря своего отряда герой не отходит. Он вожак, а не
 ## разведчик: в одиночку его убивают, и убивают навсегда.
 const LEASH := 18.0
+## Врага ближе этого вожак бьёт, куда бы ни тянул поводок.
+const CLOSE_FIGHT := 12.0
 
 ## Ближе этого к якорю можно стоять и не семенить на месте.
 const AT_ANCHOR := 6.0
@@ -149,6 +151,11 @@ func _drive(faction: int, hero: Node3D) -> void:
 		hero.request_use_potion(0)
 	var enemies := _enemies_near(faction, hero.global_position)
 	var target: Node3D = _closest(hero.global_position, enemies)
+	# Набег на своё хозяйство — туда, где бы вожак ни был.
+	var defending := false
+	if target == null:
+		target = _home_threat(faction, hero)
+		defending = target != null
 
 	# БУТСТРАП ЗЛОДЕЯ. С новым стартом (GDD 9a) злодей начинает с нулём:
 	# ни ресурсов, ни батраков, а микро-шахту у форта надо бить РУКАМИ. Живой
@@ -169,18 +176,29 @@ func _drive(faction: int, hero: Node3D) -> void:
 		if _gear_errand(faction, hero):
 			return
 
-	# Куда идти. Есть враг — на него, нет — к якорю своего отряда.
+	# Куда идти. Есть враг — на него, нет — к своему обозу в пути, а без обоза
+	# к якорю своего отряда.
+	#
+	# ОБОЗ ВАЖНЕЕ ОТРЯДА. «Долгая партия» показала злодея под ИИ, который за
+	# двадцать пять минут не вышел из разрушенного форта: первый обоз с железом
+	# разбили на обратном пути, а вожак в это время ходил с отрядом к дворцу.
+	# Живой игрок пошёл бы с обозом — в нём вся партия.
+	var anchor_now: Vector3 = _escort_point(faction)
+	if not anchor_now.is_finite():
+		anchor_now = world.warband.anchor_of(faction)
 	var goal: Vector3 = hero.global_position
 	if target != null:
 		goal = target.global_position
 	else:
-		var anchor: Vector3 = world.warband.anchor_of(faction)
-		goal = anchor if anchor.is_finite() else FACTIONS.SPAWN[faction]
+		goal = anchor_now if anchor_now.is_finite() else FACTIONS.SPAWN[faction]
 
-	# Поводок: за отрядом герой ходит, но не убегает от него за врагом.
-	var anchor_now: Vector3 = world.warband.anchor_of(faction)
+	# Поводок: за отрядом (или обозом) герой ходит, но не убегает за врагом.
+	# Подошедшего вплотную бьёт всегда: вожак, идущий к далёкому обозу, не
+	# обязан подставлять спину тому, кто уже рядом, — набор «герой» поймал
+	# ровно это, когда поводок стал тянуть к обозу.
 	if target != null and anchor_now.is_finite():
-		if _flat(anchor_now, goal) > LEASH:
+		var close: bool = _flat(hero.global_position, target.global_position) <= CLOSE_FIGHT
+		if not close and not defending and _flat(anchor_now, goal) > LEASH:
 			goal = anchor_now
 
 	# Дальнюю цель берём ПО КАРТЕ, а не по прямой.
@@ -207,12 +225,63 @@ func _drive(faction: int, hero: Node3D) -> void:
 		_choose_weapon(hero, gap)
 		# Бьём, когда цель в пределах того, чем сейчас держим.
 		var reach: float = MELEE_REACH if WEAPONS.is_melee(hero.sync_weapon) else SIGHT
-		input["attack"] = gap <= reach
+		input["attack"] = gap <= reach and not _own_cart_in_swing(faction, hero)
 		var spell := _choose_spell(faction, hero, enemies, target)
 		if spell >= 0:
 			input["ability"] = spell
 
 	hero.scripted_input = input
+
+
+## Враг у своего хозяйства: у построек, батраков или обоза. Ближайший к вожаку.
+##
+## «Долгая партия» показала злодея под ИИ, у которого стража за десять минут
+## снесла склад и конюшню, разбила обоз и перебила батраков, — а вожак в это
+## время ходил с обозом или стоял при отряде. Живой игрок развернулся бы на
+## набег. После ответа автора от 29.09 это и возможно: простой стражник бьёт
+## злодея в малую долю силы, и вожак один сдерживает целый отряд стражи.
+func _home_threat(faction: int, hero: Node3D) -> Node3D:
+	var world := get_parent()
+	var posts := []
+	for node in get_tree().get_nodes_in_group("building"):
+		if is_instance_valid(node) and "faction" in node and int(node.faction) == faction:
+			posts.append((node as Node3D).global_position)
+	for worker in world.labourers_of(faction):
+		if is_instance_valid(worker):
+			posts.append((worker as Node3D).global_position)
+	var cart_at := _escort_point(faction)
+	if cart_at.is_finite():
+		posts.append(cart_at)
+	var best: Node3D = null
+	var best_gap := INF
+	for post in posts:
+		for enemy in _enemies_near(faction, post):
+			var gap: float = _flat(hero.global_position, enemy.global_position)
+			if gap < best_gap:
+				best_gap = gap
+				best = enemy
+	return best
+
+
+## Своя телега под замахом. Удар бьёт всё в секторе, своё тоже, — так задумано
+## для людей: разбить телегу может любой. Но вожак ИИ, отбивая обоз, разбил его
+## сам («долгая партия»: «разбит игроком -1»). Рядом с телегой он не бьёт, а
+## обходит — пусть враг отойдёт от груза.
+func _own_cart_in_swing(faction: int, hero: Node3D) -> bool:
+	for cart in get_parent().caravans_of(0):
+		if not is_instance_valid(cart) or int(cart.faction) != faction:
+			continue
+		if _flat(hero.global_position, (cart as Node3D).global_position) <= MELEE_REACH + 3.0:
+			return true
+	return false
+
+
+## Где свой обоз в пути. INF — обозов нет.
+func _escort_point(faction: int) -> Vector3:
+	for cart in get_parent().caravans_of(0):
+		if is_instance_valid(cart) and int(cart.faction) == faction:
+			return (cart as Node3D).global_position
+	return Vector3.INF
 
 
 ## Сходить за снаряжением: в кузню — закалить оружие, в лавку — доспех.
@@ -500,7 +569,11 @@ func _choose_spell(faction: int, hero: Node3D, enemies: Array, target: Node3D) -
 			return ABILITIES.Kind.PARALYSIS
 	# 2. Скопление — проклинаем увяданием: оно бьёт по площади дольше, чем
 	#    один удар, и не требует, чтобы враги стояли смирно.
-	if _cluster_size(enemies, target.global_position) >= CLUSTER_SIZE:
+	#    Только если цель в досягаемости: иначе каст отказывает, и каждый
+	#    отказ писал в лог предупреждение с трассой — десятки за набег.
+	if (_cluster_size(enemies, target.global_position) >= CLUSTER_SIZE
+			and _flat(hero.global_position, target.global_position)
+				<= ABILITIES.range_of(ABILITIES.Kind.WITHER)):
 		if FACTIONS.allows_ability(faction, ABILITIES.Kind.WITHER):
 			return ABILITIES.Kind.WITHER
 	return -1

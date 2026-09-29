@@ -1449,7 +1449,7 @@ func _server_swing_melee(aim: Vector3, kind: int) -> void:
 		var zone: Area3D = best[target]
 		var damage: float = (WEAPONS.DAMAGE[kind] * zone.damage_multiplier
 			* WEAPONS.gear_damage(gear_tier) * curse_damage_scale())
-		target.take_damage(damage, peer_id, zone.zone, zone.global_position, aim, false, kind)
+		target.take_damage(damage, peer_id, zone.zone, zone.global_position, aim, false, kind, self)
 		_apply_melee_effect(kind, target)
 
 
@@ -1473,9 +1473,12 @@ func _apply_melee_effect(kind: int, target: Node3D) -> void:
 ## `weapon` — чем ударили (`WEAPONS.Kind`). Нужен ТЕЛУ, а не здоровью: от вида
 ## оружия зависит, оторвёт конечность или перебьёт (GDD раздел 4). `-1` —
 ## неизвестно чем, и тогда не отрывает.
-func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3, _aoe := false, weapon := -1) -> void:
+func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, dir: Vector3,
+		_aoe := false, weapon := -1, source: Node = null) -> void:
 	if not Net.hosting():
 		return
+	# Злодея стража берёт снаряжением, а не числом (ответ автора от 29.09).
+	amount *= villain_guard_scale(source)
 	# Доспех режет урон до того, как он дошёл до здоровья и до тела.
 	var dealt: float = health.apply_damage(amount * RES.armor_taken(int(faction), armor_tier),
 		attacker_id)
@@ -1498,6 +1501,28 @@ func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, 
 	body.register_hit(zone, dealt, weapon)
 	_award_trophies(attacker_id, mask_before, eyes_before)
 	show_hit.rpc(point, dir, dealt, zone)
+
+
+## Сколько урона злодей получает от этого удара стражи.
+##
+## Ответ автора от 29.09: «стража с непрокачанным оружием и бронёй могла
+## только с огромным трудом убить злодея». Поводом была «долгая партия»: стража
+## под ИИ приходила в пустой форт злодея на второй-четвёртой минуте и убивала
+## вожака, а его смерть окончательна, — злодей выбывал, не построив и
+## конюшни. Жёсткий старт автор оставил, но простой стражник злодею не ровня.
+##
+## Мера — снаряжённость УДАРИВШЕГО: ступень оружия плюс ступень доспеха. У
+## пешек стражи снаряжения нет вовсе — они всегда «непрокачанные».
+func villain_guard_scale(source: Node) -> float:
+	if int(faction) != FACTIONS.Kind.VILLAIN:
+		return 1.0
+	if source == null or not is_instance_valid(source) or not ("faction" in source):
+		return 1.0
+	if int(source.faction) != FACTIONS.Kind.GUARD:
+		return 1.0
+	var gear: int = int(source.gear_tier) if "gear_tier" in source else 0
+	var armor: int = int(source.armor_tier) if "armor_tier" in source else 0
+	return RES.villain_taken_from_guard(gear + armor)
 
 
 ## Записать нападавшему то, что он отрубил этим ударом.

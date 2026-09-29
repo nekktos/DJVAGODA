@@ -858,7 +858,7 @@ func _find_anim(node: Node) -> AnimationPlayer:
 
 
 func take_damage(amount: float, attacker_id: int, _zone_name: String, point: Vector3, dir: Vector3,
-		_aoe := false, _weapon := -1) -> void:
+		_aoe := false, _weapon := -1, _source: Node = null) -> void:
 	# Попали в упряжку — страдают лошади, телега цела.
 	if _zone_name == "harness":
 		hurt_harness(amount, point, dir)

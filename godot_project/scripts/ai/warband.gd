@@ -26,6 +26,7 @@ const FACTIONS := preload("res://scripts/factions.gd")
 const FORMATIONS := preload("res://scripts/units/formations.gd")
 const GARRISON := preload("res://scripts/ai/garrison.gd")
 const LABOURER := preload("res://scripts/units/labourer.gd")
+const RES := preload("res://scripts/economy/resources.gd")
 const UNIT := preload("res://scripts/units/unit.gd")
 
 enum State { HOLD, MARCH, FIGHT, RETURN }
@@ -445,6 +446,9 @@ func _plan_next(faction: int, band: Array, base: Vector3) -> void:
 	if float(band.size()) < GARRISON.SIZE * SALLY_FRACTION:
 		_stand_down(faction, base)
 		return
+	if _still_settling(faction):
+		_stand_down(faction, base)
+		return
 	var target := _pick_target(faction)
 	if target == Vector3.INF:
 		_stand_down(faction, base)
@@ -455,6 +459,24 @@ func _plan_next(faction: int, band: Array, base: Vector3) -> void:
 	_set_route(faction, target)
 	if fresh:
 		_announce_raid(faction, target)
+
+
+## Сторона строится с нуля — гарнизон сидит дома.
+##
+## Злодей начинает в разрушенном форте без ничего (GDD 9a), и его гарнизон —
+## вся охрана батраков и склада. «Долгая партия» показала, чем кончается набег
+## в такое время: гарнизон ушёл к дворцу, а стража под ИИ пришла в пустой форт
+## и снесла склад. Живой игрок первые минуты держится дома; ИИ теперь тоже —
+## пока у стороны нет казармы. Сторона без стройки (стража, эльфы) ни на чём
+## не «строится» и выходит как прежде.
+func _still_settling(faction: int) -> bool:
+	if not FACTIONS.can_build(faction):
+		return false
+	var world := get_parent()
+	if not world.players_of(faction).is_empty():
+		return false
+	return (world.barracks_of(faction, RES.Building.SWORD_BARRACKS) == null
+		and world.barracks_of(faction, RES.Building.ARCHER_BARRACKS) == null)
 
 
 ## Подправить маршрут на ходу: цель может ЕХАТЬ.

@@ -16,6 +16,7 @@
 # молчаливо терять её нельзя.
 #
 # Набор perf требует окна и в общий прогон не входит — его гоняют руками.
+# Наборы из MANUAL тоже гоняются только по имени: `./run_tests.sh longgame`.
 set -u
 
 GODOT="${GODOT:-/c/Users/Noper/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe}"
@@ -82,7 +83,12 @@ SUITES=(
 	"save:--savetest:2,1:--world=autotest-save"
 	"newgame:--newgametest:0,1:--world=autotest-newgame"
 	"reentry:--reentrytest:0:--world=autotest-reentry"
+	"villaintough:--villaintoughtest:0,2:"
+	"longgame:--longgametest:1:"
 )
+
+# Только по имени: долгая партия идёт минуты и в общий прогон не входит.
+MANUAL=(longgame)
 
 mkdir -p "$LOGS"
 [ -x "$GODOT" ] || { echo "Не найден Godot: $GODOT (задай через GODOT=...)"; exit 1; }
@@ -187,6 +193,10 @@ for entry in "${SUITES[@]}"; do
 		skip=1
 		for w in "${wanted[@]}"; do [ "$w" = "$name" ] && skip=0; done
 		[ $skip -eq 1 ] && continue
+	else
+		manual=0
+		for m in "${MANUAL[@]}"; do [ "$m" = "$name" ] && manual=1; done
+		[ $manual -eq 1 ] && continue
 	fi
 	rm -f "$LOGS/$name-"*.log
 	run_suite "$name" "$flag" "$factions" "$extra"

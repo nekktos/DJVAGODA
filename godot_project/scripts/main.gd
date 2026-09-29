@@ -1291,6 +1291,8 @@ const TEST_FLAGS := {
 	"--eldertest": ["res://tools/elder_test.gd", true],
 	"--elfaitest": ["res://tools/elf_ai_test.gd", true],
 	"--aigeartest": ["res://tools/ai_gear_test.gd", true],
+	"--longgametest": ["res://tools/long_game_test.gd", true],
+	"--villaintoughtest": ["res://tools/villain_guard_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 

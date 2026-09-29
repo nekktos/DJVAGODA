@@ -147,11 +147,19 @@ func _test_sends_caravan() -> void:
 	# именно этот код — разгрузка искала владельца среди игроков и у каравана без
 	# владельца привозила груз в никуда.
 	var wallet: Node = _villain_wallet()
+	# Место под груз освобождаем сами. Набор выдаёт злодею по 600 всего при
+	# складе на 400 каждого вида, и железа в складе с выдачи — под потолок:
+	# проверка проходила, только пока ИИ успевал потратить железо на стройку.
+	# Батраки стали работать бойчее — и полный склад честно не принял груз.
+	wallet.stored.take(RES.Kind.IRON, 40)
 	var before: int = wallet.get_amount(RES.Kind.IRON)
+	var stored_before: int = wallet.stored.get_amount(RES.Kind.IRON)
+	var room: int = wallet.stored.capacity
 	sent.cargo = RES.fit([0, 0, 0, 40])
 	sent._unload_at_home()
 	check(wallet.get_amount(RES.Kind.IRON) > before, "и разгружается в казну СТОРОНЫ",
-		"железо %d -> %d" % [before, wallet.get_amount(RES.Kind.IRON)])
+		"железо %d -> %d, железа в складе %d при потолке %d" % [before, wallet.get_amount(RES.Kind.IRON),
+			stored_before, room])
 
 	# ПОЛНЫЙ СКЛАД (ответ автора от 29.09): обоз ИИ ждёт у склада — ИИ ставит
 	# ещё склад.

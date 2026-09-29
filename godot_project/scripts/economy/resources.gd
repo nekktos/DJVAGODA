@@ -349,6 +349,18 @@ static func armor_taken(faction: int, tier: int) -> float:
 	return float(table[clampi(tier, 0, table.size() - 1)])
 
 
+## Доля урона, которую злодей получает от стражника, по его снаряжённости:
+## ступень оружия + ступень доспеха, от 0 до 4 (см. `player.villain_guard_scale`).
+## Непрокачанный стражник бьёт злодея в десятую силу — четверо таких снимают
+## сотню здоровья секунд за десять, если злодей стоит и не отвечает. Полностью
+## снаряжённый — в полную.
+const VILLAIN_TAKEN_FROM_GUARD := [0.1, 0.2, 0.35, 0.6, 1.0]
+
+
+static func villain_taken_from_guard(kit: int) -> float:
+	return float(VILLAIN_TAKEN_FROM_GUARD[clampi(kit, 0, VILLAIN_TAKEN_FROM_GUARD.size() - 1)])
+
+
 static func armor_name(faction: int, tier: int) -> String:
 	var names: Array = ARMOR_NAMES.get(faction, ARMOR_NAMES[0])
 	return String(names[clampi(tier, 0, names.size() - 1)])

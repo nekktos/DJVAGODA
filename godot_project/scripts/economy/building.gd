@@ -73,20 +73,27 @@ func setup(data: Dictionary) -> void:
 func _ready() -> void:
 	var size: Vector3 = RES.BUILDING_SIZE[kind]
 
-	var body := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var box_shape := BoxShape3D.new()
-	box_shape.size = size
-	shape.shape = box_shape
-	shape.position = Vector3(0.0, size.y * 0.5, 0.0)
-	body.add_child(shape)
-	add_child(body)
+	# ПОЛЕ ПРОХОДИМО. По пашне ходят, а не обходят её. Сплошной коробкой
+	# 20 на 16 метров поле перегораживало двор форта: «долгая партия» поймала
+	# лесоруба злодея, который пять минут стоял в углу поля с пустыми руками, —
+	# дерева на конюшню не стало, а без конюшни нет ни лошади, ни обоза, и ИИ
+	# за двадцать пять минут не вышел из разрушенного форта. Бить поле можно
+	# по-прежнему: зона попаданий у него своя (`_build_hit_zone`).
+	if kind != RES.Building.FARM:
+		var body := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box_shape := BoxShape3D.new()
+		box_shape.size = size
+		shape.shape = box_shape
+		shape.position = Vector3(0.0, size.y * 0.5, 0.0)
+		body.add_child(shape)
+		add_child(body)
+		# Постройка — препятствие в сетке навигации (navigation.gd). Сетку печёт
+		# только хост.
+		if Net.hosting():
+			add_to_group(NAV_SOURCE)
+			_add_nav_obstacle(size)
 	add_to_group("building")
-	# Постройка — препятствие в сетке навигации (navigation.gd). Сетку печёт
-	# только хост.
-	if Net.hosting():
-		add_to_group(NAV_SOURCE)
-		_add_nav_obstacle(size)
 
 	# Пока строится — коробка-каркас, растущая из земли. Дом появляется
 	# готовым: стены, которые вылезают из-под земли по пояс, читаются как
@@ -154,7 +161,10 @@ func _apply_footing() -> void:
 		query.collision_mask = 1
 		# Себя из луча исключаем: собственная коробка стоит ровно тут же, и без
 		# этого дом «нашёл бы землю» на собственной крыше.
-		query.exclude = [_body_rid()]
+		# У поля тела нет вовсе — оно проходимо.
+		var own := _body_rid()
+		if own.is_valid():
+			query.exclude = [own]
 		var hit: Dictionary = space.intersect_ray(query)
 		if hit.is_empty():
 			continue
@@ -290,7 +300,7 @@ func set_side(side: int) -> void:
 
 
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
-		_aoe := false, _weapon := -1) -> void:
+		_aoe := false, _weapon := -1, _source: Node = null) -> void:
 	if not Net.hosting() or health <= 0.0:
 		return
 	health = maxf(0.0, health - amount)

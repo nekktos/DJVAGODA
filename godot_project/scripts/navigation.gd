@@ -95,6 +95,12 @@ var _ready_to_path := false
 var _query := NavigationPathQueryParameters3D.new()
 var _answer := NavigationPathQueryResult3D.new()
 
+## Своим ярусом считаем точку в пределах трёх метров по высоте: подвал под
+## плато ниже пяти, а место в строю над землёй — выше двух.
+const LEVEL_TOLERANCE := 3.0
+const LEVEL_PROBE_RADII := [6.0, 12.0, 20.0]
+const LEVEL_PROBE_ANGLES := 8
+
 ## Перепекать не сразу, а через столько секунд после последней перемены:
 ## распорядитель ИИ ставит постройки пачкой, и печь на каждую незачем.
 const REBAKE_DELAY := 2.0
@@ -319,8 +325,36 @@ func is_ready() -> bool:
 ## Ближайшая проходимая точка к заданной. Нужна, когда цель стоит вплотную к
 ## стене или внутри постройки: путь в саму цель не проложится, а к её краю —
 ## вполне.
+##
+## БЛИЖАЙШАЯ ПО ПРЯМОЙ — НЕ ВСЕГДА ТА. Плато дворца полое, и под его верхом
+## сетка печёт недоступный подвал. Склад стражи стоит на плато и вырезан из
+## сетки (`building.gd`): до верха плато от его середины девять метров вбок, до
+## подвала — пять вниз, и «ближайшей» выходила точка в подвале. Путь оттуда
+## упирался в стену: обоз стражи доезжал до подножия плато, за двести
+## шестьдесят метров от шахты, и «грузить нечего». Поэтому, если ближайшая
+## точка на другом ярусе, ищем ещё кольцами вокруг и берём ту, что на своём.
 func closest_point(to: Vector3) -> Vector3:
 	var map := _live_map()
 	if not map.is_valid():
 		return to
-	return NavigationServer3D.map_get_closest_point(map, to)
+	var best: Vector3 = NavigationServer3D.map_get_closest_point(map, to)
+	# Только когда найденная точка заметно НИЖЕ: подвал. Цель, висящая над
+	# землёй (место в строю за прыгнувшим командиром), сюда не попадает — иначе
+	# на холмах боец уходил к точке на пригорке в шести метрах от своей, и
+	# набор «отряд» поймал колонну шириной в девять метров вместо четырёх.
+	if to.y - best.y <= LEVEL_TOLERANCE:
+		return best
+	var nearest := INF
+	var level := best
+	for radius in LEVEL_PROBE_RADII:
+		for i in LEVEL_PROBE_ANGLES:
+			var angle := TAU * float(i) / float(LEVEL_PROBE_ANGLES)
+			var probe := to + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+			var point: Vector3 = NavigationServer3D.map_get_closest_point(map, probe)
+			if absf(point.y - to.y) > LEVEL_TOLERANCE:
+				continue
+			var gap: float = Vector2(point.x - to.x, point.z - to.z).length()
+			if gap < nearest:
+				nearest = gap
+				level = point
+	return level

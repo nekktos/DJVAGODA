@@ -865,7 +865,7 @@ func _strike(target: Node3D) -> void:
 	if is_archer:
 		_shoot(dir)
 		return
-	target.take_damage(_strike_damage(), owner_id, "torso", point, dir, false, _hand_weapon())
+	target.take_damage(_strike_damage(), owner_id, "torso", point, dir, false, _hand_weapon(), self)
 
 
 ## Выстрел лучника. Стреляем НАСТОЯЩИМ снарядом, тем же, что у игрока: стрела
@@ -902,7 +902,7 @@ func set_side(side: int) -> void:
 
 
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
-		aoe := false, weapon := -1) -> void:
+		aoe := false, weapon := -1, _source: Node = null) -> void:
 	if not Net.hosting() or not _alive:
 		return
 	var scaled: float = amount * FORMATIONS.damage_scale(_formation(), aoe)

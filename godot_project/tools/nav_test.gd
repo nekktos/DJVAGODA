@@ -30,7 +30,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "навигация"
-	expected_host = 19
+	expected_host = 20
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -47,6 +47,7 @@ func _run() -> void:
 	_test_leaves_plateau()
 	_test_enters_palace()
 	_test_every_base_has_a_way_out()
+	await _test_every_base_reaches_every_mine()
 	_test_open_ground_is_straight()
 	_test_unreachable()
 	await _test_building_is_an_obstacle()
@@ -145,6 +146,39 @@ func _test_every_base_has_a_way_out() -> void:
 		check(path.size() >= 2 and length < straight * 3.0,
 			"%s: с базы есть дорога наружу" % FACTIONS.name_of(faction),
 			"%d точек, %.0f м против %.0f по прямой" % [path.size(), length, straight])
+
+
+## От каждой базы есть дорога к входу каждой шахты.
+##
+## Шахты — главная точка соприкосновения (GDD 9a), и обоз едет к ним по сетке.
+## Путь, оборвавшийся по дороге, — это пустая телега: обоз доезжает до конца
+## маршрута и «грузить нечего». Так и вышло у стражи: путь с плато к шахте
+## кончался у подножия плато, за двести шестьдесят метров от входа.
+func _test_every_base_reaches_every_mine() -> void:
+	var short := []
+	# Откуда едут обозы: от СКЛАДА стороны, а где склада нет — от базы. Склад
+	# вырезан из сетки, и ближайшая к его середине точка сетки может оказаться
+	# в кармане между постройками — оттуда путь не выходит никуда.
+	await _wait_settled()
+	var starts := []
+	for faction in FACTIONS.COUNT:
+		starts.append([FACTIONS.name_of(faction), FACTIONS.SPAWN[faction]])
+		var storage: Node3D = _world.storage_of(faction)
+		if storage != null:
+			starts.append(["склад стороны «%s»" % FACTIONS.name_of(faction), storage.global_position])
+	for start_pair in starts:
+		var base: Vector3 = start_pair[1]
+		for mine in _world.mines:
+			var dock: Vector3 = _world.mine_dock(mine)
+			var path: PackedVector3Array = _nav().path_between(
+				_nav().closest_point(base), _nav().closest_point(dock))
+			var last: Vector3 = path[path.size() - 1] if path.size() > 0 else base
+			var gap: float = Vector2(last.x, last.z).distance_to(Vector2(dock.x, dock.z))
+			if gap > 40.0:
+				short.append("%s → %s: не дошёл %.0f м (конец %s)" % [start_pair[0],
+					mine.title(), gap, last.round()])
+	check(short.is_empty(), "от каждой базы есть дорога к каждой шахте",
+		"все дошли" if short.is_empty() else "; ".join(short))
 
 
 ## На чистом поле путь обязан быть прямым. Иначе бойцы будут наматывать круги
