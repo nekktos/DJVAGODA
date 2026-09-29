@@ -91,6 +91,13 @@ static func build(kind: int, size: Vector3, grade: int = 0) -> Node3D:
 		_side_row(root, row_set, y, floor_h, span_z, step_z, size.x * 0.5, false)
 		_side_row(root, row_set, y, floor_h, span_z, step_z, size.x * 0.5, true)
 
+	# Каменные ступени — в тёсаном камне, как стены форта. Модули набора
+	# «камень» белые и на снимке читались штукатуркой: «дерево», «камень» и
+	# «камень с железом» различались хуже, чем должны.
+	if RES.gradeable(kind) and grade >= RES.Grade.WOOD_STONE:
+		for piece in root.get_children():
+			if piece.get_meta("stone_module", false):
+				_skin(piece, TEXTURES.of("stone"))
 	# Одноэтажная «дерево и камень» — каменный цоколь под деревянной стеной.
 	if RES.gradeable(kind) and grade == RES.Grade.WOOD_STONE and floors == 1:
 		_plinth(root, size)
@@ -101,6 +108,14 @@ static func build(kind: int, size: Vector3, grade: int = 0) -> Node3D:
 	if kind == RES.Building.FORGE:
 		_forge_trim(root, size)
 	return root
+
+
+## Обтянуть модуль материалом целиком.
+static func _skin(node: Node, mat: Material) -> void:
+	if node is MeshInstance3D:
+		(node as MeshInstance3D).material_override = mat
+	for child in node.get_children():
+		_skin(child, mat)
 
 
 ## Каменный цоколь по периметру.
@@ -312,6 +327,7 @@ static func _wall_row(root: Node3D, set_name: Dictionary, y: float, floor_h: flo
 		elif i % 2 == 1:
 			key = "window"
 		var piece: Node3D = set_name[key].instantiate()
+		piece.set_meta("stone_module", set_name == STONE)
 		piece.position = Vector3(
 			-half_x + step * (float(i) + 0.5),
 			y,
@@ -331,6 +347,7 @@ static func _side_row(root: Node3D, set_name: Dictionary, y: float, floor_h: flo
 	for i in span:
 		var key := "wall" if i % 2 == 0 else "window"
 		var piece: Node3D = set_name[key].instantiate()
+		piece.set_meta("stone_module", set_name == STONE)
 		piece.position = Vector3(
 			out * (half_x - MODULE_EDGE_OFFSET * step),
 			y,

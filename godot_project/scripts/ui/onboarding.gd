@@ -184,6 +184,11 @@ func _done(step: Dictionary, world: Node3D, me: Node3D) -> bool:
 			return world.squad_capacity(int(me.faction)) > RES.SQUAD_BASE
 		"forge":
 			return _has_building(world, int(me.faction), RES.Building.FORGE)
+		"fortified":
+			for node in world.get_tree().get_nodes_in_group("building"):
+				if int(node.faction) == int(me.faction) and int(node.get("grade")) > 0:
+					return true
+			return false
 		"squad":
 			return not world.units_of(int(me.peer_id)).is_empty()
 		"stable":
@@ -218,6 +223,8 @@ func _skipped(step: Dictionary, me: Node3D) -> bool:
 	var rule := String(step.get("skip", ""))
 	if rule == "forge":
 		return not me.stock.can_afford(RES.BUILDING_COST[RES.Building.FORGE])
+	if rule == "fortify":
+		return not me.stock.can_afford(RES.GRADE_COST[RES.Grade.WOOD_STONE])
 	if rule == "armor":
 		var price: Array = me.next_armor_cost()
 		return price.is_empty() or not me.stock.can_afford(price)
@@ -416,6 +423,19 @@ func _villain_chain() -> Array:
 			"text": "Найми бойцов. Они пойдут за тобой — один ты дворец не возьмёшь",
 			"keys": "подойди к казарме и нажми %s — там наём · отряд виден справа внизу" % _k(&"interact"),
 			"done": "squad",
+			"place": "своя база",
+			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
+		},
+		{
+			# СТУПЕНИ ПОСТРОЕК (ответ автора от 29.09): жёсткий старт остаётся,
+			# стража приходит рано, и форт держат стенами и вожаком. Без шага
+			# «Укрепить» пряталось бы в окне постройки, куда заглядывают за
+			# наймом. Необязательный: камня на старте в обрез.
+			"text": "Стража приходит рано. Укрепи склад: дерево → камень → камень с железом, каждая ступень крепче",
+			"keys": "подойди к складу и нажми %s — «Укрепить», нужно %s · шаг необязательный" % [
+				_k(&"interact"), RES.format_cost(RES.GRADE_COST[RES.Grade.WOOD_STONE])],
+			"done": "fortified",
+			"skip": "fortify",
 			"place": "своя база",
 			"at": FACTIONS.SPAWN[FACTIONS.Kind.VILLAIN],
 		},

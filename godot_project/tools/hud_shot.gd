@@ -102,6 +102,14 @@ func _run() -> void:
 			row_at + Vector3((float(step) - 1.5) * 17.0, 0.0, 0.0), 0, int(me.faction), true)
 		for i in step:
 			box.grade += 1
+	# Полоски прочности: второй склад побит наполовину, третий — почти весь.
+	var row: Array = []
+	for node in get_tree().get_nodes_in_group("building"):
+		if node.global_position.distance_to(row_at) < 40.0:
+			row.append(node)
+	if row.size() >= 3:
+		row[1].health = row[1].max_health() * 0.55
+		row[2].health = row[2].max_health() * 0.2
 	eye.look_at_from_position(row_at + Vector3(0.0, 12.0, 42.0), row_at + Vector3(0.0, 3.0, 0.0))
 	main._hud.visible = false
 	await get_tree().create_timer(0.8).timeout

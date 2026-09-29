@@ -53,6 +53,10 @@ var _mesh: MeshInstance3D
 ## С какой ступенью собран облик: ступень приезжает репликацией, и облик
 ## пересобирается, когда она сменилась.
 var _look_grade := 0
+## Полоска прочности над побитой постройкой: фон и заливка.
+var _bar: Node3D
+var _bar_fill: MeshInstance3D
+var _bar_shown := -1.0
 ## Дом из модулей. Пока стройка идёт, его нет вовсе: растёт котлован-коробка.
 var _look: Node3D
 var _done := false
@@ -269,6 +273,70 @@ func _add_nav_obstacle(size: Vector3) -> void:
 	add_child(obstacle)
 
 
+## Ширина полоски прочности, метры.
+const BAR_WIDTH := 6.0
+
+
+## Полоска прочности над побитой ДОСТРОЕННОЙ постройкой — у всех пиров:
+## прочность реплицируется. Целая постройка полоски не носит: двор, утыканный
+## зелёными полосками, читался бы хуже, чем без них. Жёсткий старт (ответ
+## автора от 29.09) требует видеть, что форт рубят, — глазом, а не только
+## строкой сообщения.
+func _update_health_bar() -> void:
+	var share: float = clampf(health / maxf(1.0, max_health()), 0.0, 1.0)
+	var show: bool = progress >= 1.0 and share < 0.999
+	if not show:
+		if _bar != null:
+			_bar.visible = false
+		return
+	if _bar == null:
+		_build_health_bar()
+	_bar.visible = true
+	# Лицом к камере ВСЯ полоска, а не каждая её половинка по отдельности:
+	# иначе сдвиг заливки съезжал бы при взгляде сбоку.
+	var eye: Camera3D = get_viewport().get_camera_3d() if get_viewport() != null else null
+	if eye != null:
+		var at: Vector3 = eye.global_position
+		at.y = _bar.global_position.y
+		if at.distance_to(_bar.global_position) > 0.1:
+			_bar.look_at(at, Vector3.UP, true)
+	if is_equal_approx(share, _bar_shown):
+		return
+	_bar_shown = share
+	_bar_fill.scale = Vector3(maxf(share, 0.001), 1.0, 1.0)
+	_bar_fill.position = Vector3(-BAR_WIDTH * 0.5 * (1.0 - share), 0.0, 0.01)
+	var mat: StandardMaterial3D = _bar_fill.material_override
+	mat.albedo_color = Color(0.85, 0.2, 0.15) if share < 0.35 else (
+		Color(0.9, 0.7, 0.2) if share < 0.7 else Color(0.35, 0.8, 0.3))
+
+
+func _build_health_bar() -> void:
+	_bar = Node3D.new()
+	_bar.position = Vector3(0.0, RES.BUILDING_SIZE[kind].y + 3.2, 0.0)
+	add_child(_bar)
+	var back := MeshInstance3D.new()
+	var back_quad := QuadMesh.new()
+	back_quad.size = Vector2(BAR_WIDTH + 0.2, 0.55)
+	back.mesh = back_quad
+	back.material_override = _bar_material(Color(0.08, 0.08, 0.1))
+	_bar.add_child(back)
+	_bar_fill = MeshInstance3D.new()
+	var fill_quad := QuadMesh.new()
+	fill_quad.size = Vector2(BAR_WIDTH, 0.4)
+	_bar_fill.mesh = fill_quad
+	_bar_fill.material_override = _bar_material(Color(0.35, 0.8, 0.3))
+	_bar.add_child(_bar_fill)
+
+
+## Материал полоски: без света — цвет читается в тени так же, как на солнце.
+func _bar_material(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
+
+
 ## Полная прочность на нынешней ступени.
 func max_health() -> float:
 	return RES.building_health(kind, grade)
@@ -388,6 +456,7 @@ func _process(delta: float) -> void:
 	_apply_progress()
 	if _look_grade != grade and _look != null:
 		_rebuild_look()
+	_update_health_bar()
 	if Net.hosting() and progress >= 1.0 and kind == RES.Building.FARM:
 		_grow(delta)
 	if progress >= 1.0 and not _done:

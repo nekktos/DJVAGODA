@@ -22,7 +22,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "ступени построек"
-	expected_host = 9
+	expected_host = 10
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -107,6 +107,15 @@ func _run() -> void:
 			alerts += 1
 	check(alerts == 1, "стороне говорят, что её постройку бьют, — один раз, а не на каждый удар",
 		"сообщений %d: %s" % [alerts, heard])
+
+	# Полоска прочности: у побитой видна, у целой — нет.
+	await get_tree().create_timer(0.2).timeout
+	var shown_hurt: bool = storage._bar != null and storage._bar.visible
+	storage.health = storage.max_health()
+	await get_tree().create_timer(0.2).timeout
+	var shown_whole: bool = storage._bar != null and storage._bar.visible
+	check(shown_hurt and not shown_whole, "над побитой постройкой полоска прочности, над целой — нет",
+		"побитая: %s, целая: %s" % [shown_hurt, shown_whole])
 	finish()
 
 
