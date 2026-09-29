@@ -57,14 +57,19 @@ const ROOF_RIDGE_OVERLAP := 1.0
 
 ## Собрать дом заданного вида и размера. Возвращает узел, который постройка
 ## кладёт себе внутрь и растит по высоте, пока идёт стройка.
-static func build(kind: int, size: Vector3) -> Node3D:
+static func build(kind: int, size: Vector3, grade: int = 0) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Look"
 	if kind in RES.ELF_HOUSES:
 		_elf_house(root, size, kind == RES.Building.ELF_STONE_HOUSE)
 		return root
 
+	# Ступень материала читается глазом (ответ автора от 29.09): деревянная —
+	# деревянные стены, «дерево и камень» — каменный первый этаж, «камень» —
+	# вся каменная, «камень и железо» — каменная в железных оковках.
 	var set_name := WOOD if _wooden(kind) else STONE
+	if RES.gradeable(kind):
+		set_name = WOOD if grade <= RES.Grade.WOOD_STONE else STONE
 	var floors := maxi(1, int(round(size.y / FLOOR_HEIGHT)))
 	var floor_h: float = size.y / float(floors)
 	# Пролётов по каждой стороне — целое число, иначе угол не сойдётся с углом.
@@ -78,16 +83,62 @@ static func build(kind: int, size: Vector3) -> Node3D:
 		# Дверь — только на первом этаже и только по фасаду: дверь на втором
 		# этаже выглядит ошибкой, а не украшением.
 		var door_at := span_x / 2 if level == 0 else -1
-		_wall_row(root, set_name, y, floor_h, span_x, step_x, size.z * 0.5, door_at, false)
-		_wall_row(root, set_name, y, floor_h, span_x, step_x, size.z * 0.5, -1, true)
-		_side_row(root, set_name, y, floor_h, span_z, step_z, size.x * 0.5, false)
-		_side_row(root, set_name, y, floor_h, span_z, step_z, size.x * 0.5, true)
+		var row_set: Dictionary = set_name
+		if RES.gradeable(kind) and grade == RES.Grade.WOOD_STONE and level == 0:
+			row_set = STONE
+		_wall_row(root, row_set, y, floor_h, span_x, step_x, size.z * 0.5, door_at, false)
+		_wall_row(root, row_set, y, floor_h, span_x, step_x, size.z * 0.5, -1, true)
+		_side_row(root, row_set, y, floor_h, span_z, step_z, size.x * 0.5, false)
+		_side_row(root, row_set, y, floor_h, span_z, step_z, size.x * 0.5, true)
 
+	# Одноэтажная «дерево и камень» — каменный цоколь под деревянной стеной.
+	if RES.gradeable(kind) and grade == RES.Grade.WOOD_STONE and floors == 1:
+		_plinth(root, size)
+	if RES.gradeable(kind) and grade >= RES.Grade.STONE_IRON:
+		_iron_bands(root, size)
 	_roof(root, size)
 	_trim(root, kind, size)
 	if kind == RES.Building.FORGE:
 		_forge_trim(root, size)
 	return root
+
+
+## Каменный цоколь по периметру.
+static func _plinth(root: Node3D, size: Vector3) -> void:
+	var mat: StandardMaterial3D = TEXTURES.of("stone")
+	var h := 1.1
+	for side in [-1.0, 1.0]:
+		_block(root, Vector3(0.0, h * 0.5, side * (size.z * 0.5 + 0.05)),
+			Vector3(size.x + 0.4, h, 0.5), mat)
+		_block(root, Vector3(side * (size.x * 0.5 + 0.05), h * 0.5, 0.0),
+			Vector3(0.5, h, size.z + 0.4), mat)
+
+
+## Железные оковки: стойки по углам и пояс по верху стен.
+static func _iron_bands(root: Node3D, size: Vector3) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.2, 0.21, 0.23)
+	mat.metallic = 0.85
+	mat.roughness = 0.35
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_block(root, Vector3(sx * size.x * 0.5, size.y * 0.5, sz * size.z * 0.5),
+				Vector3(0.7, size.y + 0.2, 0.7), mat)
+	for side in [-1.0, 1.0]:
+		_block(root, Vector3(0.0, size.y - 0.35, side * (size.z * 0.5 + 0.08)),
+			Vector3(size.x + 0.5, 0.35, 0.3), mat)
+		_block(root, Vector3(side * (size.x * 0.5 + 0.08), size.y - 0.35, 0.0),
+			Vector3(0.3, 0.35, size.z + 0.5), mat)
+
+
+static func _block(root: Node3D, at: Vector3, box_size: Vector3, mat: Material) -> void:
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = box_size
+	mesh.mesh = box
+	mesh.material_override = mat
+	mesh.position = at
+	root.add_child(mesh)
 
 
 ## Дом эльфов: на сваях, как хижины их поселения, под острой крышей цвета

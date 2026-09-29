@@ -73,7 +73,9 @@ func _run() -> void:
 	check(int(storage.grade) == RES.Grade.STONE_IRON and storage.upgrade_cost().is_empty(),
 		"крепче камня с железом не бывает", "ступень %d" % int(storage.grade))
 
-	await get_tree().process_frame
+	# Облик пересобирается в `_process` постройки, а сигнал кадра приходит
+	# раньше него: ждём с запасом.
+	await get_tree().create_timer(0.2).timeout
 	check(int(storage._look_grade) == int(storage.grade), "облик пересобран под ступень",
 		"облик %d, ступень %d" % [int(storage._look_grade), int(storage.grade)])
 

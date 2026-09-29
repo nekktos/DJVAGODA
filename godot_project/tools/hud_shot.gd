@@ -92,6 +92,27 @@ func _run() -> void:
 	await get_tree().create_timer(0.4).timeout
 	await _shot("09_латы")
 	main._hud.visible = true
+
+	# Ступени построек: четыре склада в ряд — дерево, дерево и камень, камень,
+	# камень и железо.
+	# На открытом поле посреди карты: во дворе форта ряд ложился в донжон.
+	var row_at := Vector3(0.0, 0.0, 100.0)
+	for step in 4:
+		var box: Node3D = _world.spawn_building(RES.Building.STORAGE,
+			row_at + Vector3((float(step) - 1.5) * 17.0, 0.0, 0.0), 0, int(me.faction), true)
+		for i in step:
+			box.grade += 1
+	eye.look_at_from_position(row_at + Vector3(0.0, 12.0, 42.0), row_at + Vector3(0.0, 3.0, 0.0))
+	main._hud.visible = false
+	await get_tree().create_timer(0.8).timeout
+	await _shot("10_ступени")
+	main._hud.visible = true
+	eye.current = false
+	me.global_position = stable.global_position + Vector3(0.0, 0.5, 8.0)
+	main._building_ui.open_for(_world, me, stable)
+	await get_tree().create_timer(0.4).timeout
+	await _shot("11_укрепить")
+	main._building_ui.close_panel()
 	print("[снимки интерфейса] готово: %s" % out_dir)
 	get_tree().quit()
 

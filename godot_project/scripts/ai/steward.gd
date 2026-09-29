@@ -123,6 +123,7 @@ func _process(delta: float) -> void:
 			continue
 		_hire(faction)
 		_build(faction)
+		_fortify(faction)
 		_assign_roles(faction)
 		_train(faction)
 		# Лошадей покупаем ПОСЛЕ войска и ДО отправки обоза: сперва оборона,
@@ -260,6 +261,51 @@ func _build(faction: int) -> void:
 		return
 	get_parent().spawn_building(kind, spot, 0, faction, false)
 	print("[хозяйство] %s строит %s" % [FACTIONS.name_of(faction), RES.BUILDING_NAMES[kind]])
+
+
+## В каком порядке ИИ укрепляет: склад — сердце хозяйства, конюшня — путь к
+## обозу, казармы — войско.
+const FORTIFY_ORDER := [
+	RES.Building.STORAGE,
+	RES.Building.STABLE,
+	RES.Building.SWORD_BARRACKS,
+	RES.Building.ARCHER_BARRACKS,
+	RES.Building.HOUSE,
+	RES.Building.FORGE,
+]
+
+
+## Укрепить постройку на ступень (ответ автора от 29.09), как сделал бы игрок:
+## у самой постройки и за ту же цену. Только когда хватает и на укрепление,
+## и на следующую постройку по очереди — стены не должны съедать развитие.
+## Укрепляем самую слабую по очереди важности.
+func _fortify(faction: int) -> void:
+	if _under_construction(faction) != null:
+		return
+	var wallet := _wallet(faction)
+	if wallet == null:
+		return
+	var weakest: Node3D = null
+	for kind in FORTIFY_ORDER:
+		var building := _ready_building(faction, kind)
+		if building == null or building.upgrade_cost().is_empty():
+			continue
+		if weakest == null or int(building.grade) < int(weakest.grade):
+			weakest = building
+	if weakest == null:
+		return
+	var cost: Array = weakest.upgrade_cost()
+	var need: PackedInt32Array = RES.fit(cost)
+	var next := _next_building(faction)
+	if next >= 0:
+		var build_cost: PackedInt32Array = RES.fit(RES.BUILDING_COST[next])
+		for kind in RES.COUNT:
+			need[kind] += build_cost[kind]
+	if not wallet.can_afford(Array(need)):
+		return
+	if not wallet.spend(cost):
+		return
+	weakest.apply_upgrade()
 
 
 ## Чего у стороны ещё нет. -1 — построено всё.

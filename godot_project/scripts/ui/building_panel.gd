@@ -176,7 +176,9 @@ func _fill() -> void:
 		RES.Building.FORGE:
 			_fill_forge()
 		_:
-			_note.text = "Делать тут нечего."
+			_note.text = ("Постройку можно укрепить." if RES.gradeable(kind)
+				else "Делать тут нечего.")
+	_fill_grade()
 
 
 func _fill_barracks(archer: bool) -> void:
@@ -234,6 +236,25 @@ func _fill_forge() -> void:
 	forge.disabled = not _player.stock.can_afford(cost)
 	forge.pressed.connect(func() -> void: _player.ask_forge_gear())
 	_line("Сейчас: %s." % _player.gear_title(int(_player.gear_tier)))
+
+
+## Прочность и укрепление — у любой постройки со ступенями (ответ автора от
+## 29.09: дерево, дерево и камень, камень, камень и железо).
+func _fill_grade() -> void:
+	var kind: int = int(_building.kind)
+	if not RES.gradeable(kind) or float(_building.progress) < 1.0:
+		return
+	var grade: int = int(_building.grade)
+	_line("Прочность: %.0f из %.0f · %s" % [float(_building.health),
+		float(_building.max_health()), RES.GRADE_NAMES[grade]])
+	var cost: Array = _building.upgrade_cost()
+	if cost.is_empty():
+		_line("Крепче не бывает.")
+		return
+	var upgrade := _button("Укрепить: %s (прочность %.0f) — %s" % [RES.GRADE_NAMES[grade + 1],
+		RES.building_health(kind, grade + 1), RES.format_cost(cost)], "res_%d" % RES.Kind.STONE)
+	upgrade.disabled = not _player.stock.can_afford(cost)
+	upgrade.pressed.connect(func() -> void: _player.ask_upgrade_building())
 
 
 func _fill_storage() -> void:

@@ -13,6 +13,7 @@ extends Node3D
 ## Группа построек для сетки навигации (navigation.gd::BUILDING_GROUP).
 const NAV_SOURCE := "navbuilding"
 const RES := preload("res://scripts/economy/resources.gd")
+const FACTIONS := preload("res://scripts/factions.gd")
 const HIT_ZONE := preload("res://scripts/combat/hit_zone.gd")
 const EFFECTS := preload("res://scripts/combat/effects.gd")
 const LOOK := preload("res://scripts/economy/building_look.gd")
@@ -38,12 +39,18 @@ signal destroyed_on_server(building: Node3D, killer_id: int)
 ## остальное: добытое засчитывается, когда донесено.
 @export var grown: PackedInt32Array = RES.empty()
 @export var health: float = MAX_HEALTH
+## Ступень материала (`RES.Grade`): дерево, дерево и камень, камень, камень и
+## железо. Задаёт прочность и облик.
+@export var grade: int = 0
 
 var kind := 0
 var owner_id := 1
 var faction := 0
 
 var _mesh: MeshInstance3D
+## С какой ступенью собран облик: ступень приезжает репликацией, и облик
+## пересобирается, когда она сменилась.
+var _look_grade := 0
 ## Дом из модулей. Пока стройка идёт, его нет вовсе: растёт котлован-коробка.
 var _look: Node3D
 var _done := false
@@ -68,6 +75,7 @@ func setup(data: Dictionary) -> void:
 		_done = true
 	position = data["point"]
 	rotation.y = float(data.get("yaw", 0.0))
+	grade = int(data.get("grade", 0))
 
 
 func _ready() -> void:
@@ -108,8 +116,9 @@ func _ready() -> void:
 	# Прочность — по виду (дома эльфов — по материалу). Только хост: у клиента
 	# здоровье приезжает синхронизатором.
 	if Net.hosting() and is_equal_approx(health, MAX_HEALTH):
-		health = RES.building_health(kind)
-	_look = LOOK.build(kind, size)
+		health = max_health()
+	_look = LOOK.build(kind, size, grade)
+	_look_grade = grade
 	_look.visible = false
 	add_child(_look)
 	_build_hit_zone(size)
@@ -258,6 +267,42 @@ func _add_nav_obstacle(size: Vector3) -> void:
 	add_child(obstacle)
 
 
+## Полная прочность на нынешней ступени.
+func max_health() -> float:
+	return RES.building_health(kind, grade)
+
+
+## Цена следующей ступени. Пусто — крепче некуда или ступеней у вида нет.
+## Недостроенную не укрепляют: сперва достроить.
+func upgrade_cost() -> Array:
+	if progress < 1.0:
+		return []
+	return RES.grade_cost(kind, grade)
+
+
+## Поднять ступень. Только хост; цену списывает тот, кто укрепляет. Прибавка
+## прочности — разница между ступенями: побитая стена остаётся побитой, но
+## крепче на столько же.
+func apply_upgrade() -> void:
+	if not Net.hosting() or upgrade_cost().is_empty():
+		return
+	var before := max_health()
+	grade += 1
+	health = minf(max_health(), health + max_health() - before)
+	print("[стройка] %s стороны «%s» укреплена: %s, прочность %.0f"
+		% [RES.BUILDING_NAMES[kind], FACTIONS.name_of(faction), RES.GRADE_NAMES[grade], health])
+
+
+## Пересобрать облик под новую ступень.
+func _rebuild_look() -> void:
+	var shown: bool = _look.visible
+	_look.queue_free()
+	_look = LOOK.build(kind, RES.BUILDING_SIZE[kind], grade)
+	_look.visible = shown
+	add_child(_look)
+	_look_grade = grade
+
+
 ## RID собственного тела: нужен, чтобы исключать себя из лучей.
 func _body_rid() -> RID:
 	for child in get_children():
@@ -300,9 +345,12 @@ func set_side(side: int) -> void:
 
 
 func take_damage(amount: float, attacker_id: int, _zone: String, point: Vector3, dir: Vector3,
-		_aoe := false, _weapon := -1, _source: Node = null) -> void:
+		_aoe := false, _weapon := -1, source: Node = null) -> void:
 	if not Net.hosting() or health <= 0.0:
 		return
+	# Постройки злодея стража ломает снаряжением, а не числом — то же правило,
+	# что и для самого злодея (ответ автора от 29.09).
+	amount *= FACTIONS.villain_hit_scale(faction, source)
 	health = maxf(0.0, health - amount)
 	show_hit.rpc(point, dir, amount)
 	if health > 0.0:
@@ -335,6 +383,8 @@ func _process(delta: float) -> void:
 	if Net.hosting() and progress < 1.0:
 		progress = minf(1.0, progress + delta * _build_rate() / float(RES.BUILD_TIME[kind]))
 	_apply_progress()
+	if _look_grade != grade and _look != null:
+		_rebuild_look()
 	if Net.hosting() and progress >= 1.0 and kind == RES.Building.FARM:
 		_grow(delta)
 	if progress >= 1.0 and not _done:

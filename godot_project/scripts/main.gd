@@ -1293,6 +1293,7 @@ const TEST_FLAGS := {
 	"--aigeartest": ["res://tools/ai_gear_test.gd", true],
 	"--longgametest": ["res://tools/long_game_test.gd", true],
 	"--villaintoughtest": ["res://tools/villain_guard_test.gd", true],
+	"--gradestest": ["res://tools/grades_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 

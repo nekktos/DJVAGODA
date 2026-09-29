@@ -1514,15 +1514,7 @@ func take_damage(amount: float, attacker_id: int, zone: String, point: Vector3, 
 ## Мера — снаряжённость УДАРИВШЕГО: ступень оружия плюс ступень доспеха. У
 ## пешек стражи снаряжения нет вовсе — они всегда «непрокачанные».
 func villain_guard_scale(source: Node) -> float:
-	if int(faction) != FACTIONS.Kind.VILLAIN:
-		return 1.0
-	if source == null or not is_instance_valid(source) or not ("faction" in source):
-		return 1.0
-	if int(source.faction) != FACTIONS.Kind.GUARD:
-		return 1.0
-	var gear: int = int(source.gear_tier) if "gear_tier" in source else 0
-	var armor: int = int(source.armor_tier) if "armor_tier" in source else 0
-	return RES.villain_taken_from_guard(gear + armor)
+	return FACTIONS.villain_hit_scale(int(faction), source)
 
 
 ## Записать нападавшему то, что он отрубил этим ударом.
@@ -2119,6 +2111,36 @@ func _server_buy_armor() -> void:
 		return
 	armor_tier += 1
 	print("[торг] игрок %d купил доспех: %s" % [peer_id, RES.armor_name(int(faction), armor_tier)])
+
+
+## Укрепить постройку, у которой стоишь, на ступень (ответ автора от 29.09).
+## Право — то же, что на стройку: злодей всегда, страж — став командиром.
+func ask_upgrade_building() -> void:
+	if Net.hosting():
+		request_upgrade_building()
+	else:
+		request_upgrade_building.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func request_upgrade_building() -> void:
+	if not Net.hosting() or not _sender_is_owner() or not health.alive:
+		return
+	var building: Node3D = building_at_hand()
+	if building == null:
+		_refuse("укрепляют у своей достроенной постройки")
+		return
+	if not FACTIONS.may_build(int(faction), int(building.kind), bool(is_leader)):
+		_refuse("укреплять постройки вашей стороне нельзя")
+		return
+	var cost: Array = building.upgrade_cost()
+	if cost.is_empty():
+		_refuse("крепче этой постройки уже не сделать")
+		return
+	if not stock.spend(cost):
+		_refuse("не хватает на укрепление: нужно %s" % RES.format_cost(cost))
+		return
+	building.apply_upgrade()
 
 
 ## Закалить оружие в кузне (GDD 9a). Злодей и стража — у своей достроенной

@@ -125,6 +125,7 @@ func save_world() -> String:
 			"faction": int(node.faction),
 			"progress": float(node.progress),
 			"health": float(node.health),
+			"grade": int(node.grade),
 		})
 	cfg.set_value("world", "buildings", built)
 
@@ -299,6 +300,7 @@ func _restore_buildings(world: Node, cfg: ConfigFile) -> void:
 		if node == null:
 			continue
 		node.progress = progress
+		node.grade = int(entry.get("grade", 0))
 		node.health = float(entry.get("health", node.health))
 
 

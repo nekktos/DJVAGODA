@@ -84,6 +84,7 @@ SUITES=(
 	"newgame:--newgametest:0,1:--world=autotest-newgame"
 	"reentry:--reentrytest:0:--world=autotest-reentry"
 	"villaintough:--villaintoughtest:0,2:"
+	"grades:--gradestest:0:"
 	"longgame:--longgametest:1:"
 )
 

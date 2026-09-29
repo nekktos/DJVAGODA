@@ -94,11 +94,50 @@ const BUILDING_HEALTH := {
 	Building.ELF_HOUSE: 350.0,
 	Building.ELF_STONE_HOUSE: 900.0,
 }
-const DEFAULT_BUILDING_HEALTH := 600.0
+## Прочее без ступеней (поле) держит столько же, сколько деревянная постройка.
+const DEFAULT_BUILDING_HEALTH := 1200.0
+
+## СТУПЕНИ МАТЕРИАЛА (ответ автора от 29.09): «у построек тоже грейд должен
+## быть: дерево, дерево-камень, камень, камень+железо (самое крепкое)».
+##
+## Поводом была «долгая партия»: четверо стражников сносили склад или конюшню
+## за семь-восемь секунд — постройки держали шестьсот, — и злодей под ИИ за
+## двадцать пять минут не поднимался дальше конюшни, сколько ни отбивался.
+## Автор решил: крепче все постройки, и крепость растёт ступенями.
+##
+## Новая постройка — деревянная и уже вдвое крепче прежнего. Укрепляют у самой
+## постройки, как нанимают у казармы. Ступени нет у поля (это пашня, а не
+## стены) и у домов эльфов: у тех материал выбирается при стройке.
+enum Grade { WOOD, WOOD_STONE, STONE, STONE_IRON }
+const GRADE_NAMES := ["дерево", "дерево и камень", "камень", "камень и железо"]
+const GRADE_HEALTH := [1200.0, 2000.0, 3200.0, 5000.0]
+## Цена перехода НА ступень: [дерево, камень, золото, железо]. Железо — только
+## на последнюю: оно приходит обозом, и самая крепкая стена должна стоить
+## похода к шахте.
+const GRADE_COST := {
+	Grade.WOOD_STONE: [30, 40, 0, 0],
+	Grade.STONE: [0, 90, 0, 0],
+	Grade.STONE_IRON: [0, 60, 0, 40],
+}
 
 
-static func building_health(kind: int) -> float:
-	return float(BUILDING_HEALTH.get(kind, DEFAULT_BUILDING_HEALTH))
+static func gradeable(kind: int) -> bool:
+	return not (kind in ELF_HOUSES) and kind != Building.FARM
+
+
+static func building_health(kind: int, grade: int = 0) -> float:
+	if BUILDING_HEALTH.has(kind):
+		return float(BUILDING_HEALTH[kind])
+	if not gradeable(kind):
+		return DEFAULT_BUILDING_HEALTH
+	return float(GRADE_HEALTH[clampi(grade, 0, GRADE_HEALTH.size() - 1)])
+
+
+## Цена следующей ступени. Пусто — крепче некуда.
+static func grade_cost(kind: int, grade: int) -> Array:
+	if not gradeable(kind) or not GRADE_COST.has(grade + 1):
+		return []
+	return GRADE_COST[grade + 1]
 
 ## Стоимость постройки: [дерево, камень, золото, железо].
 const BUILDING_COST := {

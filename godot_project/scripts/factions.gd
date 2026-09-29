@@ -251,6 +251,22 @@ static func may_build(faction: int, kind: int, leader: bool) -> bool:
 	return can_build(faction) or leader
 
 
+## Какую долю удара получает цель злодея от этого источника (ответ автора от
+## 29.09). Непрокачанный стражник бьёт злодея — и его самого, и его постройки —
+## в малую долю силы; мера — снаряжённость ударившего: ступень оружия плюс
+## ступень доспеха. У пешек стражи снаряжения нет, они всегда «непрокачанные».
+static func villain_hit_scale(target_faction: int, source: Node) -> float:
+	if target_faction != Kind.VILLAIN:
+		return 1.0
+	if source == null or not is_instance_valid(source) or not ("faction" in source):
+		return 1.0
+	if int(source.faction) != Kind.GUARD:
+		return 1.0
+	var gear: int = int(source.gear_tier) if "gear_tier" in source else 0
+	var armor: int = int(source.armor_tier) if "armor_tier" in source else 0
+	return RES.villain_taken_from_guard(gear + armor)
+
+
 static func has_strategy(faction: int) -> bool:
 	return HAS_STRATEGY[clampi(faction, 0, COUNT - 1)]
 
