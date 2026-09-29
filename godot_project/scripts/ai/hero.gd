@@ -31,6 +31,16 @@ const WEAPONS := preload("res://scripts/combat/weapons.gd")
 const WARBAND := preload("res://scripts/ai/warband.gd")
 const HEALTH := preload("res://scripts/combat/health.gd")
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
+const RES := preload("res://scripts/economy/resources.gd")
+const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
+
+## Дома ИИ-эльфов: где ставить — кольцом вокруг поселения, дальше от середины,
+## чем стоят стартовые (там лавка и старейшина).
+const ELF_RING := [32.0, 48.0, 62.0]
+const ELF_ANGLES := 12
+## Лес для рубки: не дальше этого от середины поселения — ИИ-эльф не уходит
+## рубить за полкарты, оставив дом без присмотра.
+const ELF_WOODS := 110.0
 
 ## Насколько далеко от микро-шахты ещё её залежь.
 const MICRO_RADIUS := 20.0
@@ -109,7 +119,11 @@ func _sync_heroes() -> void:
 		# Герой заводится только там, где ему есть чем быть: вожак со
 		# стратегическим слоем — это злодей. Эльфам и страже он не положен, у
 		# них и у живого игрока нет ни стройки, ни своей магии атаки.
-		if not FACTIONS.has_strategy(faction):
+		# ЭЛЬФАМ ТОЖЕ (ответ автора от 29.09: «ИИ-эльфы строят так же, как
+		# игрок»). Строить за пустую сторону эльфов некому, кроме такого же
+		# персонажа, как игрок: он рубит лес и ставит дом тем же запросом
+		# стройки — с ценой, временем, пределом и радиусом игрока.
+		if not FACTIONS.has_strategy(faction) and faction != FACTIONS.Kind.ELVES:
 			continue
 		if world.players_of(faction).is_empty():
 			world.spawn_ai_hero(faction)
@@ -137,6 +151,8 @@ func _drive(faction: int, hero: Node3D) -> void:
 		var vein: Node3D = _micro_vein(faction, hero)
 		if vein != null:
 			_mine(hero, vein)
+			return
+		if faction == FACTIONS.Kind.ELVES and _elf_build(hero):
 			return
 
 	# Куда идти. Есть враг — на него, нет — к якорю своего отряда.
@@ -183,6 +199,79 @@ func _drive(faction: int, hero: Node3D) -> void:
 			input["ability"] = spell
 
 	hero.scripted_input = input
+
+
+## ИИ-эльф строит дом, как игрок: рубит лес, пока не хватает, и ставит дом у
+## поселения, когда хватило. true — занят этим, в бой и к отряду не идёт.
+func _elf_build(hero: Node3D) -> bool:
+	var world := get_parent()
+	if world.elf_houses().size() >= world.elf_house_limit():
+		return false
+	var cost: Array = RES.BUILDING_COST[RES.Building.ELF_HOUSE]
+	if hero.stock.can_afford(cost):
+		var spot := _elf_spot(hero)
+		if spot == Vector3.INF:
+			return false
+		if _flat(hero.global_position, spot) > hero.ELF_BUILD_REACH - 6.0:
+			_walk_to(hero, spot)
+			return true
+		hero.scripted_input = {"move": Vector2.ZERO, "jump": false}
+		hero.request_build(RES.Building.ELF_HOUSE, spot)
+		return true
+	var tree := _nearest_tree(hero)
+	if tree == null:
+		return false
+	_mine(hero, tree)
+	# Лес рубят мечом: молота у эльфа нет. `_mine` берёт молот, если он есть в
+	# наборе стороны, — у эльфов его нет, и выбор просто не сработает.
+	return true
+
+
+## Свободное место под дом — кольцом у поселения, где пройдёт проверка места.
+func _elf_spot(hero: Node3D) -> Vector3:
+	var centre: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.ELVES]
+	var best := Vector3.INF
+	var best_gap := INF
+	for radius in ELF_RING:
+		for i in ELF_ANGLES:
+			var angle := TAU * float(i) / float(ELF_ANGLES)
+			var at := Vector3(centre.x + cos(angle) * radius, 0.0, centre.z + sin(angle) * radius)
+			if not BUILD_CONTROLLER.is_spot_buildable(get_parent(), at, RES.Building.ELF_HOUSE):
+				continue
+			var gap: float = _flat(hero.global_position, at)
+			if gap < best_gap:
+				best_gap = gap
+				best = at
+		if best != Vector3.INF:
+			return best
+	return best
+
+
+## Ближайшее живое дерево у поселения.
+func _nearest_tree(hero: Node3D) -> Node3D:
+	var centre: Vector3 = FACTIONS.SPAWN[FACTIONS.Kind.ELVES]
+	var best: Node3D = null
+	var best_gap := INF
+	for node in get_tree().get_nodes_in_group("harvestable"):
+		var tree := node as Node3D
+		if tree == null or int(tree.get_meta("resource", -1)) != RES.Kind.WOOD:
+			continue
+		if _flat(tree.global_position, centre) > ELF_WOODS:
+			continue
+		var gap: float = _flat(hero.global_position, tree.global_position)
+		if gap < best_gap:
+			best_gap = gap
+			best = tree
+	return best
+
+
+func _walk_to(hero: Node3D, goal: Vector3) -> void:
+	var step: Vector3 = _next_step(hero, goal)
+	var to_goal: Vector3 = step - hero.global_position
+	to_goal.y = 0.0
+	if to_goal.length() > 0.05:
+		hero.rotation.y = atan2(-to_goal.x, -to_goal.z)
+	hero.scripted_input = {"move": Vector2(0.0, -1.0), "jump": false}
 
 
 ## Ближайшая непустая залежь микро-шахты. Только у злодея: микро-шахта его.
@@ -247,6 +336,10 @@ func _vein_radius(vein: Node3D) -> float:
 		if child is CollisionShape3D and child.shape is BoxShape3D:
 			var size: Vector3 = (child.shape as BoxShape3D).size
 			return maxf(size.x, size.z) * 0.5
+		# Ствол дерева — цилиндр. Без этого радиус брался «два метра по
+		# умолчанию», и ИИ-эльф вставал дальше, чем достаёт удар.
+		if child is CollisionShape3D and child.shape is CylinderShape3D:
+			return (child.shape as CylinderShape3D).radius
 	return 2.0
 
 

@@ -13,9 +13,6 @@ extends Node3D
 ##
 
 const PLAYER_SCENE := preload("res://scenes/Player.tscn")
-## Скрипт нужен отдельно, чтобы читать SPAWN_POINTS без зависимости от кэша
-## глобальных классов (он строится только редактором).
-const PLAYER_SCRIPT := preload("res://scripts/player.gd")
 ## То же и для строителя карты: обращаться к нему по class_name нельзя, кэш
 ## глобальных классов строится только редактором и на свежем клоне его нет.
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
@@ -476,10 +473,12 @@ func elf_respawn_point(near: Vector3) -> Vector3:
 	return best + Vector3(0.0, 1.0, -(RES.BUILDING_SIZE[RES.Building.ELF_HOUSE].z * 0.5 + 3.0))
 
 
-## Живые эльфы: игроки и бойцы.
+## Живые эльфы: игроки, их ИИ-вожак и бойцы.
 func living_elves() -> int:
 	var count := 0
-	for player in players_of(FACTIONS.Kind.ELVES):
+	# `characters_of`, а не `players_of`: ИИ-вожак эльфов игроком не
+	# считается, но он живой эльф, и пока он жив, сторона не выбыла.
+	for player in characters_of(FACTIONS.Kind.ELVES):
 		if player.health.alive:
 			count += 1
 	for unit in get_tree().get_nodes_in_group("unit"):
@@ -606,11 +605,18 @@ func _make_player(data: Dictionary) -> Node:
 
 
 ## Наименьший свободный слот. Считается только на хосте.
+## Свободный номер места. Мест — сколько игроков вмещает сессия, и ещё по
+## одному на ИИ-вожака каждой стороны.
+##
+## РАНЬШЕ МЕСТ БЫЛО ТРИ — по числу `SPAWN_POINTS`, — а сессия рассчитана на
+## одиннадцать человек. С ИИ-вожаком злодея в мир помещались двое живых, и
+## третий человек не появлялся вовсе («сессия заполнена»). Пряталось это, пока
+## наборы шли вдвоём; вскрылось, когда ИИ-вожак появился и у эльфов.
 func _next_free_slot() -> int:
 	var used := {}
 	for child in _players.get_children():
 		used[child.spawn_slot] = true
-	for i in PLAYER_SCRIPT.SPAWN_POINTS.size():
+	for i in FACTIONS.total_slots() + FACTIONS.COUNT:
 		if not used.has(i):
 			return i
 	return -1

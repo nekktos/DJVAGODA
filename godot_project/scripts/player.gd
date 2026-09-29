@@ -134,11 +134,6 @@ const EYE_HEIGHT := 1.5
 ## Насколько опускаем модель, когда персонаж сидит на земле без ног.
 const CRAWL_MODEL_DROP := -0.45
 
-const SPAWN_POINTS: Array[Vector3] = [
-	Vector3(-14.0, 2.0, 14.0),
-	Vector3(0.0, 2.0, 22.0),
-	Vector3(14.0, 2.0, 14.0),
-]
 
 signal death_reported(player: Node3D, killer_id: int)
 signal projectile_requested(kind: int, origin: Vector3, dir: Vector3, shooter_id: int, gear: int)
@@ -2901,8 +2896,10 @@ func faction_spawn(respawn := false) -> Vector3:
 		if world != null and world.has_method("elf_respawn_point"):
 			var at: Vector3 = world.elf_respawn_point(global_position)
 			if at != Vector3.INF:
-				return at + Vector3(float(spawn_slot) * 2.0, 0.0, 0.0)
-	return base + Vector3(float(spawn_slot) * 3.0, 0.0, 0.0)
+				return at + Vector3(float(spawn_slot % 6) * 2.0, 0.0, 0.0)
+	# По остатку: мест теперь до пятнадцати, и смещение на весь номер разводило
+	# бы людей стороны на сорок метров.
+	return base + Vector3(float(spawn_slot % 6) * 3.0, 0.0, 0.0)
 
 
 ## Сбить с ног на столько секунд. Только на хосте. Повторный удар не суммируется,

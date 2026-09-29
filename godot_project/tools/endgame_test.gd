@@ -84,6 +84,10 @@ func _run() -> void:
 	for unit in get_tree().get_nodes_in_group("unit"):
 		if "faction" in unit and int(unit.faction) == E and float(unit.health) > 0.0:
 			unit.take_damage(99999.0, int(me.peer_id), "torso", unit.global_position, Vector3.FORWARD)
+	# И ИИ-вожака эльфов: он живой эльф, а с 29.09 он есть у пустой стороны.
+	var elf_hero: Node3D = _world.ai_hero_of(E)
+	if elf_hero != null:
+		elf_hero.take_damage(99999.0, int(me.peer_id), "torso", elf_hero.global_position, Vector3.FORWARD)
 	await get_tree().create_timer(3.0).timeout
 	var wins: Array = _heard.filter(func(t: String) -> bool: return t.contains("ПОБЕДА"))
 	check(int(objective.out[E]) == 1 and wins.size() == 1 and String(wins[0]).contains("Злодей"),

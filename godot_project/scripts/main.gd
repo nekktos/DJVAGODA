@@ -1289,6 +1289,7 @@ const TEST_FLAGS := {
 	"--elvestest": ["res://tools/elves_test.gd", true],
 	"--shoptest": ["res://tools/shop_test.gd", true],
 	"--eldertest": ["res://tools/elder_test.gd", true],
+	"--elfaitest": ["res://tools/elf_ai_test.gd", true],
 	"--navdump": ["res://tools/nav_dump.gd", true],
 }
 
