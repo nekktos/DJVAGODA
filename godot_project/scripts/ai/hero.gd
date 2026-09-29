@@ -32,6 +32,7 @@ const WARBAND := preload("res://scripts/ai/warband.gd")
 const HEALTH := preload("res://scripts/combat/health.gd")
 const WORLD_BUILDER := preload("res://scripts/world_builder.gd")
 const RES := preload("res://scripts/economy/resources.gd")
+const ROCKS := preload("res://scripts/rocks.gd")
 const BUILD_CONTROLLER := preload("res://scripts/economy/build_controller.gd")
 
 ## Дома ИИ-эльфов: где ставить — кольцом вокруг поселения, дальше от середины,
@@ -486,15 +487,10 @@ func _mine(hero: Node3D, vein: Node3D) -> void:
 ## середину не подойти, камень твёрдый. Та же ошибка уже была с деревом, стройкой
 ## и складом.
 func _vein_radius(vein: Node3D) -> float:
-	for child in vein.get_children():
-		if child is CollisionShape3D and child.shape is BoxShape3D:
-			var size: Vector3 = (child.shape as BoxShape3D).size
-			return maxf(size.x, size.z) * 0.5
-		# Ствол дерева — цилиндр. Без этого радиус брался «два метра по
-		# умолчанию», и ИИ-эльф вставал дальше, чем достаёт удар.
-		if child is CollisionShape3D and child.shape is CylinderShape3D:
-			return (child.shape as CylinderShape3D).radius
-	return 2.0
+	# Коробка, цилиндр ствола (иначе ИИ-эльф вставал дальше, чем достаёт удар)
+	# и выпуклая оболочка камня — общим счётом, как у батрака.
+	var reach: float = ROCKS.body_radius(vein)
+	return reach if reach > 0.0 else 2.0
 
 
 ## Следующая точка на пути к цели. Тот же приём, что у бойцов: вблизи идём

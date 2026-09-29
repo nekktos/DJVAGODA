@@ -30,7 +30,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "навигация"
-	expected_host = 20
+	expected_host = 21
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -45,6 +45,7 @@ func _run() -> void:
 	_test_baked()
 	_test_budget_covers_the_mesh()
 	_test_leaves_plateau()
+	_test_ramp_from_the_front()
 	_test_enters_palace()
 	_test_every_base_has_a_way_out()
 	await _test_every_base_reaches_every_mine()
@@ -179,6 +180,26 @@ func _test_every_base_reaches_every_mine() -> void:
 					mine.title(), gap, last.round()])
 	check(short.is_empty(), "от каждой базы есть дорога к каждой шахте",
 		"все дошли" if short.is_empty() else "; ".join(short))
+
+
+## На пандус заходят с фасада, а не сбоку.
+##
+## Бок пандуса — отвесная грань, растущая от нуля у подножия, и сетка
+## разрешала шагнуть на пандус сбоку там, где грань ещё ниже подъёма агента.
+## Бойцы так не умеют: отряд эльфов двадцать минут стоял, упёршись в метровую
+## грань. С парапетами путь от бока пандуса наверх обязан сперва выйти к
+## подножию — южнее его начала.
+func _test_ramp_from_the_front() -> void:
+	var side := Vector3(RAMP_FOOT.x - 32.0, 0.0, RAMP_FOOT.z - 12.0)
+	var top := Vector3(RAMP_FOOT.x, 6.0, RAMP_FOOT.z - 70.0)
+	var path: PackedVector3Array = _nav().path_between(_nav().closest_point(side),
+		_nav().closest_point(top))
+	var southmost := -INF
+	for point in path:
+		southmost = maxf(southmost, point.z)
+	check(path.size() >= 2 and southmost > RAMP_FOOT.z - 3.0,
+		"на пандус заходят с фасада, а не с бока",
+		"путь дошёл южнее всего до z = %.0f, подножие на z = %.0f" % [southmost, RAMP_FOOT.z])
 
 
 ## На чистом поле путь обязан быть прямым. Иначе бойцы будут наматывать круги

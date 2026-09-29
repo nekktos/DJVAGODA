@@ -113,6 +113,32 @@ static func mesh(seed_value: int) -> ArrayMesh:
 ## `size` — габарит в метрах по каждой оси. Неравные оси и нужны: камень,
 ## растянутый вширь, читается валуном, а растянутый вверх — скалой, и это две
 ## разные вещи на одной сетке.
+## От середины тела до его края по горизонтали, метры: коробка, цилиндр или
+## выпуклая оболочка камня — с учётом растяжения формы. 0 — формы нет.
+##
+## Нужна всем, кто подходит к камню ВПЛОТНУЮ, чтобы бить: мерить от середины
+## нельзя — камень в пять метров не подпускает к своей середине ближе, чем на
+## его же радиус. «Долгая партия» застала шахтёра злодея, три минуты стоявшего
+## у такого камня с пустыми руками: досягаемость считалась от середины.
+static func body_radius(body: Node) -> float:
+	for child in body.get_children():
+		if not (child is CollisionShape3D) or (child as CollisionShape3D).shape == null:
+			continue
+		var shape: Shape3D = (child as CollisionShape3D).shape
+		var s: Vector3 = (child as CollisionShape3D).scale
+		if shape is BoxShape3D:
+			var size: Vector3 = (shape as BoxShape3D).size
+			return maxf(size.x * absf(s.x), size.z * absf(s.z)) * 0.5
+		if shape is CylinderShape3D:
+			return (shape as CylinderShape3D).radius * maxf(absf(s.x), absf(s.z))
+		if shape is ConvexPolygonShape3D:
+			var reach := 0.0
+			for p in (shape as ConvexPolygonShape3D).points:
+				reach = maxf(reach, Vector2(p.x * s.x, p.z * s.z).length())
+			return reach
+	return 0.0
+
+
 static func build(size: Vector3, yaw: float, seed_value: int,
 		material: Material) -> StaticBody3D:
 	var body := StaticBody3D.new()

@@ -28,7 +28,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "батраки"
-	expected_host = 36
+	expected_host = 37
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -56,11 +56,50 @@ func _run() -> void:
 	await _test_killed_worker_drops_cargo(me)
 	await _test_farm_feeds_the_side(me)
 	await _test_flees(me)
+	await _test_mines_big_rock(me)
 	# ГОЛОД — ПОСЛЕДНИМ: он выкашивает артель целиком, и всё, что идёт после,
 	# осталось бы без батраков. Первая версия стояла выше и уносила с собой
 	# три чужие проверки.
 	await _test_hunger(me)
 	finish()
+
+
+## Шахтёр добывает и БОЛЬШОЙ камень. Досягаемость меряется от края тела, а не
+## от середины: камень в восемь метров не подпускает к своей середине ближе
+## его же радиуса. «Долгая партия» застала шахтёра злодея, три минуты стоявшего
+## у такого камня с пустыми руками.
+func _test_mines_big_rock(me: Node3D) -> void:
+	const ROCKS := preload("res://scripts/rocks.gd")
+	var worker: Node3D = null
+	for candidate in _crew(me):
+		worker = candidate
+		break
+	if worker == null:
+		fail("батраков нет")
+		return
+	# Камень — в чистом поле, чтобы ближе него камня не нашлось.
+	var at := Vector3(0.0, 0.0, 60.0)
+	var rock: StaticBody3D = ROCKS.build(Vector3(8.0, 5.0, 8.0), 0.3, 77, null)
+	rock.position = at + Vector3(0.0, 2.1, 0.0)
+	_world.add_child(rock)
+	rock.add_to_group("harvestable")
+	rock.set_meta("resource", RES.Kind.STONE)
+	rock.set_meta("hits_left", 6)
+	worker.set_role(LABOURER.Role.MINER)
+	worker.load = RES.empty()
+	worker.global_position = at + Vector3(12.0, 1.0, 0.0)
+	var got := 0
+	for i in 20:
+		await get_tree().create_timer(1.0).timeout
+		if not is_instance_valid(worker):
+			break
+		got = int(worker.carrying())
+		if got > 0:
+			break
+	check(got > 0, "шахтёр добывает и большой камень, а не стоит у его края",
+		"в руках %d, радиус камня %.1f м" % [got, ROCKS.body_radius(rock)])
+	if is_instance_valid(rock):
+		rock.queue_free()
 
 
 func _crew(me: Node3D) -> Array:

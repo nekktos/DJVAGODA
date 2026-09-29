@@ -20,6 +20,7 @@ extends "res://scripts/units/unit.gd"
 ## Считает ТОЛЬКО хост. Клиент получает позицию, здоровье и роль.
 ##
 
+const ROCKS := preload("res://scripts/rocks.gd")
 const RES2 := preload("res://scripts/economy/resources.gd")
 
 enum Role { LUMBERJACK, MINER, MILITIA, BUILDER, FARMER }
@@ -285,6 +286,8 @@ func _work_reach(site: Node3D) -> float:
 	if is_instance_valid(site) and site.is_in_group("building") and "kind" in site:
 		var size: Vector3 = RES2.BUILDING_SIZE.get(int(site.kind), Vector3.ZERO)
 		return WORK_RANGE + maxf(size.x, size.z) * 0.5
+	if is_instance_valid(site):
+		return WORK_RANGE + ROCKS.body_radius(site)
 	return WORK_RANGE
 
 

@@ -113,6 +113,22 @@ func _sample(game: float) -> void:
 		note("%2d мин: звеньев %d, казна %s, батраков %d, бойцов %d, обозов %d"
 			% [int(game / 60.0), _reached.size(), _stock_line(wallet),
 				_world.labourers_of(SIDE).size(), _soldiers(), carts])
+		var hands := []
+		for worker in _world.labourers_of(SIDE):
+			hands.append("%d:%s:%d" % [int(worker.sync_role),
+				Vector2(worker.global_position.x, worker.global_position.z).round(),
+				int(worker.carrying())])
+		note("     батраки (роль:где:несёт): %s" % " ".join(hands))
+		var band: Array = _world.warband._band(FACTIONS.Kind.ELVES)
+		var band_at := "нет"
+		if not band.is_empty():
+			var spots := []
+			for unit in band:
+				spots.append(str(Vector2(unit.global_position.x, unit.global_position.z).round()))
+			var goal: Vector3 = _world.warband._goal.get(FACTIONS.Kind.ELVES, Vector3.INF)
+			band_at = "%s, цель %s" % [" ".join(spots), Vector2(goal.x, goal.z).round() if goal.is_finite() else "нет"]
+		note("     отряд эльфов: %d бойцов, первый в %s, %s"
+			% [band.size(), band_at, _world.warband.state_name(FACTIONS.Kind.ELVES)])
 		var elf_hero: Node3D = _world.ai_hero_of(FACTIONS.Kind.ELVES)
 		note("     эльфы: домов %d, живых эльфов %d, вожак ИИ %s"
 			% [_world.elf_houses().size(), _world.living_elves(),

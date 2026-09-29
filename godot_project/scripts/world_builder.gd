@@ -312,6 +312,27 @@ func _ramp(parent: Node3D, foot: Vector3, width: float, run: float, rise: float,
 	col.shape = shape
 	body.add_child(col)
 
+	# ПАРАПЕТЫ по бокам. Без них бок пандуса — отвесная ступенька, растущая от
+	# нуля у подножия до шести метров наверху, и сетка навигации разрешала
+	# шагнуть на пандус сбоку там, где ступенька ещё низкая. Бойцы так не
+	# умеют: «долгая партия» застала отряд эльфов, простоявший двадцать минут у
+	# бока пандуса стражи, упёршись в метровую грань. Парапет выше человека —
+	# и заходить приходится с фасада, как задумано.
+	for side in [-1.0, 1.0]:
+		var rail := MeshInstance3D.new()
+		var rail_box := BoxMesh.new()
+		rail_box.size = Vector3(1.0, 4.0, length)
+		rail.mesh = rail_box
+		rail.material_override = _materials[mat]
+		rail.position = Vector3(side * (width * 0.5 + 0.5), 0.5, 0.0)
+		body.add_child(rail)
+		var rail_col := CollisionShape3D.new()
+		var rail_shape := BoxShape3D.new()
+		rail_shape.size = rail_box.size
+		rail_col.shape = rail_shape
+		rail_col.position = rail.position
+		body.add_child(rail_col)
+
 	parent.add_child(body)
 	return body
 
