@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 68;
+    const int Expected = 72;
     static int _ran;
     static int _failed;
 
@@ -44,6 +44,7 @@ public static class CoreTests
         ServiceRules();
         ElderRules();
         Damage();
+        Spells();
 
         if (_ran < Expected)
         {
@@ -519,6 +520,42 @@ public static class CoreTests
 
         Check(DamageRules.Blast(0f, "torso", 0) == 45f && DamageRules.Blast(6f, "torso", 0) == 0f,
             "взрыв шара: в центре полный, к краю радиуса — на нет", "центр 45, край 0");
+    }
+
+    static void Spells()
+    {
+        var caster = new SpellState();
+        var vitals = new Vitals();
+        string why;
+        var start = caster.Begin(Faction.Villain, AbilityKind.Paralysis, vitals, new BodyState(), out why);
+        caster.Tick(1f);
+        caster.OnDamaged();
+        AbilityKind? finished = null;
+        for (int i = 0; i < 20; i++) finished = finished ?? caster.Tick(0.1f);
+        Check(start == CastStart.Casting && !finished.HasValue && caster.Ready(AbilityKind.Paralysis)
+            && vitals.Mana == Vitals.BaseMana,
+            "паралич кастуется долго; удар срывает каст — ни отката, ни маны", "сорван");
+
+        var clean = new SpellState();
+        clean.Begin(Faction.Villain, AbilityKind.Paralysis, vitals, null, out why);
+        AbilityKind? done = null;
+        for (int i = 0; i < 20 && !done.HasValue; i++) done = clean.Tick(0.1f);
+        Check(done == AbilityKind.Paralysis, "несорванный каст завершается сам", "каст закончен");
+
+        var victim = new SpellState();
+        victim.ApplyParalysis(Abilities.ParalysisHold);
+        for (int i = 0; i < 40; i++) victim.Tick(0.1f);
+        bool immune = !victim.ApplyParalysis(3f);
+        for (int i = 0; i < 260; i++) victim.Tick(0.1f);
+        bool again = victim.ApplyParalysis(3f);
+        Check(immune && again, "после паралича — окно неуязвимости 25 с, потом снова можно", "окно");
+
+        var elf = new SpellState();
+        var nope = elf.Begin(Faction.Elves, AbilityKind.Paralysis, vitals, null, out why);
+        var poor = new Vitals { Mana = 10f };
+        var broke = elf.Begin(Faction.Elves, AbilityKind.Summon, poor, null, out why);
+        Check(nope == CastStart.Refused && broke == CastStart.Refused && why.Contains("маны"),
+            "чужое заклинание не колдуется; без маны — отказ с числами", why);
     }
 
     static void Mines()
