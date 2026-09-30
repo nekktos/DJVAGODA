@@ -966,7 +966,7 @@ public static class CoreTests
         var storage = new V3(0f, 0f, 0f);
         var standing = new List<KeyValuePair<BuildingKind, V3>> { new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, storage) };
         var size = Res.BuildingSize(BuildingKind.Storage);
-        float snug = size.X + Placement.Clearance;
+        float snug = size.X + 3f;
         bool touching = Placement.Clear(new V3(snug - 0.5f, 0f, 0f), BuildingKind.Storage, standing);
         bool spaced = Placement.Clear(new V3(snug + 0.5f, 0f, 0f), BuildingKind.Storage, standing);
         Check(!touching && spaced, "между постройками зазор 3 м: проход между домами не закрыть",
