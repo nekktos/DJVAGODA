@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 59;
+    const int Expected = 62;
     static int _ran;
     static int _failed;
 
@@ -41,6 +41,7 @@ public static class CoreTests
         HungerRules();
         Keys();
         DealsRules();
+        ServiceRules();
 
         if (_ran < Expected)
         {
@@ -445,6 +446,36 @@ public static class CoreTests
         var outside = Deals.SendCaravan(poor, true, 0, new[] { new V3(700f, 0f, 0f) });
         Check(!send.Ok && send.Refusal.Contains("лошад") && !outside.Ok,
             "обоз без свободных лошадей не выезжает; точка вне карты — отказ", send.Refusal);
+    }
+
+    static void ServiceRules()
+    {
+        var guard = new ServiceRecord();
+        var pay = new Wallet();
+        pay.Carried.Capacity = 2000;
+        guard.Report(pay, true, null);
+        guard.TickHold(30f, true, false);
+        int whileLost = guard.Progress;
+        guard.TickHold(26f, true, true);
+        string done = guard.Report(pay, true, null);
+        Check(whileLost == 0 && guard.OrdersDone == 1 && pay.GetAmount(ResourceKind.Gold) == 40 && done.Contains("выполнен"),
+            "держать дворец — только пока он наш; сдан — оплачен, выдан следующий", done);
+
+        var hero = new ServiceRecord();
+        string early = hero.Promote(true, true, false);
+        hero.OrdersDone = 5;
+        Check(early.Contains("0 из 5") && hero.CanPromote(true, true, false) && !hero.CanPromote(true, true, true),
+            "командование — после пяти сданных и только если командира нет", early);
+
+        var final = new ServiceRecord { OrdersDone = 5 };
+        final.Report(pay, true, null);
+        bool isFinal = final.Order == OrderKind.Final;
+        final.OnKill(Faction.Villain, false, false, false);
+        bool pawnDoesNotCount = !final.Done;
+        string failed = final.OnDeath();
+        Check(isFinal && pawnDoesNotCount && failed != null && final.FinalThreshold == 10 && !final.Order.HasValue,
+            "последний бой — за личное убийство злодея; погиб — провален, заслужи снова",
+            "порог " + final.FinalThreshold);
     }
 
     static void Mines()
