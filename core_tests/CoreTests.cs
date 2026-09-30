@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 45;
+    const int Expected = 48;
     static int _ran;
     static int _failed;
 
@@ -36,6 +36,7 @@ public static class CoreTests
         Steward();
         Wounds();
         Character();
+        Caravans();
 
         if (_ran < Expected)
         {
@@ -333,6 +334,26 @@ public static class CoreTests
         Check(first && second && !third && hero.MaxHealth == 130f && hero.Experience == 0,
             "прокачка за опыт: цена растёт, прибавка поверх базы",
             "здоровье " + hero.MaxHealth + ", опыта осталось " + hero.Experience);
+    }
+
+    static void Caravans()
+    {
+        Check(CaravanRules.SpeedFor(0) == 0f && CaravanRules.SpeedFor(3) > CaravanRules.SpeedFor(1),
+            "без лошади обоз не едет, больше лошадей — быстрее",
+            CaravanRules.SpeedFor(1) + " → " + CaravanRules.SpeedFor(3));
+        Check(CaravanRules.ActionFor(Faction.Villain, Faction.Guard, 2, true, 50, true) == CaravanAction.Intercept
+            && CaravanRules.ActionFor(Faction.Villain, Faction.Guard, 2, true, 50, false) == CaravanAction.Rob
+            && CaravanRules.ActionFor(Faction.Elves, Faction.Guard, 2, true, 50, false) == CaravanAction.Rob
+            && CaravanRules.ActionFor(Faction.Elves, Faction.Guard, 0, true, 50, false) == CaravanAction.Plunder
+            && CaravanRules.ActionFor(Faction.Elves, Faction.Guard, 2, false, 50, false) == CaravanAction.None,
+            "перехват — сопернику со складом; эльфы уводят лошадей и грабят; на ходу — ничего", "действия");
+        var wallet = new Wallet();
+        wallet.Stored.Capacity = 100;
+        var cargo = new[] { 0, 0, 0, 120, 0, 0 };
+        bool all = CaravanRules.Unload(cargo, wallet);
+        Check(!all && cargo[(int)ResourceKind.Iron] == 20 && wallet.Stored.GetAmount(ResourceKind.Iron) == 100,
+            "полный склад: выгружено, сколько влезло, остаток ждёт в обозе",
+            "в обозе осталось " + cargo[(int)ResourceKind.Iron]);
     }
 
     static void Mines()
