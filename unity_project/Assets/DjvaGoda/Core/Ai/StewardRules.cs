@@ -144,6 +144,91 @@ namespace DjvaGoda.Core
             return Math.Max(0, Math.Min(GuardsPerCaravan, crew - WorkersKept));
         }
 
+        public const float ThinkInterval = 4f;
+        /// Где искать место под постройку: кольца вокруг точки стороны, ближнее первым.
+        public static readonly float[] SpotRadii = { 26f, 38f, 52f, 68f, 86f, 106f, 128f };
+        public const int SpotAngles = 12;
+
+        /// Место под постройку: первое пригодное на кольцах вокруг базы; null — тесно.
+        public static V3? FindSpot(V3 home, Func<V3, bool> buildable)
+        {
+            foreach (float radius in SpotRadii)
+                for (int i = 0; i < SpotAngles; i++)
+                {
+                    double angle = 2.0 * Math.PI * i / SpotAngles;
+                    var point = new V3(home.X + (float)Math.Cos(angle) * radius, 0f, home.Z + (float)Math.Sin(angle) * radius);
+                    if (buildable == null || buildable(point)) return point;
+                }
+            return null;
+        }
+
+        /// Куда ставить нового батрака: по спирали от точки стороны.
+        public static V3 HireSpot(V3 home, int crew)
+        {
+            float angle = crew * 0.9f, radius = 5f + crew;
+            return home + new V3((float)Math.Cos(angle) * radius, 0.5f, (float)Math.Sin(angle) * radius);
+        }
+
+        /// Кого снять с роли, чтобы добрать нехватку: у кого больше всего лишних; −1 — лишних нет.
+        public static int DonorRole(int[] have, int[] wanted)
+        {
+            int best = -1, surplus = 0;
+            for (int role = 0; role < have.Length; role++)
+            {
+                int extra = have[role] - wanted[role];
+                if (extra > surplus)
+                {
+                    surplus = extra;
+                    best = role;
+                }
+            }
+            return best;
+        }
+
+        /// Перестановки ролей: (с какой, на какую), по одному батраку, пока нехватка
+        /// покрывается лишними. Новых не нанимает — только переводит.
+        public static List<KeyValuePair<LabourerRole, LabourerRole>> RoleMoves(int[] have, int[] wanted)
+        {
+            var moves = new List<KeyValuePair<LabourerRole, LabourerRole>>();
+            var now = (int[])have.Clone();
+            for (int role = 0; role < now.Length; role++)
+                while (now[role] < wanted[role])
+                {
+                    int donor = DonorRole(now, wanted);
+                    if (donor < 0) return moves;
+                    now[donor]--;
+                    now[role]++;
+                    moves.Add(new KeyValuePair<LabourerRole, LabourerRole>((LabourerRole)donor, (LabourerRole)role));
+                }
+            return moves;
+        }
+
+        /// Докупить лошадь: конюшня есть, лошадей меньше четырёх.
+        public static bool WantHorse(bool stableReady, int horses) { return stableReady && horses < HorsesWanted; }
+
+        /// Кого набрать в отряд: лучника, если есть их казарма, иначе мечника; null — казарм нет
+        /// или отряд полон.
+        public static UnitKind? TrainKind(bool archerBarracks, bool swordBarracks, int band, int capacity)
+        {
+            if (band >= Math.Min(SquadWanted, capacity)) return null;
+            if (archerBarracks) return UnitKind.Archer;
+            if (swordBarracks) return UnitKind.Swordsman;
+            return null;
+        }
+
+        /// Новобранец встаёт по кругу в 8 м от точки стороны.
+        public static V3 TrainSpot(V3 home, int slot)
+        {
+            float angle = slot * 0.9f;
+            return home + new V3((float)Math.Cos(angle) * 8f, 0.5f, (float)Math.Sin(angle) * 8f);
+        }
+
+        /// Ещё склад: обоз ждёт у полного склада, новый склад не строится, и он по карману.
+        public static bool NeedExtraStorage(bool cartWaiting, bool storageUnderConstruction, bool affordable)
+        {
+            return cartWaiting && !storageUnderConstruction && affordable;
+        }
+
         /// Хватает ли на укрепление, не съедая следующую постройку.
         public static bool CanFortify(int[] upgradeCost, int[] nextBuildingCost, IStock have)
         {

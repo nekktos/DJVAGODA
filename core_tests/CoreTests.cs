@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 177;
+    const int Expected = 182;
     static int _ran;
     static int _failed;
 
@@ -64,6 +64,7 @@ public static class CoreTests
         ProjectileRules();
         WorkbenchRules();
         PathRules();
+        StewardPlanRules();
 
         if (_ran < Expected)
         {
@@ -1687,5 +1688,35 @@ public static class CoreTests
         Check(wall.Blocked >= UnitStats.BlockedSeconds && detour.Distance(new V3(10f, 0f, 0f)) > 0.01f && walker.Blocked < 0.2f,
             "стоит у стены (цель не приближается) полсекунды — идёт по сетке даже к близкой цели; идущий — нет",
             "упёрся " + wall.Blocked.ToString("0.0") + " с, идущий " + walker.Blocked.ToString("0.0"));
+    }
+
+    static void StewardPlanRules()
+    {
+        var home = Factions.Spawn[(int)Faction.Villain];
+        var first = StewardRules.FindSpot(home, null);
+        var outer = StewardRules.FindSpot(home, p => p.FlatDistance(home) > 60f);
+        var none = StewardRules.FindSpot(home, p => false);
+        Check(first.HasValue && Math.Abs(first.Value.FlatDistance(home) - 26f) < 0.1f
+            && Math.Abs(outer.Value.FlatDistance(home) - 68f) < 0.1f && !none.HasValue,
+            "место под постройку — на ближнем свободном кольце вокруг базы; всё занято — тесно",
+            "ближнее " + first.Value.FlatDistance(home).ToString("0") + " м, при занятых — " + outer.Value.FlatDistance(home).ToString("0"));
+
+        var moves = StewardRules.RoleMoves(new[] { 4, 0, 0, 0, 0 }, new[] { 1, 2, 0, 1, 0 });
+        Check(moves.Count == 3 && moves[0].Key == LabourerRole.Lumberjack && moves[0].Value == LabourerRole.Miner
+            && moves[2].Value == LabourerRole.Builder,
+            "роли переставляются от лишних: четверо лесорубов — двое в шахту, один на стройку", moves.Count + " перестановки");
+
+        var short_ = StewardRules.RoleMoves(new[] { 1, 0, 0, 0, 0 }, new[] { 0, 1, 0, 1, 0 });
+        Check(short_.Count == 1, "лишних нет — новых не выдумывает", short_.Count + " перестановка");
+
+        Check(StewardRules.TrainKind(true, true, 2, 12) == UnitKind.Archer && StewardRules.TrainKind(false, true, 2, 12) == UnitKind.Swordsman
+            && StewardRules.TrainKind(false, false, 2, 12) == null && StewardRules.TrainKind(true, true, 4, 4) == null
+            && StewardRules.TrainKind(true, true, StewardRules.SquadWanted, 12) == null,
+            "отряд: лучник, если есть их казарма, иначе мечник; до шести и не сверх места в домах", "ok");
+
+        Check(StewardRules.WantHorse(true, 3) && !StewardRules.WantHorse(true, 4) && !StewardRules.WantHorse(false, 0)
+            && StewardRules.NeedExtraStorage(true, false, true) && !StewardRules.NeedExtraStorage(true, true, true)
+            && !StewardRules.NeedExtraStorage(false, false, true),
+            "лошадей докупает до четырёх при конюшне; ещё склад — только когда обоз ждёт и склад не строится", "ok");
     }
 }
