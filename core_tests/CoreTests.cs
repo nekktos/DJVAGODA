@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 64;
+    const int Expected = 68;
     static int _ran;
     static int _failed;
 
@@ -43,6 +43,7 @@ public static class CoreTests
         DealsRules();
         ServiceRules();
         ElderRules();
+        Damage();
 
         if (_ran < Expected)
         {
@@ -494,6 +495,30 @@ public static class CoreTests
         string paid = elf.Report(pay, true, true);
         Check(contested == 0 && pay.GetAmount(ResourceKind.Gold) == 60 && elf.TasksDone == 3,
             "хутор держат, пока рядом нет чужих; сдано — золото", paid);
+    }
+
+    static void Damage()
+    {
+        float plain = DamageRules.Outgoing(WeaponKind.Sword, "head", 0, false);
+        float tempered = DamageRules.Outgoing(WeaponKind.Sword, "head", 2, false);
+        float withered = DamageRules.Outgoing(WeaponKind.Sword, "torso", 0, true);
+        Check(plain == 70f && Math.Abs(tempered - 108.5f) < 0.01f && Math.Abs(withered - 35f * 0.65f) < 0.01f,
+            "удар: голова вдвое, закалка сильнее, увядший бьёт слабее",
+            plain + " / " + tempered + " / " + withered);
+
+        float wallSword = DamageRules.ToUnit(100f, FormationKind.ShieldWall, false, WeaponKind.Sword);
+        float wallBolt = DamageRules.ToUnit(100f, FormationKind.ShieldWall, false, WeaponKind.Crossbow);
+        Check(Math.Abs(wallSword - 60f) < 0.01f && wallBolt > wallSword && wallBolt < 100f,
+            "стена щитов держит меч, арбалет её пробивает, но не целиком", wallSword + " / " + wallBolt);
+
+        var villain = new Kit { Side = Faction.Villain, ArmorTier = 2 };
+        float byGuard = DamageRules.ToCharacter(100f, villain, (int)Faction.Guard, 0, 0);
+        float byElf = DamageRules.ToCharacter(100f, villain, (int)Faction.Elves, 0, 0);
+        Check(Math.Abs(byGuard - 6.6f) < 0.01f && Math.Abs(byElf - 66f) < 0.01f,
+            "на злодее в латах: доспех режет всё, простая стража — ещё вдесятеро", byGuard + " / " + byElf);
+
+        Check(DamageRules.Blast(0f, "torso", 0) == 45f && DamageRules.Blast(6f, "torso", 0) == 0f,
+            "взрыв шара: в центре полный, к краю радиуса — на нет", "центр 45, край 0");
     }
 
     static void Mines()
