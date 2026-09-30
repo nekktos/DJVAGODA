@@ -206,6 +206,14 @@ namespace DjvaGoda.Core
             return At(cost, (int)kind);
         }
 
+        /// Хватает ли запаса на цену.
+        public static bool CanAfford(int[] stock, int[] cost)
+        {
+            for (int i = 0; i < Count; i++)
+                if (At(stock, i) < At(cost, i)) return false;
+            return true;
+        }
+
         public static string FormatCost(int[] cost)
         {
             var parts = new List<string>();

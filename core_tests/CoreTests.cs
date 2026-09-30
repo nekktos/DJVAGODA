@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 89;
+    const int Expected = 100;
     static int _ran;
     static int _failed;
 
@@ -49,6 +49,7 @@ public static class CoreTests
         Saves();
         ReliefRules();
         WarbandRules();
+        HeroRules();
 
         if (_ran < Expected)
         {
@@ -769,5 +770,130 @@ public static class CoreTests
         Check(slow.State == WarbandState.Return && thoughts * AiStats.WarbandThink >= AiStats.StuckSeconds,
             "отряд, не сдвинувшийся за 24 с похода, бросает набег и идёт домой",
             "сдался через " + thoughts * AiStats.WarbandThink + " с");
+    }
+
+    static HeroView VillainHero(V3 at)
+    {
+        var view = new HeroView { Side = Faction.Villain, At = at, Weapon = WeaponKind.Sword };
+        return view;
+    }
+
+    static void HeroRules()
+    {
+        var at = new V3(0f, 0f, 0f);
+        var far = VillainHero(at);
+        far.Others.Add(new SidedPoint(new V3(20f, 0f, 0f), (int)Faction.Guard));
+        var shot = HeroBrain.Decide(far);
+        var near = VillainHero(at);
+        near.Others.Add(new SidedPoint(new V3(3f, 0f, 0f), (int)Faction.Guard));
+        var swing = HeroBrain.Decide(near);
+        Check(shot.Task == HeroTask.Fight && shot.Weapon == WeaponKind.Spell && shot.Attack && shot.NeedsClearThrow
+            && swing.Weapon == WeaponKind.Hammer && swing.Attack && !swing.NeedsClearThrow,
+            "герой злодея издали бросает огненный шар (с проверкой броска), вплотную бьёт молотом",
+            "20 м — " + shot.Weapon + ", 3 м — " + swing.Weapon);
+
+        var middle = VillainHero(at);
+        middle.Others.Add(new SidedPoint(new V3(7f, 0f, 0f), (int)Faction.Guard));
+        var step = HeroBrain.Decide(middle);
+        var archer = new HeroView { Side = Faction.Elves, At = at, Weapon = WeaponKind.Bow };
+        archer.Others.Add(new SidedPoint(new V3(6f, 0f, 0f), (int)Faction.Villain));
+        var loose = HeroBrain.Decide(archer);
+        Check(step.Weapon == WeaponKind.Hammer && !step.Attack && step.Walk && loose.Attack && loose.Weapon == WeaponKind.Bow,
+            "в 7 м шар взорвался бы на самом герое: он берёт молот и подходит; лук в упор стреляет",
+            "атака молотом " + step.Attack + ", луком " + loose.Attack);
+
+        var escort = VillainHero(at);
+        escort.OwnCart = new V3(-10f, 0f, 0f);
+        escort.Others.Add(new SidedPoint(new V3(25f, 0f, 0f), (int)Faction.Guard));
+        var stay = HeroBrain.Decide(escort);
+        escort.Others.Clear();
+        escort.Others.Add(new SidedPoint(new V3(10f, 0f, 0f), (int)Faction.Guard));
+        var fight = HeroBrain.Decide(escort);
+        Check(stay.Goal.FlatDistance(escort.OwnCart.Value) < 0.1f && fight.Goal.FlatDistance(new V3(10f, 0f, 0f)) < 0.1f,
+            "поводок: за врагом, уводящим от обоза, не гонится, а напавшего рядом бьёт",
+            "цель издали " + stay.Goal + ", вблизи " + fight.Goal);
+
+        var keeper = VillainHero(at);
+        keeper.WarbandAnchor = new V3(-50f, 0f, 0f);
+        keeper.Posts.Add(new V3(100f, 0f, 0f));
+        keeper.Others.Add(new SidedPoint(new V3(110f, 0f, 0f), (int)Faction.Elves));
+        var defend = HeroBrain.Decide(keeper);
+        Check(defend.Task == HeroTask.Defend && defend.Goal.FlatDistance(new V3(110f, 0f, 0f)) < 0.1f && defend.Walk,
+            "враг у своей постройки в 100 м — герой идёт защищать", defend.Task.ToString());
+
+        var miner = VillainHero(MapLayout.MicroMine + new V3(30f, 0f, 0f));
+        miner.HasStorage = false;
+        miner.MicroVeins.Add(new Vein(MapLayout.MicroMine + MapLayout.MicroMineStone[0], 1.5f));
+        miner.MicroVeins.Add(new Vein(new V3(0f, 0f, 0f), 1.5f));
+        var walk = HeroBrain.Decide(miner);
+        miner.At = MapLayout.MicroMine + MapLayout.MicroMineStone[0] + new V3(3f, 0f, 0f);
+        var dig = HeroBrain.Decide(miner);
+        miner.HasStorage = true;
+        var built = HeroBrain.Decide(miner);
+        Check(walk.Task == HeroTask.Dig && walk.Walk && dig.Attack && dig.Weapon == WeaponKind.Hammer && built.Task == HeroTask.Follow,
+            "злодей без склада копает микро-шахту молотом (досягаемость с радиусом камня); со складом — нет",
+            walk.Task + " → " + dig.Task + ", со складом " + built.Task);
+
+        var elfHome = Factions.Spawn[(int)Faction.Elves];
+        var elf = new HeroView { Side = Faction.Elves, At = elfHome, ElfHouseLimit = 3, Weapon = WeaponKind.Axe };
+        elf.Stock = Res.Fit(Res.BuildingCost(BuildingKind.ElfHouse));
+        var house = HeroBrain.Decide(elf);
+        elf.ElfSpotBuildable = spot => spot.FlatDistance(elfHome) > 40f;
+        var outer = HeroBrain.Decide(elf);
+        Check(house.Task == HeroTask.BuildElfHouse && house.Interact && Math.Abs(house.BuildAt.Value.FlatDistance(elfHome) - 32f) < 0.1f
+            && outer.Walk && Math.Abs(outer.Goal.FlatDistance(elfHome) - 48f) < 0.1f,
+            "эльф ставит дом на ближнем кольце у спавна, занято — на следующем", "кольцо " + outer.Goal.FlatDistance(elfHome).ToString("0"));
+
+        var poor = new HeroView { Side = Faction.Elves, At = elfHome + new V3(140f, 0f, 0f), ElfHouseLimit = 3, Weapon = WeaponKind.Axe };
+        poor.Trees.Add(new Vein(elfHome + new V3(150f, 0f, 0f), 1f));
+        poor.Trees.Add(new Vein(elfHome + new V3(60f, 0f, 0f), 1f));
+        var chop = HeroBrain.Decide(poor);
+        poor.ElfHouses = 3;
+        var full = HeroBrain.Decide(poor);
+        Check(chop.Task == HeroTask.ChopTree && chop.Goal.FlatDistance(elfHome) < 61f && full.Task != HeroTask.ChopTree,
+            "на дом не хватает — эльф рубит свой лес (дальний не трогает); домов под потолок — не рубит",
+            "рубит у " + chop.Goal + ", при полном потолке " + full.Task);
+
+        var smith = VillainHero(at);
+        smith.Forge = new V3(40f, 0f, 0f);
+        smith.NextGearCost = new[] { 10, 0, 0, 10 };
+        smith.Stock = new[] { 20, 0, 0, 20 };
+        var toForge = HeroBrain.Decide(smith);
+        smith.AtForge = true;
+        var forge = HeroBrain.Decide(smith);
+        smith.Stock = new[] { 15, 0, 0, 20 };
+        var spare = HeroBrain.Decide(smith);
+        Check(toForge.Task == HeroTask.ForgeGear && toForge.Walk && forge.Interact && spare.Task == HeroTask.Follow,
+            "лишнее вдвое против цены — в кузню; меньше — добро остаётся на стройку", spare.Task.ToString());
+
+        var hurt = VillainHero(at);
+        hurt.Health = 35f;
+        hurt.PotionsHeal = 1;
+        hurt.Others.Add(new SidedPoint(new V3(15f, 0f, 0f), (int)Faction.Guard));
+        var panic = HeroBrain.Decide(hurt);
+        var crowd = VillainHero(at);
+        for (int i = 0; i < 3; i++) crowd.Others.Add(new SidedPoint(new V3(15f + i * 2f, 0f, 0f), (int)Faction.Elves));
+        var curse = HeroBrain.Decide(crowd);
+        Check(panic.UsePotion && panic.Spell == AbilityKind.Paralysis && curse.Spell == AbilityKind.Wither,
+            "ранен — пьёт зелье и парализует; кучка из трёх — увядание", panic.Spell + ", " + curse.Spell);
+
+        var carter = VillainHero(at);
+        carter.OwnCart = new V3(0f, 0f, 5f);
+        carter.Others.Add(new SidedPoint(new V3(3f, 0f, 0f), (int)Faction.Guard));
+        Check(!HeroBrain.Decide(carter).Attack,
+            "у своего обоза молотом не машет: удар задел бы лошадей", "обоз в 5 м");
+
+        var buildings = new List<KeyValuePair<BuildingKind, V3>>
+        {
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, 10f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, new V3(0f, 0f, 40f)),
+        };
+        bool blocked = Geometry.BuildingBetween(new V3(0f, 0f, 0f), new V3(0f, 0f, 20f), buildings);
+        bool inside = Geometry.BuildingBetween(new V3(0f, 0f, 0f), new V3(0f, 0f, 10f), buildings);
+        bool beside = Geometry.BuildingBetween(new V3(20f, 0f, 0f), new V3(20f, 0f, 20f), buildings);
+        bool field = Geometry.BuildingBetween(new V3(0f, 0f, 30f), new V3(0f, 0f, 50f), buildings);
+        Check(blocked && !inside && !beside && !field,
+            "постройка на прямой — обходить по пути; к самой постройке и через поле — напрямик",
+            "насквозь " + blocked + ", к ней " + inside + ", мимо " + beside + ", поле " + field);
     }
 }
