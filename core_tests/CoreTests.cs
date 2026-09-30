@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 74;
+    const int Expected = 76;
     static int _ran;
     static int _failed;
 
@@ -46,6 +46,7 @@ public static class CoreTests
         Damage();
         Spells();
         Loot();
+        Saves();
 
         if (_ran < Expected)
         {
@@ -575,6 +576,30 @@ public static class CoreTests
             "смерть роняет всё; подобравший берёт лучшее снаряжение и расходники до потолков",
             pile.Summary());
         Check(pile.Collect(wallet, looter, looterBody) == 0, "подобранную кучу второй раз не взять", "пусто");
+    }
+
+    static void Saves()
+    {
+        var match = new MatchState { PalaceOwner = Faction.Villain, GuardAbsorbed = true };
+        match.Out[(int)Faction.Guard] = true;
+        var save = new SaveData();
+        save.CaptureMatch(match);
+        var restored = new MatchState();
+        save.RestoreMatch(restored);
+        bool allied = !Factions.Hostile((int)Faction.Villain, (int)Faction.Guard);
+        restored.GuardAbsorbed = false;
+        restored.ApplyAlliances();
+        Check(restored.PalaceOwner == Faction.Villain && restored.Out[(int)Faction.Guard] && allied,
+            "исход партии переживает выход — и союз стражи со злодеем тоже", "дворец у злодея");
+
+        var wallet = new Wallet { Horses = 7, HorsesOut = 3 };
+        wallet.Stored.Capacity = 400;
+        wallet.AddStored((int)ResourceKind.Iron, 120);
+        var saved = SaveData.CaptureTreasury(Faction.Villain, wallet);
+        var back = new Wallet();
+        SaveData.RestoreTreasury(saved, back);
+        Check(back.Horses == 7 && back.HorsesOut == 0 && back.Stored.GetAmount(ResourceKind.Iron) == 120 && back.Stored.Capacity == 400,
+            "казна и конюшня переживают выход; лошади в пути возвращаются", "лошадей " + back.Horses);
     }
 
     static void Mines()
