@@ -66,13 +66,13 @@ namespace DjvaGoda.Game
         {
             GameObject go;
             var at = piece.Center.ToUnity();
-            var size = piece.Size.ToUnity();
+            var size = piece.Size.SizeToUnity();
             switch (piece.Shape)
             {
                 case PieceShape.Box:
                     go = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     go.transform.localScale = size;
-                    go.transform.SetPositionAndRotation(at, CoreSpace.OffsetRotation(piece.Yaw));
+                    go.transform.SetPositionAndRotation(at, CoreSpace.YawToRotation(piece.Yaw));
                     break;
                 case PieceShape.Cylinder:
                     // Цилиндр Unity: радиус 0.5, высота 2.
@@ -132,7 +132,7 @@ namespace DjvaGoda.Game
             var go = new GameObject(name);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             go.AddComponent<MeshRenderer>();
-            go.transform.SetPositionAndRotation(at, CoreSpace.OffsetRotation(yaw));
+            go.transform.SetPositionAndRotation(at, CoreSpace.YawToRotation(yaw));
             go.transform.localScale = scale;
             if (solid) go.AddComponent<MeshCollider>().convex = true;
             return go;
@@ -144,11 +144,12 @@ namespace DjvaGoda.Game
             float width = piece.Size.X, rise = piece.Size.Y, run = piece.Size.Z;
             float length = Mathf.Sqrt(run * run + rise * rise);
             float pitch = Mathf.Atan2(rise, run) * Mathf.Rad2Deg;
-            var foot = piece.Center.ToUnity();
             var root = new GameObject("Пандус");
-            // Подножие у фасада (больший z), подъём — к плато (к меньшему z). Поворот
-            // вокруг X у Unity в координатах тот же, что у Godot: +pitch опускает +z.
-            root.transform.SetPositionAndRotation(foot + new Vector3(0f, rise * 0.5f, -run * 0.5f), Quaternion.Euler(pitch, 0f, 0f));
+            // Подножие у фасада (в ядре — больший z), подъём — к плато. После
+            // отражения z плато лежит к +z Unity, и плиту наклоняем −pitch:
+            // её дальний (+z) конец поднимается.
+            var centre = (piece.Center + new V3(0f, rise * 0.5f, -run * 0.5f)).ToUnity();
+            root.transform.SetPositionAndRotation(centre, Quaternion.Euler(-pitch, 0f, 0f));
             var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
             slab.name = "Плита";
             slab.transform.SetParent(root.transform, false);
@@ -206,7 +207,7 @@ namespace DjvaGoda.Game
             {
                 var p = Forest.Positions[i];
                 float height = Forest.CrownTop * Forest.Scales[i];
-                var tree = Tree(new Vector3(p.X, Relief.Height(p.X, p.Z), p.Z), height);
+                var tree = Tree(new V3(p.X, Relief.Height(p.X, p.Z), p.Z).ToUnity(), height);
                 tree.name = "Дерево " + i;
                 tree.transform.SetParent(holder, true);
                 var harvest = tree.AddComponent<Harvestable>();

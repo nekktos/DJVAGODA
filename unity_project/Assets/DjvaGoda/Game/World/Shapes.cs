@@ -18,6 +18,7 @@ namespace DjvaGoda.Game
 
         /// Рельеф одним полотном: клетка 16 м, все клетки, даже плоские (иначе
         /// по краям островов — ступеньки), общие вершины — для гладких нормалей.
+        /// Вершины — сразу в осях Unity: высоту берём в точке ядра (x, −z).
         public static Mesh Relief(Relief relief, float worldSize)
         {
             float half = worldSize * 0.5f;
@@ -30,7 +31,7 @@ namespace DjvaGoda.Game
                 {
                     float x = -half + ix * DjvaGoda.Core.Relief.Cell;
                     float z = -half + iz * DjvaGoda.Core.Relief.Cell;
-                    vertices[ix * side + iz] = new Vector3(x, relief.Height(x, z), z);
+                    vertices[ix * side + iz] = new Vector3(x, relief.Height(x, -z), z);
                     uv[ix * side + iz] = new Vector2(x / 8f, z / 8f);
                 }
             var triangles = new int[steps * steps * 6];

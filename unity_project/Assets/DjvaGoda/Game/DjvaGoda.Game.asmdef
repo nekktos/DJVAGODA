@@ -2,7 +2,8 @@
     "name": "DjvaGoda.Game",
     "rootNamespace": "DjvaGoda.Game",
     "references": [
-        "DjvaGoda.Core"
+        "DjvaGoda.Core",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
