@@ -32,6 +32,9 @@ namespace DjvaGoda.Game
         /// Ввод героя ИИ; пусто — ввод игрока.
         public MotorInput? Scripted;
         public bool LocalControl = true;
+        /// Считать ли движение здесь. Чужого персонажа ведёт присланное положение
+        /// (NetPlayer), иначе мотор тянул бы его гравитацией и нулевым вводом.
+        public bool Simulate = true;
 
         public V3 Feet { get { return At; } }
         public V3 Velocity { get { return _motor.Velocity; } }
@@ -78,7 +81,7 @@ namespace DjvaGoda.Game
         void Update()
         {
             // Павший не ходит: встанет по правилам возрождения (Respawn).
-            if (!Alive) return;
+            if (!Alive || !Simulate) return;
             float delta = Time.deltaTime;
             Spells.Tick(delta);
             Vitals.TickMana(delta);

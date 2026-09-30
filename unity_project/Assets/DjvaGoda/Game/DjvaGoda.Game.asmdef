@@ -3,7 +3,9 @@
     "rootNamespace": "DjvaGoda.Game",
     "references": [
         "DjvaGoda.Core",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.Netcode.Runtime",
+        "Unity.Networking.Transport"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
