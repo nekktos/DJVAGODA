@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 165;
+    const int Expected = 172;
     static int _ran;
     static int _failed;
 
@@ -62,6 +62,7 @@ public static class CoreTests
         LobbyRules();
         MotorRules();
         ProjectileRules();
+        WorkbenchRules();
 
         if (_ran < Expected)
         {
@@ -1570,5 +1571,75 @@ public static class CoreTests
         Check(Math.Abs(right.X - right.Z * -1f) < 0.01f && right.X > 0f && close.Y > 0f && close.Z < 0f,
             "выстрел — из глаз в точку, куда смотрит камера из-за плеча; вплотную — прямо по взгляду",
             "в точку " + right + ", вплотную " + close);
+    }
+
+    static Wallet Rich()
+    {
+        var wallet = new Wallet();
+        wallet.Grant(new[] { 500, 500, 500, 500, 500, 500 });
+        return wallet;
+    }
+
+    static void WorkbenchRules()
+    {
+        var body = new BodyState();
+        body.SeveredMask = (1 << (int)Limb.LegL) | (1 << (int)Limb.LegR);
+        var trophies = new[] { 0, 15, 0 };
+        var necro = Workbench.Prosthetic(BodyState.NecroticTier, body, trophies, Rich(), true);
+        trophies[(int)TrophyKind.Legs] = 20;
+        var paid = Workbench.Prosthetic(BodyState.NecroticTier, body, trophies, Rich(), true);
+        Check(!necro.Ok && necro.Refusal.Contains("20") && paid.Ok && trophies[(int)TrophyKind.Legs] == 0
+            && body.Tier(Limb.LegL) == BodyState.NecroticTier,
+            "некротика — десять трофеев за КАЖДУЮ ногу: на две при 15 отказ (в Godot трофеев уходило в минус)",
+            necro.Refusal);
+
+        var arm = new BodyState();
+        arm.SeveredMask = 1 << (int)Limb.ArmR;
+        var away = Workbench.Prosthetic(2, arm, new int[3], Rich(), false);
+        var wood = Workbench.Prosthetic(1, arm, new int[3], Rich(), false);
+        var poor = Workbench.Prosthetic(3, arm, new int[3], new Wallet(), true);
+        Check(!away.Ok && away.Refusal == null && wood.Ok && arm.Tier(Limb.ArmR) == 1 && !poor.Ok && poor.Refusal != null,
+            "деревянный протез — где угодно, кованый и мастерский — у верстака и за ресурсы", "без верстака: молча");
+
+        var blind = new BodyState();
+        blind.EyesLost = 1;
+        var eyes = new[] { 0, 0, 9 };
+        var few = Workbench.Eye(blind, eyes, true);
+        eyes[(int)TrophyKind.Eyes] = 10;
+        var far = Workbench.Eye(blind, eyes, false);
+        var got = Workbench.Eye(blind, eyes, true);
+        Check(!few.Ok && !far.Ok && got.Ok && blind.EyesMissing() == 0 && eyes[(int)TrophyKind.Eyes] == 0,
+            "некротический глаз — у верстака за десять чужих глаз", few.Refusal);
+
+        var broken = new BodyState();
+        broken.CrippledMask = 1 << (int)Limb.LegL;
+        var wallet = Rich();
+        var street = Workbench.Splint(broken, wallet, false);
+        var splint = Workbench.Splint(broken, wallet, true);
+        var nothing = Workbench.Splint(broken, wallet, true);
+        Check(!street.Ok && splint.Ok && !broken.IsCrippled(Limb.LegL) && !nothing.Ok && wallet.GetAmount(ResourceKind.Wood) == 500 - Res.SplintCost[0],
+            "лубок вправляет перебитую кость в медпункте за дерево и золото; нечего вправлять — отказ", nothing.Refusal);
+
+        var legless = new BodyState();
+        legless.SeveredMask = 1 << (int)Limb.LegL;
+        var walker = new BodyState();
+        Check(Workbench.Wheelchair(legless, true, true).Ok && legless.InWheelchair && !Workbench.Wheelchair(walker, true, true).Ok
+            && !Workbench.Wheelchair(new BodyState { SeveredMask = 1 << (int)Limb.LegR }, true, false).Ok,
+            "коляска — у верстака и только тому, кто ползёт", "в коляске " + legless.InWheelchair);
+
+        var wrap = new Bandaging();
+        bool done = false;
+        int ticks = 0;
+        for (; ticks < 40 && !done; ticks++) done = wrap.Tick(0.1f, true, true, 0f);
+        var moving = new Bandaging();
+        bool walking = false;
+        for (int i = 0; i < 40; i++) walking |= moving.Tick(0.1f, true, true, 2f);
+        Check(done && Math.Abs(ticks * 0.1f - BodyState.BandageTime) < 0.15f && !walking,
+            "перевязка — три секунды с зажатой клавишей, стоя; на ходу не выходит", "за " + (ticks * 0.1f).ToString("0.0") + " с");
+
+        var xp = new ResourceXp();
+        int first = xp.Award(6);
+        int second = xp.Award(6);
+        Check(first == 1 && second == 2, "опыт за добычу: очко за четыре единицы, остаток копится", first + " и " + second);
     }
 }
