@@ -28,6 +28,26 @@ namespace DjvaGoda.Core
             return (float)Math.Sqrt(dx * dx + dz * dz);
         }
 
+        /// Расстояние в пространстве — там, где Godot-версия мерила `distance_to`.
+        public float Distance(V3 other)
+        {
+            float dx = X - other.X;
+            float dy = Y - other.Y;
+            float dz = Z - other.Z;
+            return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        public float Length() { return (float)Math.Sqrt(X * X + Y * Y + Z * Z); }
+
+        /// Тот же вектор без высоты.
+        public V3 Flat() { return new V3(X, 0f, Z); }
+
+        public V3 Normalized()
+        {
+            float length = Length();
+            return length < 1e-6f ? this : this * (1f / length);
+        }
+
         public override string ToString()
         {
             return string.Format("({0:0.#}, {1:0.#}, {2:0.#})", X, Y, Z);

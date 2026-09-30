@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 80;
+    const int Expected = 89;
     static int _ran;
     static int _failed;
 
@@ -48,6 +48,7 @@ public static class CoreTests
         Loot();
         Saves();
         ReliefRules();
+        WarbandRules();
 
         if (_ran < Expected)
         {
@@ -673,5 +674,100 @@ public static class CoreTests
         var again = Relief.ForMap();
         Check(again.Height(-120f, 215f) == relief.Height(-120f, 215f) && again.Height(410f, 77f) == relief.Height(410f, 77f),
             "рельеф одинаков у хоста и клиента: то же зерно — те же холмы", "высота " + relief.Height(-120f, 215f).ToString("0.00"));
+    }
+
+    static List<V3> BandAt(V3 at, int count)
+    {
+        var band = new List<V3>();
+        for (int i = 0; i < count; i++) band.Add(new V3(at.X + i, at.Y, at.Z));
+        return band;
+    }
+
+    static void WarbandRules()
+    {
+        var elfHome = Factions.Spawn[(int)Faction.Elves];
+        var villainFort = new V3(-300f, 0f, 290f);
+        var elves = new WarbandBrain(Faction.Elves);
+        var view = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
+        view.Buildings.Add(new SidedPoint(villainFort, (int)Faction.Villain));
+        elves.Think(view, null);
+        Check(elves.State == WarbandState.March && elves.Goal.HasValue && elves.Goal.Value.Distance(villainFort) < 0.1f
+            && elves.Announced.HasValue,
+            "полный отряд эльфов идёт в набег на постройку злодея в 600 м и объявляет его", elves.StateName);
+
+        var guard = new WarbandBrain(Faction.Guard);
+        var guardView = new WarbandView { Band = BandAt(Factions.Spawn[(int)Faction.Guard], AiStats.GarrisonSize) };
+        guardView.Buildings.Add(new SidedPoint(villainFort, (int)Faction.Villain));
+        guardView.Buildings.Add(new SidedPoint(elfHome, (int)Faction.Elves));
+        guard.Think(guardView, null);
+        bool guardHome = guard.State == WarbandState.Hold;
+        guardView.SidesLeft = 2;
+        guard.Think(guardView, null);
+        Check(guardHome && guard.State == WarbandState.March && guard.Goal.Value.Distance(elfHome) < 0.1f,
+            "стража не достаёт до форта (805 м > 800) и не трогает эльфов, пока в партии три стороны",
+            "при двух сторонах цель " + guard.Goal);
+
+        var villain = new WarbandBrain(Faction.Villain);
+        var villainView = new WarbandView { Band = BandAt(Factions.Spawn[(int)Faction.Villain], AiStats.GarrisonSize) };
+        villainView.Buildings.Add(new SidedPoint(new V3(-300f, 0f, -250f), (int)Faction.Elves));
+        villainView.SidesLeft = 2;
+        villain.Think(villainView, null);
+        bool settling = villain.State == WarbandState.Hold;
+        villainView.HasBarracks = true;
+        villain.Think(villainView, null);
+        Check(settling && villain.State == WarbandState.March,
+            "гарнизон злодея под ИИ сидит дома, пока нет казармы: он — вся его оборона", villain.StateName);
+
+        var order = elves.Steer(view.Band).Value;
+        Check(Math.Abs(order.Anchor.FlatDistance(WarbandBrain.BandPoint(view.Band).Value) - AiStats.LeadDistance) < 0.1f
+            && order.Formation == FormationKind.Column && order.Leash == AiStats.MarchLeash,
+            "в походе якорь строя — в 14 м впереди вдоль маршрута, колонной, на коротком поводке",
+            "якорь " + order.Anchor);
+
+        view.Fighters.Add(new SidedPoint(order.Anchor + new V3(10f, 0f, 0f), (int)Faction.Villain));
+        elves.Think(view, null);
+        Check(elves.State == WarbandState.Fight && elves.Steer(view.Band).Value.Formation == FormationKind.Line,
+            "враг у якоря — отряд принимает бой и встаёт линией", elves.StateName);
+
+        var thinned = new WarbandBrain(Faction.Elves);
+        var march = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
+        march.Buildings.Add(new SidedPoint(villainFort, (int)Faction.Villain));
+        thinned.Think(march, null);
+        march.Band = BandAt(elfHome + new V3(0f, 0f, 200f), 1);
+        thinned.Think(march, null);
+        Check(thinned.State == WarbandState.Return && thinned.Goal.Value.Distance(elfHome) < 0.1f,
+            "отряд проредили на марше до одного — бросает набег и уходит домой", thinned.StateName);
+
+        var keeper = new WarbandBrain(Faction.Elves);
+        var home = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
+        var house = elfHome + new V3(60f, 0f, 60f);
+        home.Posts.Add(house);
+        home.Fighters.Add(new SidedPoint(house + new V3(12f, 0f, 0f), (int)Faction.Guard));
+        keeper.Think(home, null);
+        Check(keeper.State == WarbandState.March && keeper.Defending && keeper.StateName == "защищает хозяйство",
+            "враг у своего дома — отряд идёт защищать хозяйство", keeper.StateName);
+
+        var cart = new CartSighting { Id = 7, At = new V3(0f, 0f, 0f), Side = (int)Faction.Villain };
+        for (int i = 1; i <= 10; i++) cart.Ahead.Add(new V3(0f, 0f, 30f * i));
+        var hunter = new WarbandBrain(Faction.Elves);
+        var meet = hunter.Intercept(BandAt(new V3(60f, 0f, 150f), 4), cart);
+        float cartTime = meet.Z / CaravanRules.Speed;
+        float bandTime = new V3(60f, 0f, 150f).FlatDistance(meet) / UnitStats.BaseSpeed;
+        Check(meet.Z > 0f && bandTime <= cartTime && meet.Z < 300f,
+            "перехват: первая точка пути обоза, куда отряд успеет раньше него", "встреча на " + meet);
+
+        var slow = new WarbandBrain(Faction.Elves);
+        var stuckView = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
+        stuckView.Buildings.Add(new SidedPoint(villainFort, (int)Faction.Villain));
+        slow.Think(stuckView, null);
+        int thoughts = 0;
+        while (slow.State == WarbandState.March && thoughts < 30)
+        {
+            slow.Think(stuckView, null);
+            thoughts++;
+        }
+        Check(slow.State == WarbandState.Return && thoughts * AiStats.WarbandThink >= AiStats.StuckSeconds,
+            "отряд, не сдвинувшийся за 24 с похода, бросает набег и идёт домой",
+            "сдался через " + thoughts * AiStats.WarbandThink + " с");
     }
 }

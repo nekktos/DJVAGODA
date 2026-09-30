@@ -33,13 +33,16 @@ namespace DjvaGoda.Core
             }
         }
 
+        /// Шаг рядового бойца; по нему ИИ считает, успеет ли к точке перехвата.
+        public const float BaseSpeed = 5.2f;
+
         public static float Speed(UnitKind kind)
         {
             switch (kind)
             {
                 case UnitKind.Champion: return 6.6f;
                 case UnitKind.Beast: return 7.4f;
-                default: return 5.2f;
+                default: return BaseSpeed;
             }
         }
 
