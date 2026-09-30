@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 133;
+    const int Expected = 138;
     static int _ran;
     static int _failed;
 
@@ -56,6 +56,7 @@ public static class CoreTests
         TripRules();
         LabourerRules();
         UnitRules();
+        ForestRules();
 
         if (_ran < Expected)
         {
@@ -1249,5 +1250,46 @@ public static class CoreTests
             && Math.Abs(UnitBrain.WoundSpeedScale(2) * UnitStats.BaseSpeed - BodyState.CrawlSpeedBoth) < 0.01f,
             "сосед вплотную расталкивает, но не тормозит идущего вперёд; итог не быстрее 9 м/с; без ног — ползком",
             "толчок " + push + ", ход " + steer);
+    }
+
+    static void ForestRules()
+    {
+        var forest = Forest.ForMap();
+        var centre = MapLayout.ZoneCenters[(int)Zone.Elves];
+        int inClearing = 0, inMine = 0, outside = 0, woods = 0;
+        for (int i = 0; i < forest.Count; i++)
+        {
+            var p = forest.Positions[i];
+            float r = p.FlatDistance(centre);
+            if (r < Forest.Clearing) inClearing++;
+            if (r > MapLayout.ZoneHalf - 30f) outside++;
+            if (r <= AiStats.ElfWoods) woods++;
+            foreach (var mine in MapLayout.Mines)
+                if (p.FlatDistance(mine.At) < MapLayout.MineClearing) inMine++;
+        }
+        Check(forest.Count == Forest.TreeCount && inClearing == 0 && inMine == 0 && outside == 0,
+            "лес эльфов: 1700 деревьев кольцом, поселение и поляны шахт пусты, за зону не выходит",
+            "деревьев " + forest.Count + ", на полянах " + (inClearing + inMine));
+        Check(woods > 50, "у поселения (110 м) есть свой лес: герою-эльфу есть что рубить на дома", "деревьев " + woods);
+
+        var twin = Forest.ForMap();
+        Check(twin.Positions[777].Distance(forest.Positions[777]) < 0.001f && twin.Scales[1234] == forest.Scales[1234],
+            "лес одинаков у хоста и клиента: дерево адресуется номером", "дерево 777 — " + forest.Positions[777]);
+
+        int left = 0;
+        for (int i = 0; i < Res.SourceHits; i++) left = forest.Hit(10);
+        forest.Fell(10);
+        Check(left == 0 && forest.IsFelled(10) && forest.Hit(10) == -1 && forest.FelledIndices().Contains(10)
+            && forest.Nearest(forest.Positions[10], 0.5f) != 10,
+            "дерево валят за шесть ударов; поваленное не бьют и не находят, опоздавшему шлют список", "поваленных " + forest.FelledIndices().Count);
+
+        var tree = forest.Positions[20];
+        var from = tree + new V3(80f, 0f, 0f);
+        var fresh = new HashSet<int>();
+        forest.CollectAround(from, Forest.SolidRadius, Forest.SolidRelease, null, fresh);
+        var kept = new HashSet<int>();
+        forest.CollectAround(from, Forest.SolidRadius, Forest.SolidRelease, new HashSet<int> { 20 }, kept);
+        Check(!fresh.Contains(20) && kept.Contains(20),
+            "ствол в 80 м твердеет только с 70 м, а твёрдым остаётся до 88 — на границе не мигает", "взято " + kept.Count);
     }
 }
