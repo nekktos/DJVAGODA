@@ -149,7 +149,7 @@ namespace DjvaGoda.Core
         {
             var p = new int[256];
             for (int i = 0; i < 256; i++) p[i] = i;
-            var random = new Random(seed);
+            var random = new Rng(seed);
             for (int i = 255; i > 0; i--)
             {
                 int j = random.Next(i + 1);

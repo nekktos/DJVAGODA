@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 138;
+    const int Expected = 139;
     static int _ran;
     static int _failed;
 
@@ -1273,13 +1273,19 @@ public static class CoreTests
         Check(woods > 50, "у поселения (110 м) есть свой лес: герою-эльфу есть что рубить на дома", "деревьев " + woods);
 
         var twin = Forest.ForMap();
-        Check(twin.Positions[777].Distance(forest.Positions[777]) < 0.001f && twin.Scales[1234] == forest.Scales[1234],
-            "лес одинаков у хоста и клиента: дерево адресуется номером", "дерево 777 — " + forest.Positions[777]);
+        Check(twin.Positions[777].Distance(forest.Positions[777]) < 0.001f && twin.Scales[1234] == forest.Scales[1234]
+            && forest.Positions[0].Distance(new V3(-325.5727f, 0f, -476.1389f)) < 0.01f,
+            "лес одинаков у хоста и клиента: дерево адресуется номером, первое — там, где записано",
+            "дерево 0 — " + forest.Positions[0]);
+        Check(new Rng(0).NextULong() == 0xE220A8397B1DCDAFUL && Math.Abs(Relief.ForMap().Height(-120f, 215f) - 20.375f) < 0.01f,
+            "генератор ядра — эталонный SplitMix64: лес и холмы не зависят от среды выполнения",
+            "холм в (-120, 215) — " + Relief.ForMap().Height(-120f, 215f).ToString("0.000"));
 
-        int left = 0;
-        for (int i = 0; i < Res.SourceHits; i++) left = forest.Hit(10);
+        int first = forest.Hit(10);
+        int left = first;
+        for (int i = 1; i < Res.SourceHits; i++) left = forest.Hit(10);
         forest.Fell(10);
-        Check(left == 0 && forest.IsFelled(10) && forest.Hit(10) == -1 && forest.FelledIndices().Contains(10)
+        Check(first == Res.SourceHits - 1 && left == 0 && forest.IsFelled(10) && forest.Hit(10) == -1 && forest.FelledIndices().Contains(10)
             && forest.Nearest(forest.Positions[10], 0.5f) != 10,
             "дерево валят за шесть ударов; поваленное не бьют и не находят, опоздавшему шлют список", "поваленных " + forest.FelledIndices().Count);
 

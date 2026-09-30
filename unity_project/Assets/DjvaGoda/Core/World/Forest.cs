@@ -44,7 +44,7 @@ namespace DjvaGoda.Core
 
         public Forest(V3 centre, float radius, float clearing, int seed, IList<KeyValuePair<V3, float>> holes)
         {
-            var rng = new Random(seed);
+            var rng = new Rng(seed);
             int attempts = 0;
             while (Positions.Count < TreeCount && attempts < TreeCount * 4)
             {
