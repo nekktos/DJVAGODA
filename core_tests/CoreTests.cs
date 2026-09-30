@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 50;
+    const int Expected = 52;
     static int _ran;
     static int _failed;
 
@@ -38,6 +38,7 @@ public static class CoreTests
         Character();
         Caravans();
         Map();
+        HungerRules();
 
         if (_ran < Expected)
         {
@@ -369,6 +370,27 @@ public static class CoreTests
         foreach (var mine in MapLayout.Mines)
             outward &= MapLayout.MineEntrance(mine.At).FlatDistance(elves) > mine.At.FlatDistance(elves);
         Check(outward, "входы шахт смотрят прочь от поселения эльфов", "все четыре");
+    }
+
+    static void HungerRules()
+    {
+        var rich = new Wallet();
+        rich.Grant(new[] { 0, 0, 0, 0, 100, 0 });
+        var fedHunger = new[] { 2, 1, 0 };
+        var fed = Hunger.Feed(Faction.Villain, rich, fedHunger);
+        Check(fed.Fed && fedHunger[0] == 0 && rich.GetAmount(ResourceKind.Food) == 100 - 3 * Res.FeedPerWorker,
+            "сытая артель съедает свою долю, голод прощён", "осталось еды " + rich.GetAmount(ResourceKind.Food));
+
+        var poor = new Wallet();
+        poor.Grant(new[] { 0, 0, 0, 0, 20, 0 });
+        var crew = new[] { 0, 0, 0 };
+        var first = Hunger.Feed(Faction.Villain, poor, crew);
+        var second = Hunger.Feed(Faction.Villain, poor, crew);
+        var third = Hunger.Feed(Faction.Villain, poor, crew);
+        Check(!first.Fed && first.Starved == 0 && second.Starved == 0 && third.Starved == 3
+            && poor.GetAmount(ResourceKind.Food) == 20,
+            "не хватило на всех — не ест никто; умирают только с третьего пропуска",
+            third.Message);
     }
 
     static void Mines()
