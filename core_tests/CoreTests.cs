@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 54;
+    const int Expected = 59;
     static int _ran;
     static int _failed;
 
@@ -40,6 +40,7 @@ public static class CoreTests
         Map();
         HungerRules();
         Keys();
+        DealsRules();
 
         if (_ran < Expected)
         {
@@ -409,6 +410,41 @@ public static class CoreTests
         Check(map["jump"][0] == "<Keyboard>/w" && map["move_forward"][0] == "<Keyboard>/space"
             && KeyActions.Conflicts("jump", "<Keyboard>/w", map).Count == 0,
             "переназначение на занятую клавишу меняет их местами", "прыжок на W, вперёд на пробел");
+    }
+
+    static void DealsRules()
+    {
+        var villain = new Kit { Side = Faction.Villain };
+        var wallet = new Wallet();
+        wallet.Grant(new[] { 0, 0, 500, 500, 0, 0 });
+        var noPotion = Deals.Trade(villain, new BodyState(), wallet, TradeItem.PotionHeal, true);
+        var armor = Deals.Trade(villain, new BodyState(), wallet, TradeItem.Armor, true);
+        Check(!noPotion.Ok && noPotion.Refusal == "этого в вашей лавке не продают" && armor.Ok && villain.ArmorTier == 1,
+            "лавка продаёт только свой товар: злодею — латы, зелий нет", noPotion.Refusal);
+
+        var noCoal = Deals.ForgeGear(villain, wallet, true);
+        wallet.Carried.Capacity = 600;
+        wallet.Add((int)ResourceKind.Coal, 50);
+        var forged = Deals.ForgeGear(villain, wallet, true);
+        Check(!noCoal.Ok && noCoal.Refusal.Contains("уголь") && forged.Ok && villain.GearTier == 1
+            && villain.GearTitle(2) == "булатное",
+            "без угля кузня не закаляет и говорит, где его взять; с углём — закаляет", noCoal.Refusal);
+
+        var elf = new Kit { Side = Faction.Elves };
+        var far = Deals.Build(elf, wallet, BuildingKind.ElfHouse, true, 60f, 0, 5);
+        var full = Deals.Build(elf, wallet, BuildingKind.ElfHouse, true, 10f, 5, 5);
+        var storage = Deals.Build(elf, wallet, BuildingKind.Storage, true, 10f, 0, 5);
+        Check(!far.Ok && !full.Ok && !storage.Ok && full.Refusal.Contains("5 из 5"),
+            "эльф строит дом рядом с собой, не сверх предела и не склад", full.Refusal);
+
+        Check(Deals.SquadCapacity(0) == 3 && Deals.SquadCapacity(2) == 9 && Deals.SquadCapacity(10) == 12,
+            "войско: трое без домов, каждый дом — ещё трое, потолок двенадцать", "вместимость");
+
+        var poor = new Wallet();
+        var send = Deals.SendCaravan(poor, true, 0, new[] { new V3(0f, 0f, 0f) });
+        var outside = Deals.SendCaravan(poor, true, 0, new[] { new V3(700f, 0f, 0f) });
+        Check(!send.Ok && send.Refusal.Contains("лошад") && !outside.Ok,
+            "обоз без свободных лошадей не выезжает; точка вне карты — отказ", send.Refusal);
     }
 
     static void Mines()
