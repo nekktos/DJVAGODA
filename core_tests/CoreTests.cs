@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 172;
+    const int Expected = 177;
     static int _ran;
     static int _failed;
 
@@ -63,6 +63,7 @@ public static class CoreTests
         MotorRules();
         ProjectileRules();
         WorkbenchRules();
+        PathRules();
 
         if (_ran < Expected)
         {
@@ -1641,5 +1642,50 @@ public static class CoreTests
         int first = xp.Award(6);
         int second = xp.Award(6);
         Check(first == 1 && second == 2, "опыт за добычу: очко за четыре единицы, остаток копится", first + " и " + second);
+    }
+
+    static void PathRules()
+    {
+        int asked = 0;
+        PathFinder grid = (from, to) =>
+        {
+            asked++;
+            return new List<V3> { from, new V3(from.X, 0f, (from.Z + to.Z) * 0.5f + 20f), to };
+        };
+        var follower = new PathFollower();
+        var here = new V3(0f, 0f, 0f);
+        var near = follower.NextStep(here, new V3(10f, 0f, 0f), grid, null);
+        Check(near.Distance(new V3(10f, 0f, 0f)) < 0.01f && asked == 0,
+            "цель ближе 25 м — напрямую, сетку не спрашивает", "спрошено " + asked);
+
+        var far = new V3(0f, 0f, -100f);
+        var step = follower.NextStep(here, far, grid, null);
+        follower.NextStep(here, far + new V3(3f, 0f, 0f), grid, null);
+        Check(asked == 1 && step.Distance(new V3(0f, 0f, -30f)) < 0.01f,
+            "далеко — по точкам сетки; цель сдвинулась меньше 6 м — путь не перезапрашивает", "шаг к " + step);
+        follower.NextStep(here, far + new V3(10f, 0f, 0f), grid, null);
+        Check(asked == 2, "цель ушла на 10 м — путь перезапрошен", "спрошено " + asked);
+
+        int askedAway = 0;
+        PathFinder away = (from, to) =>
+        {
+            askedAway++;
+            return new List<V3> { from, new V3(0f, 0f, 50f) };
+        };
+        var stubborn = new PathFollower();
+        var direct = stubborn.NextStep(here, far, away, null);
+        stubborn.NextStep(here, far + new V3(1f, 0f, 0f), away, null);
+        Check(direct.Distance(far) < 0.01f && askedAway == 1,
+            "путь, что кончается дальше от цели, чем стоим, не берём — напрямую, и сетку больше не дёргаем",
+            "спрошено " + askedAway);
+
+        var wall = new PathFollower();
+        for (int i = 0; i < 10; i++) wall.NoteProgress(0.1f, true, new V3(0f, 0f, 0f), new V3(10f, 0f, 0f));
+        var detour = wall.NextStep(new V3(0f, 0f, 0f), new V3(10f, 0f, 0f), grid, null);
+        var walker = new PathFollower();
+        for (int i = 0; i < 10; i++) walker.NoteProgress(0.1f, true, new V3(i * 0.7f, 0f, 0f), new V3(10f, 0f, 0f));
+        Check(wall.Blocked >= UnitStats.BlockedSeconds && detour.Distance(new V3(10f, 0f, 0f)) > 0.01f && walker.Blocked < 0.2f,
+            "стоит у стены (цель не приближается) полсекунды — идёт по сетке даже к близкой цели; идущий — нет",
+            "упёрся " + wall.Blocked.ToString("0.0") + " с, идущий " + walker.Blocked.ToString("0.0"));
     }
 }
