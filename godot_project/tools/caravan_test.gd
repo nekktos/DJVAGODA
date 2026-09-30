@@ -18,7 +18,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "караван-тест"
-	expected_host = 25
+	expected_host = 26
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -223,10 +223,12 @@ func _test_avoids_buildings(me: Node3D) -> void:
 
 	var route: PackedVector3Array = caravan.route
 	var spot := Vector3.ZERO
+	var spot_leg := -1
 	for i in range(1, route.size()):
 		var mid: Vector3 = (route[i - 1] + route[i]) * 0.5
 		if mid.distance_to(caravan.position) > 30.0:
 			spot = mid
+			spot_leg = i
 			break
 	if spot == Vector3.ZERO:
 		fail("маршрут слишком короткий, ставить дом некуда")
@@ -251,21 +253,38 @@ func _test_avoids_buildings(me: Node3D) -> void:
 	for step in [-1.0, 0.0, 1.0]:
 		wall.append(_world.spawn_building(kind, spot + across * step, 0, int(me.faction), true))
 
+	# «Проехал стену» — побывал у точки маршрута на две дальше стены. Прямое
+	# расстояние до конца не годится: путь по сетке петляет, и оно убывает и
+	# до стены.
+	var beyond: int = mini(spot_leg + 2, route.size() - 1)
 	var nearest := 9999.0
 	var deepest := 9999.0
-	for i in 900:
+	var passed := false
+	for i in 1800:
 		await get_tree().physics_frame
 		if not is_instance_valid(caravan):
 			break
 		nearest = minf(nearest, caravan.position.distance_to(spot))
 		deepest = minf(deepest, _gap_to_any_building(caravan.position))
+		for j in range(beyond, route.size()):
+			if _flat(caravan.position).distance_to(_flat(route[j])) < 4.0:
+				passed = true
+				break
 		if caravan.state == caravan.State.TO_HOME:
+			passed = true
+			break
+		if passed:
 			break
 
 	check(nearest < 30.0, "обоз доехал до поставленной на пути постройки",
 		"подошёл на %.1f м" % nearest)
 	check(deepest > 0.0, "и НЕ въехал в неё",
 		"ближе всего был на %.1f м от стены" % deepest)
+	# А ПРОЕХАЛ ли. Без этой проверки набор молчал о том, что обоз, упёршийся
+	# в стену в лоб, качается у неё до конца партии: толчок объезда ровно
+	# против курса. Нашли проверки ядра Unity-версии.
+	check(passed, "и объехал её, а не встал у стены",
+		"от стены на %.0f м" % (_flat(caravan.position).distance_to(_flat(spot)) if is_instance_valid(caravan) else -1.0))
 
 	# Убираем за собой: стена из трёх казарм поперёк дороги и обоз, который её
 	# объезжает, — это декорация ЭТОЙ проверки. Оставленные, они достаются

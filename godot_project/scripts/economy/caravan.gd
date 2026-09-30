@@ -140,6 +140,8 @@ var escort: Array[Node3D] = []
 
 var _leg := 0
 var _timer := 0.0
+## Куда обходим стену, упёршись в неё в лоб: 0 — ещё не выбрано.
+var _slide_side := 0
 var _zone: Area3D
 var _alive := true
 ## Кладь поверх телеги: по ней снаружи видно, полон обоз или пуст.
@@ -352,6 +354,7 @@ func _advance(delta: float, backwards: bool) -> bool:
 	# Концы маршрута не пропускаем никогда: это склад и шахта, к ним обоз и
 	# едет. Их-то как раз надо достичь вплотную.
 	if index != 0 and index != route.size() - 1 and _blocked_point(target):
+		_slide_side = 0
 		_leg += 1
 		if _leg >= route.size():
 			_leg = 0
@@ -361,6 +364,7 @@ func _advance(delta: float, backwards: bool) -> bool:
 	var flat_target := Vector3(target.x, position.y, target.z)
 	var to_target := flat_target - position
 	if to_target.length() <= WAYPOINT_REACH:
+		_slide_side = 0
 		_leg += 1
 		if _leg >= route.size():
 			_leg = 0
@@ -426,8 +430,20 @@ func _avoid_buildings(dir: Vector3, target: Vector3) -> Vector3:
 
 	if push.length() < 0.001:
 		return dir
-	var steered: Vector3 = dir + push.normalized() * AVOID_WEIGHT
+	var outward: Vector3 = push.normalized()
+	var steered: Vector3 = dir + outward * AVOID_WEIGHT
 	steered.y = 0.0
+	# В ЛОБ НА СТЕНУ толчок ровно против курса, и сумма тянет назад: обоз
+	# качался у дома, поставленного поперёк его пути, до конца партии (набор
+	# «караван», проверка «объехал, а не встал»; нашли проверки ядра
+	# Unity-версии). Тогда — вдоль стены, в сторону цели. Сторону обхода
+	# ЗАПОМИНАЕМ до следующей точки маршрута: выбранная заново, она
+	# перещёлкивалась у середины стены, и обоз метался влево-вправо.
+	if steered.dot(dir) <= 0.1:
+		var along := Vector3(-outward.z, 0.0, outward.x)
+		if _slide_side == 0:
+			_slide_side = -1 if along.dot(dir) < 0.0 else 1
+		steered = along * float(_slide_side) + outward * 0.3
 	return steered.normalized() if steered.length() > 0.01 else dir
 
 
