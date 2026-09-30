@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 151;
+    const int Expected = 153;
     static int _ran;
     static int _failed;
 
@@ -59,6 +59,7 @@ public static class CoreTests
         ForestRules();
         WorldPlanRules();
         SwingAndSpellRules();
+        LobbyRules();
 
         if (_ran < Expected)
         {
@@ -1438,5 +1439,17 @@ public static class CoreTests
             && wolf.Distance(new V3(10f, 0f, 10f - Abilities.RangeOf(AbilityKind.Summon))) < 0.01f
             && SpellEffects.RallySpeedScale(true) > 1f && SpellEffects.RallyAttackScale(true) < 1f,
             "волков не больше двух, встают перед эльфом; клич — быстрее ход, чаще удар", "волк " + wolf);
+    }
+
+    static void LobbyRules()
+    {
+        int villainTaken = Lobby.AssignFaction((int)Faction.Villain, new[] { 1, 0, 0 });
+        int free = Lobby.AssignFaction((int)Faction.Guard, new[] { 0, 5, 2 });
+        int full = Lobby.AssignFaction((int)Faction.Elves, new[] { 1, 5, 5 });
+        Check(Lobby.TotalSlots() == 11 && Lobby.MaxClients() == 10 && villainTaken == (int)Faction.Elves && free == (int)Faction.Guard && full == -1,
+            "мест: злодей 1, эльфы 5, стража 5; злодей занят — на первую свободную; всё занято — отказ",
+            "за занятого злодея — " + Factions.Names[villainTaken]);
+        Check(Lobby.NextFreeSlot(new List<int> { 0, 1, 3 }) == 2 && Lobby.NextFreeSlot(new List<int>()) == 0,
+            "номер места — первый свободный", "после 0, 1, 3 — " + Lobby.NextFreeSlot(new List<int> { 0, 1, 3 }));
     }
 }
