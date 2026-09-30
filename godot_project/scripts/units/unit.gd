@@ -269,6 +269,8 @@ var _best_gap := INF
 var _best_goal := Vector3.INF
 ## Куда бойца ведут прямо сейчас. Нужна сторожу продвижения.
 var _last_goal := Vector3.INF
+## Цель, для которой путь по сетке признан бесполезным (уводил от неё).
+var _direct_goal := Vector3.INF
 var _alive := true
 ## Перевербовка: сколько осталось и куда вернуть сторону.
 var _charm_left := 0.0
@@ -758,6 +760,11 @@ func _next_step(goal: Vector3) -> Vector3:
 	var nav := _navigation()
 	if nav == null or not nav.is_ready():
 		return goal
+	# Для этой цели сетка уже сказала «путь только уводит» — не спрашиваем её
+	# заново каждый кадр, пока цель не сдвинулась.
+	if _direct_goal.is_finite() and _direct_goal.distance_to(goal) <= REPATH_DISTANCE:
+		return goal
+	_direct_goal = Vector3.INF
 
 	if _path.is_empty() or _path_index >= _path.size() \
 			or _path_goal.distance_to(goal) > REPATH_DISTANCE:
@@ -766,6 +773,18 @@ func _next_step(goal: Vector3) -> Vector3:
 		_path = nav.path_between(global_position, nav.closest_point(goal))
 		_path_index = 0
 		_path_goal = goal
+		# Путь, который кончается ДАЛЬШЕ от цели, чем мы стоим сейчас, только
+		# уводит. Так бывает, когда цель на крутом склоне без сетки: ближайшая
+		# к ней точка сетки — на вершине в шести метрах, и боец уходил от
+		# своего места в строю туда. Такой путь не берём — идём напрямую.
+		if not _path.is_empty():
+			var end: Vector3 = _path[_path.size() - 1]
+			var here := Vector2(global_position.x, global_position.z)
+			var target := Vector2(goal.x, goal.z)
+			if Vector2(end.x, end.z).distance_to(target) > here.distance_to(target) + 1.0:
+				_path.clear()
+				_direct_goal = goal
+				return goal
 
 	while _path_index < _path.size():
 		var point: Vector3 = _path[_path_index]
