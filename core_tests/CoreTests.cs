@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 145;
+    const int Expected = 151;
     static int _ran;
     static int _failed;
 
@@ -58,6 +58,7 @@ public static class CoreTests
         UnitRules();
         ForestRules();
         WorldPlanRules();
+        SwingAndSpellRules();
 
         if (_ran < Expected)
         {
@@ -1382,5 +1383,60 @@ public static class CoreTests
             if (again.Pieces[i].Center.Distance(plan.Pieces[i].Center) > 0.001f || again.Pieces[i].Size.Distance(plan.Pieces[i].Size) > 0.001f) differ++;
         Check(differ == 0,
             "план мира одинаков на всех машинах", plan.Pieces.Count + " кусков");
+    }
+
+    static void SwingAndSpellRules()
+    {
+        var eye = new V3(0f, 1f, 0f);
+        var aim = new V3(0f, 0f, -1f);
+        bool ahead = MeleeRules.InArc(aim, eye, new V3(0f, 0f, -2f));
+        bool slant = MeleeRules.InArc(aim, eye, new V3(1.6f, 0f, -2f));
+        bool side = MeleeRules.InArc(aim, eye, new V3(2f, 0f, -0.5f));
+        Check(ahead && slant && !side, "замах бьёт в дуге ±0.9 рад от прицела, сбоку — мимо", "вбок " + side);
+
+        var feet = new Dictionary<int, V3> { { 1, new V3(0f, 0f, -2f) }, { 2, new V3(0f, 0f, 2f) }, { 7, new V3(0f, 0f, 0f) } };
+        var hits = new List<ZoneHit>
+        {
+            new ZoneHit(1, "torso", new V3(0f, 1f, -2f)), new ZoneHit(1, "head", new V3(0f, 1.7f, -2f)),
+            new ZoneHit(1, "arm_l", new V3(0.4f, 1f, -2f)), new ZoneHit(2, "head", new V3(0f, 1.7f, 2f)),
+            new ZoneHit(7, "torso", eye),
+        };
+        var best = MeleeRules.BestZones(hits, aim, eye, id => feet[id], 7);
+        Check(best.Count == 1 && best[1].Zone == "head",
+            "один взмах — одна зона на цель, самая ценная; себя и того, кто за спиной, не бьёт", "зона " + best[1].Zone);
+
+        Check(MeleeRules.HarvestYield(WeaponKind.Axe, ResourceKind.Wood) == 10 && MeleeRules.HarvestYield(WeaponKind.Sword, ResourceKind.Wood) == 5
+            && MeleeRules.HarvestYield(WeaponKind.Hammer, ResourceKind.Stone) == 10 && MeleeRules.HarvestYield(WeaponKind.Axe, ResourceKind.Stone) == 5,
+            "добыча за удар: топор по лесу и молот по камню — вдвое", "топор по лесу " + MeleeRules.HarvestYield(WeaponKind.Axe, ResourceKind.Wood));
+
+        var around = new List<Sighting>
+        {
+            new Sighting(1, new V3(3f, 0f, 0f), (int)Faction.Villain, null),
+            new Sighting(2, new V3(8f, 0f, 0f), (int)Faction.Guard, null),
+            new Sighting(3, new V3(30f, 0f, 0f), (int)Faction.Guard, null),
+        };
+        var target = SpellEffects.NearestEnemy((int)Faction.Villain, new V3(0f, 0f, 0f), Abilities.RangeOf(AbilityKind.Paralysis), around);
+        var none = SpellEffects.NearestEnemy((int)Faction.Villain, new V3(0f, 0f, 0f), 5f, around);
+        Check(target.HasValue && target.Value.Id == 2 && !none.HasValue,
+            "заклинание ложится на ближайшего врага в своей дальности; своих не трогает", "цель " + target.Value.Id);
+
+        var vitals = new Vitals();
+        vitals.Health = 30f;
+        var body = new BodyState();
+        body.Bleeding = true;
+        body.CrippledMask = (1 << (int)Limb.ArmL) | (1 << (int)Limb.LegR);
+        bool healed = SpellEffects.Heal(vitals, body);
+        var whole = new Vitals();
+        bool idle = SpellEffects.Heal(whole, new BodyState());
+        Check(healed && vitals.Health == 30f + Abilities.HealAmount && !body.Bleeding
+            && !body.IsCrippled(Limb.ArmL) && body.IsCrippled(Limb.LegR) && !idle,
+            "лечение: +45 здоровья, кровь остановлена, срастается одна перебитая конечность; целого не лечит",
+            "здоровье " + vitals.Health);
+
+        var wolf = SpellEffects.SummonPoint(new V3(10f, 0f, 10f), 0f);
+        Check(SpellEffects.CanSummon(1) && !SpellEffects.CanSummon(Abilities.SummonLimit)
+            && wolf.Distance(new V3(10f, 0f, 10f - Abilities.RangeOf(AbilityKind.Summon))) < 0.01f
+            && SpellEffects.RallySpeedScale(true) > 1f && SpellEffects.RallyAttackScale(true) < 1f,
+            "волков не больше двух, встают перед эльфом; клич — быстрее ход, чаще удар", "волк " + wolf);
     }
 }
