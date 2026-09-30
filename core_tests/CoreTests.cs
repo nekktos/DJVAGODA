@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 107;
+    const int Expected = 110;
     static int _ran;
     static int _failed;
 
@@ -52,6 +52,7 @@ public static class CoreTests
         HeroRules();
         RespawnRules();
         CommanderRules();
+        PlacementRules();
 
         if (_ran < Expected)
         {
@@ -958,5 +959,29 @@ public static class CoreTests
         robbed.OnCaravanLost(new V3(0f, 0f, 0f), crowd);
         Check(!robbed.IsRobber(1) && !robbed.IsRobber(107) && robbed.IsRobber(108) && robbed.IsRobber(119),
             "память о грабителях — последние двенадцать", "старые забыты");
+    }
+
+    static void PlacementRules()
+    {
+        var storage = new V3(0f, 0f, 0f);
+        var standing = new List<KeyValuePair<BuildingKind, V3>> { new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, storage) };
+        var size = Res.BuildingSize(BuildingKind.Storage);
+        float snug = size.X + Placement.Clearance;
+        bool touching = Placement.Clear(new V3(snug - 0.5f, 0f, 0f), BuildingKind.Storage, standing);
+        bool spaced = Placement.Clear(new V3(snug + 0.5f, 0f, 0f), BuildingKind.Storage, standing);
+        Check(!touching && spaced, "между постройками зазор 3 м: проход между домами не закрыть",
+            "впритык " + touching + ", с зазором " + spaced);
+
+        bool flat = Placement.GroundFits(new float?[] { 0f, 1f, 2f, 6.5f, 3f });
+        bool cliff = Placement.GroundFits(new float?[] { 0f, 1f, 2f, 7.5f, 3f });
+        bool edge = Placement.GroundFits(new float?[] { 0f, null, 0f, 0f, 0f });
+        Check(flat && !cliff && !edge, "земля под пятном — не круче ступеньки в 7 м и не за краем мира",
+            "склон " + flat + ", обрыв " + cliff + ", край " + edge);
+
+        var relief = Relief.ForMap();
+        var none = new List<KeyValuePair<BuildingKind, V3>>();
+        bool home = Placement.Buildable(MapLayout.ZoneCenters[(int)Zone.Villain], BuildingKind.Storage, relief, none);
+        bool outside = Placement.Buildable(new V3(598f, 0f, 150f), BuildingKind.Storage, relief, none);
+        Check(home && !outside, "в зоне злодея ставить можно, за краем мира — нет", "зона " + home + ", край " + outside);
     }
 }
