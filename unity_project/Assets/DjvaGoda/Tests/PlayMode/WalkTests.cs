@@ -98,5 +98,30 @@ namespace DjvaGoda.Tests
             Assert.That(player.Feet.Y, Is.GreaterThan(MapLayout.PlateauHeight - 0.5f),
                 "по пандусу на плато не поднялся: высота " + player.Feet.Y + " за " + t + " с");
         }
+
+        static float FlatToSegment(V3 p, V3 a, V3 b)
+        {
+            float dx = b.X - a.X, dz = b.Z - a.Z;
+            float len = dx * dx + dz * dz;
+            float t = len < 1e-6f ? 0f : Mathf.Clamp01(((p.X - a.X) * dx + (p.Z - a.Z) * dz) / len);
+            return p.FlatDistance(new V3(a.X + dx * t, 0f, a.Z + dz * t));
+        }
+
+        [UnityTest]
+        public IEnumerator PalaceIsReachedOnlyByTheRamp()
+        {
+            while (!_boot.Nav.Ready) yield return null;
+            var guard = Factions.Spawn[(int)Faction.Guard];
+            var villain = Factions.Spawn[(int)Faction.Villain];
+            var path = _boot.Nav.PathBetween(guard, villain);
+            Assert.That(path.Count, Is.GreaterThan(1), "пути со двора стражи к форту злодея нет");
+            Assert.That(path[path.Count - 1].FlatDistance(villain), Is.LessThan(15f), "путь обрывается в " + path[path.Count - 1]);
+            // Меряем до ОТРЕЗКОВ пути: углы у сетки только на поворотах, и прямой
+            // участок через пандус угла у подножия может не иметь.
+            float nearRamp = float.MaxValue;
+            for (int i = 1; i < path.Count; i++) nearRamp = Mathf.Min(nearRamp, FlatToSegment(MapLayout.RampFoot, path[i - 1], path[i]));
+            // Въезд на плато один — пандус; путь со склонов значит дыру в сетке.
+            Assert.That(nearRamp, Is.LessThan(MapLayout.RampWidth), "путь с плато идёт не через пандус: ближе всего " + nearRamp + " м");
+        }
     }
 }

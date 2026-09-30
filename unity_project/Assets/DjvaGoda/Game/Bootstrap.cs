@@ -13,12 +13,15 @@ namespace DjvaGoda.Game
         public Faction Side = Faction.Guard;
 
         public WorldBuilder World { get; private set; }
+        public NavWorld Nav { get; private set; }
         public PlayerCharacter Player { get; private set; }
         public CameraRig Rig { get; private set; }
 
         void Awake()
         {
             World = new GameObject("Мир").AddComponent<WorldBuilder>();
+            // Сетка печётся в Start — после того, как мир построился в Awake.
+            Nav = World.gameObject.AddComponent<NavWorld>();
             Light();
 
             var root = new GameObject("Игрок");
