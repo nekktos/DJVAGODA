@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 117;
+    const int Expected = 125;
     static int _ran;
     static int _failed;
 
@@ -54,6 +54,7 @@ public static class CoreTests
         CommanderRules();
         PlacementRules();
         TripRules();
+        LabourerRules();
 
         if (_ran < Expected)
         {
@@ -1072,5 +1073,110 @@ public static class CoreTests
         Check(outbound == 5 && ahead.State == CaravanState.ToHome && ahead.Side == Faction.Guard
             && home.Count == 2 && home[home.Count - 1].Distance(new V3(0f, 0f, 200f)) < 0.01f,
             "путь вперёд — туда и обратно; перехваченный обоз едет к складу перехватчика", "впереди " + outbound + " точек");
+    }
+
+    static WorkSite Site(int id, SiteKind kind, Faction side, V3 at, float body, ResourceKind resource)
+    {
+        return new WorkSite { Id = id, Kind = kind, Side = side, At = at, Body = body, Resource = resource, Dock = at };
+    }
+
+    static void LabourerRules()
+    {
+        var home = new V3(0f, 0f, 0f);
+        var tree = Site(1, SiteKind.Harvestable, Faction.Villain, new V3(40f, 0f, 0f), 1f, ResourceKind.Wood);
+        var rock = Site(2, SiteKind.Harvestable, Faction.Villain, new V3(10f, 0f, 0f), 3f, ResourceKind.Stone);
+        var ours = Site(3, SiteKind.Storage, Faction.Villain, new V3(0f, 0f, 30f), 6f, ResourceKind.Wood);
+        var theirs = Site(4, SiteKind.Storage, Faction.Guard, new V3(35f, 0f, 0f), 6f, ResourceKind.Wood);
+        var view = new LabourerView { At = home, Home = home };
+        view.Sites.AddRange(new[] { tree, rock, ours, theirs });
+
+        var jack = new LabourerBrain(Faction.Villain, LabourerRole.Lumberjack);
+        var walk = jack.Tick(0.1f, view);
+        view.At = new V3(35f, 0f, 0f);
+        var chop = jack.Tick(0.1f, view);
+        Check(walk.Site == tree && walk.Goal.Distance(tree.At) < 0.01f && chop.Action == LabourAction.Harvest,
+            "лесоруб идёт к ближайшему дереву (камень не его) и рубит с 4.5 м плюс толщина ствола",
+            "ближе камень, а цель — " + walk.Site.Resource);
+
+        for (int i = 0; i < 6; i++) jack.Harvested(ResourceKind.Wood);
+        var carry = jack.Tick(0.1f, view);
+        view.At = ours.At + new V3(8f, 0f, 0f);
+        var hand = jack.Tick(0.1f, view);
+        var wallet = new Wallet();
+        wallet.Stored.Capacity = 20;
+        int brought = jack.Unload(wallet);
+        Check(carry.Goal.Distance(ours.At) < 0.01f && hand.Action == LabourAction.Deliver && brought == 30
+            && wallet.Stored.GetAmount(ResourceKind.Wood) == 20 && wallet.Carried.GetAmount(ResourceKind.Wood) == 10 && jack.Carrying == 0,
+            "полная ноша (30) — на ближайший свой склад, чужой не в счёт; не влезшее — в казну при себе",
+            "склад " + wallet.Stored.GetAmount(ResourceKind.Wood) + ", при себе " + wallet.Carried.GetAmount(ResourceKind.Wood));
+
+        var scared = new LabourerView { At = new V3(10f, 0f, 0f), Home = new V3(10f, 0f, -100f) };
+        scared.Others.Add(new SidedPoint(new V3(8f, 0f, 0f), (int)Faction.Villain));
+        scared.Others.Add(new SidedPoint(new V3(20f, 0f, 0f), (int)Faction.Elves));
+        var flee = new LabourerBrain(Faction.Villain, LabourerRole.Lumberjack).Tick(0.1f, scared);
+        var run = (flee.Goal - scared.At).Flat();
+        Check(flee.Fleeing && Math.Abs(run.Length() - LabourerStats.FleeRadius) < 0.01f && run.X < 0f && run.Z < 0f,
+            "враг в 18 м — батрак бежит: наполовину прочь, наполовину к дому; свой не пугает", "бежит на " + run);
+
+        var mine = Site(9, SiteKind.Mine, Faction.Villain, new V3(-167f, 0f, -158f), 17f, ResourceKind.Iron);
+        mine.Dock = new V3(-150f, 0f, -140f);
+        var pit = new LabourerView { At = home, Home = home, SideMine = mine };
+        pit.Sites.Add(rock);
+        var miner = new LabourerBrain(Faction.Villain, LabourerRole.Miner);
+        var go = miner.Tick(0.1f, pit);
+        pit.At = mine.Dock + new V3(15f, 0f, 0f);
+        var short_ = miner.Tick(0.1f, pit);
+        pit.At = mine.Dock + new V3(8f, 0f, 0f);
+        var dig = miner.Tick(0.1f, pit);
+        Check(go.Goal.Distance(mine.Dock) < 0.01f && short_.Action == LabourAction.None && dig.Action == LabourAction.Dig && miner.Carrying == 0,
+            "шахтёр копает в 9 м от входа шахты своей стороны, мимо камня, и руду не носит — её везёт обоз",
+            "цель " + go.Goal);
+
+        var farm = Site(5, SiteKind.Farm, Faction.Villain, new V3(0f, 0f, -20f), 10f, ResourceKind.Food);
+        var field = new LabourerView { At = farm.At, Home = home };
+        field.Sites.AddRange(new[] { farm, ours });
+        var farmer = new LabourerBrain(Faction.Villain, LabourerRole.Farmer);
+        var take = farmer.Tick(0.1f, field);
+        var crop = Res.Empty();
+        crop[(int)ResourceKind.Food] = 6;
+        farmer.Took(crop);
+        farmer.Tick(1.3f, field);
+        farmer.Took(Res.Empty());
+        var bring = farmer.Tick(0.1f, field);
+        Check(take.Action == LabourAction.Take && bring.Goal.Distance(ours.At) < 0.01f,
+            "фермер берёт еду с поля; поле пустое, а в руках есть — несёт на склад", "несёт " + farmer.Carrying);
+
+        int fed = 0, starving = 0;
+        var worker = new LabourerBrain(Faction.Villain, LabourerRole.Lumberjack);
+        var worker2 = new LabourerBrain(Faction.Villain, LabourerRole.Lumberjack);
+        var atTree = new LabourerView { At = tree.At, Home = home };
+        atTree.Sites.Add(tree);
+        var hungry = new LabourerView { At = tree.At, Home = home, Hungry = true };
+        hungry.Sites.Add(tree);
+        for (int i = 0; i < 120; i++)
+        {
+            if (worker.Tick(0.1f, atTree).Action == LabourAction.Harvest) fed++;
+            if (worker2.Tick(0.1f, hungry).Action == LabourAction.Harvest) starving++;
+        }
+        Check(fed == 10 && starving == 5, "голодный батрак работает вдвое медленнее", "за 12 с: сытый " + fed + ", голодный " + starving);
+
+        var site = Site(6, SiteKind.Construction, Faction.Villain, new V3(5f, 0f, 0f), 6f, ResourceKind.Wood);
+        var yard = new LabourerView { At = home, Home = home };
+        yard.Sites.Add(site);
+        var build = new LabourerBrain(Faction.Villain, LabourerRole.Builder).Tick(0.1f, yard);
+        var post = new LabourerView { At = new V3(5f, 0f, 5f), Home = home };
+        var militia = new LabourerBrain(Faction.Villain, LabourerRole.Militia).Tick(0.1f, post);
+        Check(build.Action == LabourAction.Build && militia.Action == LabourAction.None && militia.Goal.Distance(post.At) < 0.01f,
+            "строитель стоит у стройки; ополченца ведёт отряд, а не работа", build.Action.ToString());
+
+        var fell = new LabourerBrain(Faction.Villain, LabourerRole.Lumberjack);
+        var two = new LabourerView { At = home, Home = home };
+        var near = Site(7, SiteKind.Harvestable, Faction.Villain, new V3(10f, 0f, 0f), 1f, ResourceKind.Wood);
+        var far = Site(8, SiteKind.Harvestable, Faction.Villain, new V3(60f, 0f, 0f), 1f, ResourceKind.Wood);
+        two.Sites.AddRange(new[] { near, far });
+        fell.Tick(0.1f, two);
+        two.Sites.Remove(near);
+        var next = fell.Tick(0.1f, two);
+        Check(next.Site == far, "дерево повалили — батрак сразу идёт к другому", "цель " + next.Goal);
     }
 }
