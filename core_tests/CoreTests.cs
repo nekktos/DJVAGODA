@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 37;
+    const int Expected = 42;
     static int _ran;
     static int _failed;
 
@@ -34,6 +34,7 @@ public static class CoreTests
         Match();
         OrdersAndTasks();
         Steward();
+        Wounds();
 
         if (_ran < Expected)
         {
@@ -270,6 +271,42 @@ public static class CoreTests
         Check(!StewardRules.ShouldHire(new EconomyView { Crew = 2, Horses = 0 })
             && StewardRules.ShouldHire(new EconomyView { Crew = 2, Horses = 1 }),
             "без лошади — не больше двух батраков: золото нужно на лошадь", "наём");
+    }
+
+    static void Wounds()
+    {
+        var cut = new BodyState();
+        cut.RegisterHit("arm_r", 50f, WeaponKind.Sword);
+        var shot = new BodyState();
+        shot.RegisterHit("arm_r", 50f, WeaponKind.Bow);
+        Check(cut.IsSevered(Limb.ArmR) && cut.Bleeding && shot.IsCrippled(Limb.ArmR) && !shot.IsSevered(Limb.ArmR) && !shot.Bleeding,
+            "меч отрубает руку и открывает кровь, стрела калечит без крови",
+            cut.Summary() + " / " + shot.Summary());
+
+        shot.RegisterHit("arm_r", 1f, WeaponKind.Axe);
+        Check(shot.IsSevered(Limb.ArmR), "покалеченная рука — на один рубящий удар от потери", shot.Summary());
+
+        var legs = new BodyState();
+        legs.RegisterHit("leg_l", 50f, WeaponKind.Sword);
+        float crawl = legs.MoveSpeed(6f);
+        legs.GrantProsthetic(Limb.LegL, 3);
+        float master = legs.MoveSpeed(6f);
+        Check(Math.Abs(crawl - BodyState.CrawlSpeedOne) < 0.001f && master > 6f && !legs.IsCrawling(),
+            "без ноги ползёшь, мастерский протез — быстрее живой",
+            "ползком " + crawl + ", с протезом " + master);
+
+        var bleeding = new BodyState();
+        bleeding.RegisterHit("arm_l", 50f, WeaponKind.Axe);
+        float lost = bleeding.Tick(10f);
+        bool bandaged = bleeding.ApplyBandage();
+        Check(Math.Abs(lost - 30f) < 0.01f && bandaged && !bleeding.Bleeding && bleeding.Bandages == 2,
+            "кровотечение: три в секунду, бинт останавливает", "за 10 с " + lost);
+
+        var head = new BodyState();
+        head.RegisterHit("head", 85f, WeaponKind.Hammer);
+        Check(head.EyesLost == 2 && Math.Abs(head.Blindness() - 1f) < 0.001f && head.GrantEye() && head.Blindness() < 1f,
+            "удары по голове выбивают глаза; некротический глаз возвращает зрение",
+            "потеряно " + head.EyesLost);
     }
 
     static void Mines()
