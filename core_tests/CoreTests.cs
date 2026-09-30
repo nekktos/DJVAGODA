@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 52;
+    const int Expected = 54;
     static int _ran;
     static int _failed;
 
@@ -39,6 +39,7 @@ public static class CoreTests
         Caravans();
         Map();
         HungerRules();
+        Keys();
 
         if (_ran < Expected)
         {
@@ -391,6 +392,23 @@ public static class CoreTests
             && poor.GetAmount(ResourceKind.Food) == 20,
             "не хватило на всех — не ест никто; умирают только с третьего пропуска",
             third.Message);
+    }
+
+    static void Keys()
+    {
+        var map = KeyActions.Defaults();
+        var clashes = new List<string>();
+        foreach (var action in KeyActions.All)
+            foreach (var key in action.Defaults)
+                foreach (var other in KeyActions.Conflicts(action.Name, key, map))
+                    clashes.Add(action.Name + "=" + other);
+        Check(clashes.Count == 0, "в раскладке по умолчанию нет конфликтов — B в бою и сверху не мешают",
+            clashes.Count == 0 ? "чисто" : string.Join(", ", clashes.ToArray()));
+
+        KeyActions.Rebind(map, "jump", "<Keyboard>/w");
+        Check(map["jump"][0] == "<Keyboard>/w" && map["move_forward"][0] == "<Keyboard>/space"
+            && KeyActions.Conflicts("jump", "<Keyboard>/w", map).Count == 0,
+            "переназначение на занятую клавишу меняет их местами", "прыжок на W, вперёд на пробел");
     }
 
     static void Mines()
