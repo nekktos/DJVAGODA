@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 62;
+    const int Expected = 64;
     static int _ran;
     static int _failed;
 
@@ -42,6 +42,7 @@ public static class CoreTests
         Keys();
         DealsRules();
         ServiceRules();
+        ElderRules();
 
         if (_ran < Expected)
         {
@@ -476,6 +477,23 @@ public static class CoreTests
         Check(isFinal && pawnDoesNotCount && failed != null && final.FinalThreshold == 10 && !final.Order.HasValue,
             "последний бой — за личное убийство злодея; погиб — провален, заслужи снова",
             "порог " + final.FinalThreshold);
+    }
+
+    static void ElderRules()
+    {
+        var elf = new ElfTaskRecord { TasksDone = 2 };
+        var pay = new Wallet();
+        pay.Carried.Capacity = 2000;
+        string issued = elf.Report(pay, false, true);
+        Check(elf.Task == ElfTaskKind.Reclaim && issued.Contains("вернуть землю"),
+            "«подрубить хозяйство» не дают, пока у врагов нет батраков", issued);
+
+        elf.TickHold(15f, true, 1);
+        int contested = elf.Progress;
+        elf.TickHold(21f, true, 0);
+        string paid = elf.Report(pay, true, true);
+        Check(contested == 0 && pay.GetAmount(ResourceKind.Gold) == 60 && elf.TasksDone == 3,
+            "хутор держат, пока рядом нет чужих; сдано — золото", paid);
     }
 
     static void Mines()
