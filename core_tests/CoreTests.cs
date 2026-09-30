@@ -314,10 +314,10 @@ public static class CoreTests
     {
         var runner = new Vitals();
         int ran = 0;
-        for (int i = 0; i < 120; i++) if (runner.TickRun(0.1f, true, false)) ran++;
+        while (ran < 200 && runner.TickRun(0.1f, true, false)) ran++;
         bool winded = runner.Winded;
-        runner.TickRun(0.1f, true, false);
-        Check(ran >= 99 && ran <= 101 && winded && runner.Stamina < Vitals.StaminaFloor,
+        bool blocked = !runner.TickRun(0.1f, true, false);
+        Check(ran >= 99 && ran <= 101 && winded && blocked && runner.Stamina < Vitals.StaminaFloor,
             "десять секунд бега — и выдохся; бежать снова нельзя, пока не отдышишься",
             "бежал " + ran + " тактов, выносливость " + runner.Stamina);
 
