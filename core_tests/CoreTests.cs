@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 76;
+    const int Expected = 80;
     static int _ran;
     static int _failed;
 
@@ -47,6 +47,7 @@ public static class CoreTests
         Spells();
         Loot();
         Saves();
+        ReliefRules();
 
         if (_ran < Expected)
         {
@@ -623,5 +624,54 @@ public static class CoreTests
         Check(full.Stored[(int)ResourceKind.Stone] == MineState.StockpileCap - 120 && took[(int)ResourceKind.Stone] == 120,
             "шахта копит до потолка, обоз забирает сколько влезет",
             "осталось " + full.Stored[(int)ResourceKind.Stone]);
+    }
+
+    static void ReliefRules()
+    {
+        var relief = Relief.ForMap();
+        var mustBeFlat = new List<V3>(MapLayout.ZoneCenters);
+        mustBeFlat.AddRange(MapLayout.Traders);
+        mustBeFlat.Add(MapLayout.Workbench);
+        mustBeFlat.Add(MapLayout.RampFoot);
+        mustBeFlat.Add(new V3(0f, 0f, 0f));
+        mustBeFlat.Add(new V3(0f, 0f, -410f));
+        mustBeFlat.Add(new V3(530f, 0f, 0f));
+        mustBeFlat.Add(new V3(600f, 0f, 150f));
+        var emperor = MapLayout.ZoneCenters[(int)Zone.Emperor];
+        mustBeFlat.Add(new V3(emperor.X + 180f, 0f, emperor.Z + 180f));
+        foreach (var mine in MapLayout.Mines)
+        {
+            mustBeFlat.Add(mine.At);
+            mustBeFlat.Add(MapLayout.MineEntrance(mine.At));
+        }
+        string bump = "";
+        foreach (var at in mustBeFlat)
+            if (relief.Height(at.X, at.Z) != 0f) bump += at + "=" + relief.Height(at.X, at.Z) + " ";
+        Check(bump == "", "рельеф плоский под зонами, лавками, дорогами, плато, шахтами и у края",
+            bump == "" ? mustBeFlat.Count + " точек на нуле" : bump);
+
+        float top = 0f, lowest = 0f, steepest = 0f;
+        int hilly = 0, cells = 0;
+        float half = MapLayout.WorldSize * 0.5f;
+        for (float x = -half; x <= half; x += Relief.Cell)
+            for (float z = -half; z <= half; z += Relief.Cell)
+            {
+                float h = relief.Height(x, z);
+                cells++;
+                if (h > 2f) hilly++;
+                top = Math.Max(top, h);
+                lowest = Math.Min(lowest, h);
+                float dx = relief.Height(x + Relief.Cell, z) - h;
+                float dz = relief.Height(x, z + Relief.Cell) - h;
+                float slope = (float)(Math.Atan(Math.Sqrt(dx * dx + dz * dz) / Relief.Cell) * 180.0 / Math.PI);
+                steepest = Math.Max(steepest, slope);
+            }
+        Check(top > 8f && hilly * 10 > cells, "холмы на карте есть, а не бильярдный стол",
+            "вершина " + top.ToString("0.0") + " м, холмистых клеток " + hilly + " из " + cells);
+        Check(lowest >= 0f && steepest < 30f, "земля только растёт вверх, и уклон с запасом ниже потолка навигации 45°",
+            "низ " + lowest + ", круче всего " + steepest.ToString("0.0") + "°");
+        var again = Relief.ForMap();
+        Check(again.Height(-120f, 215f) == relief.Height(-120f, 215f) && again.Height(410f, 77f) == relief.Height(410f, 77f),
+            "рельеф одинаков у хоста и клиента: то же зерно — те же холмы", "высота " + relief.Height(-120f, 215f).ToString("0.00"));
     }
 }
