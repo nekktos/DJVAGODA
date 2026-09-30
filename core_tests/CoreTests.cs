@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 17;
+    const int Expected = 37;
     static int _ran;
     static int _failed;
 
@@ -29,6 +29,11 @@ public static class CoreTests
         Combat();
         Formations_();
         Mines();
+        Treasury();
+        Buildings();
+        Match();
+        OrdersAndTasks();
+        Steward();
 
         if (_ran < Expected)
         {
@@ -115,6 +120,156 @@ public static class CoreTests
         float lineWidth = Formations.SlotOffset(FormationKind.Line, 7).X - Formations.SlotOffset(FormationKind.Line, 0).X;
         Check(maxX - minX < 3f && lineWidth > 12f, "колонна — по двое, шеренга — широкая",
             "колонна " + (maxX - minX) + " м, шеренга " + lineWidth + " м");
+    }
+
+    static void Treasury()
+    {
+        var wallet = new Wallet();
+        wallet.Stored.Capacity = 400;
+        wallet.Grant(new[] { 10, 0, 50, 0 });
+        wallet.AddStored((int)ResourceKind.Gold, 100);
+        wallet.Spend(new[] { 0, 0, 60, 0 });
+        Check(wallet.Carried.GetAmount(ResourceKind.Gold) == 0 && wallet.Stored.GetAmount(ResourceKind.Gold) == 90,
+            "платят сперва тем, что при себе, остаток — со склада",
+            "при себе " + wallet.Carried.GetAmount(ResourceKind.Gold) + ", в складе " + wallet.Stored.GetAmount(ResourceKind.Gold));
+
+        var full = new Wallet();
+        full.Stored.Capacity = 100;
+        full.Grant(new[] { 150, 0, 0, 0 });
+        int moved = full.Deposit();
+        Check(moved == 100 && full.Carried.GetAmount(ResourceKind.Wood) == 50,
+            "склад не принимает сверх потолка — остаток остаётся при себе",
+            "сдано " + moved + ", при себе " + full.Carried.GetAmount(ResourceKind.Wood));
+
+        var lost = full.DropCarried();
+        Check(lost[(int)ResourceKind.Wood] == 50 && full.GetAmount(ResourceKind.Wood) == 100,
+            "смерть роняет только то, что при себе; склад — страховка",
+            "выпало " + lost[(int)ResourceKind.Wood] + ", осталось " + full.GetAmount(ResourceKind.Wood));
+    }
+
+    static void Buildings()
+    {
+        var solo = new BuildingState(BuildingKind.Storage, Faction.Villain, false);
+        var crew = new BuildingState(BuildingKind.Storage, Faction.Villain, false);
+        for (int i = 0; i < 20; i++)
+        {
+            solo.Build(0.1f, 0);
+            crew.Build(0.1f, 2);
+        }
+        Check(Math.Abs(crew.Progress - solo.Progress * 3f) < 0.01f && !solo.Done,
+            "двое строителей — стройка втрое быстрее, без них всё равно идёт",
+            "один " + solo.Progress + ", с двумя " + crew.Progress);
+
+        var wall = new BuildingState(BuildingKind.Stable, Faction.Villain, true);
+        wall.TakeDamage(500f, (int)Faction.Elves, 0, 0);
+        wall.ApplyUpgrade();
+        Check(wall.Grade == 1 && Math.Abs(wall.Health - (1200f - 500f + 800f)) < 0.1f,
+            "укрепление прибавляет разницу ступеней — побитая стена остаётся побитой",
+            "прочность " + wall.Health + " из " + wall.MaxHealth);
+
+        var fort = new BuildingState(BuildingKind.Storage, Faction.Villain, true);
+        float byGuard = fort.TakeDamage(100f, (int)Faction.Guard, 0, 0);
+        float byElf = fort.TakeDamage(100f, (int)Faction.Elves, 0, 0);
+        Check(Math.Abs(byGuard - 10f) < 0.01f && Math.Abs(byElf - 100f) < 0.01f,
+            "простая стража ломает постройки злодея в десятую силу, эльфы — в полную",
+            "стража " + byGuard + ", эльф " + byElf);
+
+        var field = new BuildingState(BuildingKind.Farm, Faction.Villain, true);
+        for (int i = 0; i < 100; i++) field.Grow(1f);
+        var food = field.TakeGrown(12);
+        Check(food[(int)ResourceKind.Food] == 12 && field.Grown[(int)ResourceKind.Food] == 13,
+            "поле растит само, фермер уносит, сколько влезет в руки",
+            "унёс " + food[(int)ResourceKind.Food] + ", осталось " + field.Grown[(int)ResourceKind.Food]);
+    }
+
+    static void Match()
+    {
+        var match = new MatchState();
+        var villain = new List<Faction> { Faction.Villain };
+        var said = new List<string>();
+        for (int i = 0; i < 21; i++) said.AddRange(match.TickCapture(1f, villain));
+        Check(match.PalaceOwner == Faction.Villain && match.GuardAbsorbed
+            && !Factions.Hostile((int)Faction.Villain, (int)Faction.Guard),
+            "злодей держит дворец 20 с — дворец его, стража — его союзник",
+            string.Join(" / ", said.ToArray()));
+        match.GuardAbsorbed = false;
+        match.ApplyAlliances();
+
+        var contested = new MatchState();
+        for (int i = 0; i < 30; i++)
+            contested.TickCapture(1f, new List<Faction> { Faction.Villain, Faction.Elves });
+        Check(contested.PalaceOwner == Faction.Guard && contested.CaptureProgress == 0f,
+            "оспоренный дворец не берётся", "прогресс " + contested.CaptureProgress);
+
+        var elves = new MatchState();
+        var alive = new SideSnapshot { HasPlayers = true, HasBarracks = true, ElfHouses = 0, LivingElves = 1 };
+        var none = new SideSnapshot { HasPlayers = true, HasBarracks = true, ElfHouses = 0, LivingElves = 0 };
+        bool stillIn = !elves.SideOut(Faction.Elves, alive);
+        bool gone = elves.SideOut(Faction.Elves, none);
+        Check(stillIn && gone, "эльфы выбывают, только когда нет ни домов, ни живых", "домов 0");
+
+        var guard = new MatchState();
+        guard.ReportLeaderDown(Faction.Guard, 0);
+        var withBarracks = new SideSnapshot { HasPlayers = true, HasBarracks = true };
+        var withoutBarracks = new SideSnapshot { HasPlayers = true, HasBarracks = false };
+        Check(!guard.SideOut(Faction.Guard, withBarracks) && guard.SideOut(Faction.Guard, withoutBarracks),
+            "стража сломлена, только когда пал командир И снесены казармы", "командир пал");
+
+        var end = new MatchState();
+        end.ReportLeaderDown(Faction.Villain, 1);
+        var fresh = new SideSnapshot { HasPlayers = false, AiHeroExists = false };
+        var sides = new[]
+        {
+            new SideSnapshot { HasPlayers = true },
+            new SideSnapshot { HasPlayers = true, ElfHouses = 0, LivingElves = 0 },
+            fresh,
+        };
+        var words = end.CheckVictories(sides);
+        Check(end.Victors[(int)Faction.Guard] && end.SidesLeft() == 1 && !end.SideOut(Faction.Guard, fresh),
+            "одна сторона осталась — ПОБЕДА; пустая сторона без вожака не выбывает сама",
+            string.Join(" / ", words.ToArray()));
+    }
+
+    static void OrdersAndTasks()
+    {
+        var skipHunt = Orders.Next(2, 6, k => k != OrderKind.Hunt);
+        Check(skipHunt == OrderKind.Mine && Orders.Next(5, 0, null) == OrderKind.Final,
+            "невыполнимый приказ пропускается; после пяти сданных — последний бой",
+            skipHunt + ", " + Orders.Next(5, 0, null));
+        Check(Orders.BriefOf(OrderKind.Hold).Contains("25") && Orders.ProgressText(OrderKind.Raid, 1).Contains("вернуться"),
+            "приказ пишется с числом, набег — ступенями", Orders.BriefOf(OrderKind.Hold));
+        Check(ElfTasks.Next(5, 2) == ElfTaskKind.Head && ElfTasks.Next(2, 2) == ElfTaskKind.Labourers
+            && ElfTasks.RewardOf(ElfTaskKind.Head)[(int)ResourceKind.Gold] == 250,
+            "старейшина: по кругу, после пяти — охота за головой, награда — золотом", "задания");
+    }
+
+    static void Steward()
+    {
+        var has = new HashSet<BuildingKind> { BuildingKind.Storage, BuildingKind.Stable, BuildingKind.Farm };
+        var hungry = new EconomyView { Crew = 9, FieldsAll = 1, Has = has };
+        var fed = new EconomyView { Crew = 4, FieldsAll = 1, Has = has };
+        Check(StewardRules.NextBuilding(hungry) == BuildingKind.Farm && StewardRules.NextBuilding(fed) == BuildingKind.House,
+            "девять ртов на одном поле — ещё поле; сытые — дальше по очереди",
+            StewardRules.NextBuilding(hungry) + " / " + StewardRules.NextBuilding(fed));
+
+        var atMine = StewardRules.AssignRoles(new EconomyView { Crew = 6, CaravanAtMine = true, OreNearby = false }, null, null);
+        var noOre = StewardRules.AssignRoles(new EconomyView { Crew = 4, OreNearby = false }, new[] { 0, 99 }, new Wallet());
+        Check(atMine[(int)LabourerRole.Miner] == 2 && atMine[(int)LabourerRole.Lumberjack] == 4
+            && noOre[(int)LabourerRole.Miner] == 0 && noOre[(int)LabourerRole.Lumberjack] == 4,
+            "обоз у шахты — двое копают; копать рядом нечего — все на лес, даже когда нужен камень",
+            "шахтёров " + atMine[(int)LabourerRole.Miner] + " и " + noOre[(int)LabourerRole.Miner]);
+
+        var rich = new Wallet();
+        rich.Grant(new[] { 100, 100, 100, 100, 0, 0 });
+        Check(StewardRules.PickOre(rich, true) == ResourceKind.Coal && StewardRules.PickOre(rich, false) != ResourceKind.Coal,
+            "с кузней — за углём, когда его меньше всего; без кузни уголь не возят",
+            StewardRules.PickOre(rich, true) + " / " + StewardRules.PickOre(rich, false));
+
+        Check(StewardRules.CaravanGuards(2) == 0 && StewardRules.CaravanGuards(3) == 1 && StewardRules.CaravanGuards(8) == 2,
+            "в охрану обоза — только сверх двух работающих", "охрана при 2, 3, 8 батраках");
+        Check(!StewardRules.ShouldHire(new EconomyView { Crew = 2, Horses = 0 })
+            && StewardRules.ShouldHire(new EconomyView { Crew = 2, Horses = 1 }),
+            "без лошади — не больше двух батраков: золото нужно на лошадь", "наём");
     }
 
     static void Mines()
