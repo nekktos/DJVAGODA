@@ -401,7 +401,20 @@ func _assign_roles(faction: int) -> void:
 			need_stone = wallet != null and (
 				wallet.get_amount(RES.Kind.STONE) < RES.at(cost, RES.Kind.STONE)
 				or wallet.get_amount(RES.Kind.IRON) < RES.at(cost, RES.Kind.IRON))
-		if need_stone:
+		# Шахтёр — только если есть что копать недалеко. Камень у форта
+		# злодея — одна микро-шахта; выбита — ближайшие залежи на перекрёстке
+		# в трёхстах с лишним метрах, и шахтёр ходил туда пешком минутами,
+		# бегая по дороге от врагов («долгая партия»: десять минут с пустыми
+		# руками). Тогда все — на лес, а камень везёт обоз из каменоломни.
+		var at_mine: Node3D = get_parent().side_mine(faction)
+		if at_mine != null:
+			# Обоз у шахты или едет к ней — двое копают там (ответ автора от
+			# 30.09: на шахтах работают руками, обоз важнее носки).
+			wanted[LABOURER.Role.MINER] = mini(MINERS_AT_MINE, rest)
+			wanted[LABOURER.Role.LUMBERJACK] = rest - wanted[LABOURER.Role.MINER]
+		elif not _ore_nearby(faction):
+			wanted[LABOURER.Role.LUMBERJACK] = rest
+		elif need_stone:
 			wanted[LABOURER.Role.MINER] = rest - rest / 2
 			wanted[LABOURER.Role.LUMBERJACK] = rest / 2
 		else:
@@ -409,6 +422,27 @@ func _assign_roles(faction: int) -> void:
 			wanted[LABOURER.Role.MINER] = rest / 2
 
 	_apply_roles(crew, wanted)
+
+
+## Сколько батраков ИИ ставит копать на шахту своего обоза.
+const MINERS_AT_MINE := 2
+## Дальше этого от базы шахтёру за рудой не ходить.
+const ORE_RANGE := 150.0
+
+
+## Есть ли залежь для шахтёра недалеко от базы.
+func _ore_nearby(faction: int) -> bool:
+	var base: Vector3 = FACTIONS.SPAWN[clampi(faction, 0, FACTIONS.COUNT - 1)]
+	var kinds: Array = LABOURER.ROLE_RESOURCES[LABOURER.Role.MINER]
+	for node in get_tree().get_nodes_in_group("harvestable"):
+		var source := node as Node3D
+		if source == null or not is_instance_valid(source):
+			continue
+		if not kinds.has(int(source.get_meta("resource", -1))):
+			continue
+		if Vector2(source.global_position.x - base.x, source.global_position.z - base.z).length() <= ORE_RANGE:
+			return true
+	return false
 
 
 ## Привести состав к желаемому, трогая только тех, кого надо переставить.

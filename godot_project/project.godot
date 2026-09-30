@@ -153,6 +153,10 @@ file_logging/enable_file_logging=true
 ; целиком и стоят пары сотен килобайт.
 file_logging/max_log_files=30
 
+[navigation]
+
+3d/merge_rasterizer_cell_scale=0.1
+
 [rendering]
 
 ; Нужно для экспорта под macOS universal и arm64: без ETC2 ASTC Godot

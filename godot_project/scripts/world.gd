@@ -1638,5 +1638,26 @@ func mine_of(kind: int) -> Node3D:
 
 
 ## Куда обоз едет за грузом: к ВХОДУ шахты, а не в середину скалы.
+## Шахта, к которой едет или у которой грузится обоз стороны. Туда идут её
+## шахтёры копать: обоз важнее носки руками (ответ автора от 30.09). null —
+## обозов у шахт у стороны нет.
+func side_mine(faction: int) -> Node3D:
+	for child in _spawned.get_children():
+		if not child.has_method("path_ahead") or int(child.faction) != faction:
+			continue
+		if int(child.state) > 1:
+			continue
+		if child.route.is_empty():
+			continue
+		var end: Vector3 = child.route[child.route.size() - 1]
+		var mine: Node3D = mine_near(end)
+		if mine == null:
+			continue
+		if Vector2(end.x, end.z).distance_to(Vector2(mine_dock(mine).x, mine_dock(mine).z)) \
+				<= float(child.LOAD_REACH):
+			return mine
+	return null
+
+
 func mine_dock(which: Node3D) -> Vector3:
 	return WORLD_BUILDER.mine_entrance(which.global_position)

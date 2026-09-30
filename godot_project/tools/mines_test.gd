@@ -30,7 +30,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "шахты"
-	expected_host = 11
+	expected_host = 12
 	expected_client = 1
 	_world = world
 	_run.call_deferred()
@@ -56,6 +56,7 @@ func _run() -> void:
 	_test_rock_not_harvestable()
 	await _test_each_mines_its_own()
 	_test_miner_skips_mines()
+	await _test_miner_digs_for_caravan()
 	await _test_caravan_goes_to_last_point(me)
 	finish()
 
@@ -177,7 +178,15 @@ func _test_rock_not_harvestable() -> void:
 func _test_each_mines_its_own() -> void:
 	for each in _world.mines:
 		each.stored = RES.empty()
-	await get_tree().create_timer(4.0).timeout
+	# Копают на всех — без рабочих шахта даёт малую долю, и золота за четыре
+	# секунды не набралось бы и единицы.
+	var digger := Node.new()
+	add_child(digger)
+	for i in 8:
+		for each in _world.mines:
+			each.dig(digger)
+		await get_tree().create_timer(0.5).timeout
+	digger.queue_free()
 	var wrong := PackedStringArray()
 	for each in _world.mines:
 		var own: int = int(each.kind)
@@ -191,9 +200,10 @@ func _test_each_mines_its_own() -> void:
 		", ".join(wrong))
 
 
-## Шахтёр на шахту не ходит: руду с шахты довозит только обоз. Ставим батрака
-## вплотную к входу железной шахты — раньше она была бы для него ближайшим и
-## самым богатым местом работы.
+## Шахтёр НЕ носит руду из шахты в руках: её довозит только обоз. Но копает
+## на шахте — туда, куда едет обоз его стороны (ответ автора от 30.09: «на
+## шахтах тоже физически должны работать, но не обязательно таскать руками,
+## приоритетнее загрузить обоз»). Без такого обоза на шахту не идёт.
 func _test_miner_skips_mines() -> void:
 	var door: Vector3 = _world.mine_dock(_world.mine)
 	var worker: Node = _world.spawn_labourer(FACTIONS.Kind.VILLAIN, door, door,
@@ -203,9 +213,35 @@ func _test_miner_skips_mines() -> void:
 		return
 	var site: Node3D = worker._find_site()
 	var is_mine: bool = site != null and _world.mines.has(site)
-	check(not is_mine, "шахтёр не берёт руду из шахты — только обоз",
+	check(not is_mine, "без обоза шахтёр на шахту не идёт",
 		"место работы: %s" % (site.name if site != null else "нет"))
 	worker.free()
+
+
+## С обозом у шахты шахтёр копает у её входа: шахта копит быстрее, а в руках —
+## пусто.
+func _test_miner_digs_for_caravan() -> void:
+	var iron: Node3D = _world.mine_of(RES.Kind.IRON)
+	var door: Vector3 = _world.mine_dock(iron)
+	var cart: Node = _world.spawn_caravan(PackedVector3Array([
+		door + Vector3(0.0, 0.0, 60.0), door]), 0, FACTIONS.Kind.VILLAIN, 2)
+	var worker: Node = _world.spawn_labourer(FACTIONS.Kind.VILLAIN, door, door,
+		LABOURER.Role.MINER)
+	if cart == null or worker == null:
+		fail("обоза или батрака для проверки нет")
+		return
+	iron.stored = RES.empty()
+	var digging := false
+	for i in 12:
+		await get_tree().create_timer(0.5).timeout
+		if int(iron.diggers()) > 0:
+			digging = true
+	check(digging and int(worker.carrying()) == 0 and iron.share() > iron.PASSIVE_SHARE,
+		"с обозом у шахты шахтёр копает у входа, а руду в руках не носит",
+		"копают %d, в руках %d, скорость шахты x%.1f" % [int(iron.diggers()),
+			int(worker.carrying()), float(iron.share())])
+	worker.queue_free()
+	cart.queue_free()
 
 
 ## Обоз едет к шахте, у которой стоит последняя точка, и грузится ТОЛЬКО у шахты.

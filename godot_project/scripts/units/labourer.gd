@@ -69,6 +69,8 @@ const LOAD_LIMIT := 30
 
 ## Пауза между ударами по источнику.
 const WORK_INTERVAL := 1.2
+## Как близко к входу шахты надо стоять, чтобы копать.
+const MINE_DIG_REACH := 9.0
 
 ## Ближе этого можно работать. Чуть больше игроцкой HARVEST_RANGE: батрак
 ## подходит сам и не должен тыкаться носом в текстуру.
@@ -188,7 +190,12 @@ func _idle_destination(delta: float) -> Vector3:
 		return home if home != Vector3.ZERO else global_position
 
 	var spot: Vector3 = _site.global_position
-	if _flat_to(spot) > _work_reach(_site):
+	var reach: float = _work_reach(_site)
+	if _site.has_method("dig"):
+		# Шахта: копают у ВХОДА, а не у середины скалы в тридцать метров.
+		spot = get_parent().get_parent().mine_dock(_site)
+		reach = MINE_DIG_REACH
+	if _flat_to(spot) > reach:
 		return spot
 
 	_work_t -= delta
@@ -354,8 +361,13 @@ func _work_on(site: Node3D) -> void:
 		# Стройку двигает сама постройка, считая приставленных строителей
 		# (`building.gd`). Батраку остаётся стоять рядом — и он уже стоит.
 		return
+	if site.has_method("dig"):
+		# Шахта: копаем, а не носим (ответ автора от 30.09). Добытое копится в
+		# шахте и уезжает обозом.
+		site.dig(self)
+		return
 	if site.has_method("take"):
-		# Шахта: берём накопленное, сколько влезет в руки.
+		# Поле: берём выросшее, сколько влезет в руки.
 		var taken: PackedInt32Array = site.take(LOAD_LIMIT - carrying())
 		var got := 0
 		for value in taken:
@@ -398,6 +410,14 @@ func _find_site() -> Node3D:
 		return _nearest_site_building()
 	if sync_role == Role.FARMER:
 		return _nearest_farm()
+	# Шахтёр — сперва на шахту, куда едет обоз своей стороны: обоз важнее
+	# носки руками. Нет такого обоза — бьёт залежи, как прежде.
+	if sync_role == Role.MINER:
+		var world := get_parent().get_parent()
+		if world != null and world.has_method("side_mine"):
+			var mine: Node3D = world.side_mine(int(faction))
+			if mine != null:
+				return mine
 	var wanted: Array = ROLE_RESOURCES.get(sync_role, [])
 	var best: Node3D = null
 	var best_distance := INF

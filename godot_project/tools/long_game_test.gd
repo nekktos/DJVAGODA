@@ -27,7 +27,7 @@ const RES := preload("res://scripts/economy/resources.gd")
 const FACTIONS := preload("res://scripts/factions.gd")
 
 ## Сколько игровых минут даём злодею.
-const GAME_MINUTES := 25.0
+const GAME_MINUTES := 12.0
 ## Во сколько раз ускоряем время.
 const SPEED := 4.0
 ## Как часто смотрим, игровых секунд.
@@ -71,7 +71,7 @@ func _run() -> void:
 	var real := (Time.get_ticks_msec() - _started_real) / 1000.0
 	note("прошло %.1f игровых минут за %.1f реальных (ускорение %.1f)"
 		% [game / 60.0, real / 60.0, game / maxf(real, 0.001)])
-	for key in ["storage", "labourers", "caravan", "iron", "barracks", "soldier", "forge", "gear"]:
+	for key in ["storage", "labourers", "caravan", "iron", "barracks", "soldier", "forge", "gear", "armor"]:
 		note("  %-10s %s" % [key, _when(key)])
 	var wallet: Node = _world.treasury.of(SIDE)
 	var stock := []
@@ -109,6 +109,7 @@ func _sample(game: float) -> void:
 	_mark("forge", game, _world.barracks_of(SIDE, RES.Building.FORGE) != null)
 	var hero: Node3D = _world.ai_hero_of(SIDE)
 	_mark("gear", game, hero != null and int(hero.gear_tier) >= 1)
+	_mark("armor", game, hero != null and int(hero.armor_tier) >= 1)
 	if int(game) % 60 == 0:
 		note("%2d мин: звеньев %d, казна %s, батраков %d, бойцов %d, обозов %d"
 			% [int(game / 60.0), _reached.size(), _stock_line(wallet),
@@ -119,6 +120,14 @@ func _sample(game: float) -> void:
 				Vector2(worker.global_position.x, worker.global_position.z).round(),
 				int(worker.carrying())])
 		note("     батраки (роль:где:несёт): %s" % " ".join(hands))
+		for worker in _world.labourers_of(SIDE):
+			var site: Node3D = worker._site if is_instance_valid(worker._site) else null
+			if site != null and int(worker.sync_role) == 1:
+				var hit: KinematicCollision3D = worker.get_last_slide_collision()
+				note("     шахтёр: цель %s «%s» в %s, до неё %.1f, досягаемость %.1f, удар %s" % [site.name,
+					site.get_parent().name, site.global_position.round(),
+					Vector2(worker.global_position.x, worker.global_position.z).distance_to(Vector2(site.global_position.x, site.global_position.z)),
+					worker._work_reach(site), hit.get_collider().name if hit != null else "нет"])
 		var band: Array = _world.warband._band(FACTIONS.Kind.ELVES)
 		var band_at := "нет"
 		if not band.is_empty():

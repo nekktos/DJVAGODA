@@ -6,7 +6,11 @@ extends Node3D
 ## земле эльфов.
 ## Какая порода у этой — говорит `kind`, его выставляет мир (`world.gd`).
 ##
-## Копит добытое сама — считается, что там работают. Забрать накопленное можно
+## КОПАЮТ НА НЕЙ РУКАМИ (ответ автора от 30.09): «на шахтах тоже физически
+## должны работать, но не обязательно таскать руками, приоритетнее загрузить
+## обоз». Сама шахта даёт лишь малую долю прежнего (PASSIVE_SHARE) — кто-то там
+## всё же ковыряется, — а каждый батрак-шахтёр у её входа прибавляет свою долю
+## (`dig`). Добытое копится В ШАХТЕ, в руки не идёт. Забрать накопленное можно
 ## ТОЛЬКО обозом: по решению автора «ресурсы, добытые на шахте, можно
 ## использовать только после того, как караван дойдёт с шахты до склада».
 ## Батраки-шахтёры отсюда больше не берут: раньше они носили руду домой в руках,
@@ -34,6 +38,14 @@ const RATES := {
 ## Больше этого шахта не накапливает по каждой породе — забирайте обозом.
 const STOCKPILE_CAP := 300
 
+## Доля скорости из RATES, которую шахта даёт без рабочих, и прибавка за
+## каждого копающего — до MAX_DIGGERS. Четверо — 180 % прежнего.
+const PASSIVE_SHARE := 0.2
+const DIGGER_SHARE := 0.4
+const MAX_DIGGERS := 4
+## Сколько секунд копатель числится после последнего удара кайлом.
+const DIGGER_MEMORY := 3.0
+
 ## Главная порода шахты. Выставляет мир при постройке.
 var kind: int = RES.Kind.IRON
 
@@ -42,16 +54,39 @@ var kind: int = RES.Kind.IRON
 
 ## Накопленные доли по каждому ресурсу: скорости дробные, а запас целый.
 var _fractions := {}
+## Кто копает: номер экземпляра -> сколько секунд ещё числится.
+var _diggers := {}
+
+
+## Батрак ударил кайлом у входа. Только хост.
+func dig(worker: Node) -> void:
+	if worker != null:
+		_diggers[worker.get_instance_id()] = DIGGER_MEMORY
+
+
+## Сколько сейчас копают.
+func diggers() -> int:
+	return _diggers.size()
+
+
+## Во сколько раз от RATES шахта копит сейчас.
+func share() -> float:
+	return PASSIVE_SHARE + DIGGER_SHARE * float(mini(_diggers.size(), MAX_DIGGERS))
 
 
 func _process(delta: float) -> void:
 	if not Net.hosting():
 		return
+	for id in _diggers.keys():
+		_diggers[id] = float(_diggers[id]) - delta
+		if float(_diggers[id]) <= 0.0:
+			_diggers.erase(id)
 	var copy := RES.fit(stored)
 	var changed := false
 	var rate: Dictionary = RATES.get(kind, {})
+	var scale := share()
 	for ore in rate:
-		var carry: float = float(_fractions.get(ore, 0.0)) + float(rate[ore]) * delta
+		var carry: float = float(_fractions.get(ore, 0.0)) + float(rate[ore]) * scale * delta
 		var whole := int(carry)
 		if whole <= 0:
 			_fractions[ore] = carry
