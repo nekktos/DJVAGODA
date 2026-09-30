@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 42;
+    const int Expected = 45;
     static int _ran;
     static int _failed;
 
@@ -35,6 +35,7 @@ public static class CoreTests
         OrdersAndTasks();
         Steward();
         Wounds();
+        Character();
 
         if (_ran < Expected)
         {
@@ -307,6 +308,31 @@ public static class CoreTests
         Check(head.EyesLost == 2 && Math.Abs(head.Blindness() - 1f) < 0.001f && head.GrantEye() && head.Blindness() < 1f,
             "удары по голове выбивают глаза; некротический глаз возвращает зрение",
             "потеряно " + head.EyesLost);
+    }
+
+    static void Character()
+    {
+        var runner = new Vitals();
+        int ran = 0;
+        for (int i = 0; i < 120; i++) if (runner.TickRun(0.1f, true, false)) ran++;
+        bool winded = runner.Winded;
+        runner.TickRun(0.1f, true, false);
+        Check(ran >= 99 && ran <= 101 && winded && runner.Stamina < Vitals.StaminaFloor,
+            "десять секунд бега — и выдохся; бежать снова нельзя, пока не отдышишься",
+            "бежал " + ran + " тактов, выносливость " + runner.Stamina);
+
+        for (int i = 0; i < 20; i++) runner.TickRun(0.1f, false, false);
+        Check(!runner.Winded && runner.TickRun(0.1f, true, false),
+            "набрал второе дыхание — снова бежит", "выносливость " + runner.Stamina);
+
+        var hero = new Vitals();
+        hero.Experience = 120;
+        bool first = hero.BuyLevel(Stat.Health);
+        bool second = hero.BuyLevel(Stat.Health);
+        bool third = hero.BuyLevel(Stat.Health);
+        Check(first && second && !third && hero.MaxHealth == 130f && hero.Experience == 0,
+            "прокачка за опыт: цена растёт, прибавка поверх базы",
+            "здоровье " + hero.MaxHealth + ", опыта осталось " + hero.Experience);
     }
 
     static void Mines()
