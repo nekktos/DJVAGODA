@@ -3,6 +3,9 @@
 //
 // Мир сообщает события (убийство, разбитый обоз, секунды в точке), книжка
 // стража продвигается по правилам. Всё считает хост.
+using System;
+using System.Collections.Generic;
+
 namespace DjvaGoda.Core
 {
     /// Служебная книжка одного стража.
@@ -170,6 +173,70 @@ namespace DjvaGoda.Core
             }
             IsLeader = true;
             return "Страж принял командование";
+        }
+    }
+
+    /// Пост распорядителя стражи. Он убиваем, но не насовсем: через три минуты
+    /// снова встаёт на пост — налёт с последствиями, а не выключенная сторона.
+    /// Он же помнит грабителей обоза стражи — на них висит погоня.
+    public class CommanderPost
+    {
+        public static readonly V3 Position = new V3(270f, 6f, -235f);
+        public const float RespawnDelay = 180f;
+        /// Двор, который он обороняет: за его пределы за целью не идёт.
+        public const float Leash = 45f;
+        public const int RobbersKept = 12;
+
+        public bool OnDuty { get; private set; }
+        float _respawnLeft;
+        readonly List<int> _robbers = new List<int>();
+
+        public CommanderPost() { OnDuty = true; }
+
+        public float RespawnLeft { get { return OnDuty ? 0f : _respawnLeft; } }
+
+        public void OnDied()
+        {
+            if (!OnDuty) return;
+            OnDuty = false;
+            _respawnLeft = RespawnDelay;
+        }
+
+        /// Такт хоста. true — распорядитель только что вернулся (объявить).
+        public bool Tick(float delta)
+        {
+            if (OnDuty) return false;
+            _respawnLeft -= delta;
+            if (_respawnLeft > 0f) return false;
+            OnDuty = true;
+            return true;
+        }
+
+        /// Доложить можно только живому, стоя рядом (по горизонтали).
+        public bool InRange(V3 point)
+        {
+            return OnDuty && Position.FlatDistance(point) <= Orders.TalkRange;
+        }
+
+        /// Обоз стражи ограблен: все враги в 30 м от места — грабители.
+        public void OnCaravanLost(V3 point, IEnumerable<KeyValuePair<int, V3>> livingHostiles)
+        {
+            foreach (var hostile in livingHostiles)
+            {
+                if (hostile.Value.FlatDistance(point) > Orders.RobberRadius) continue;
+                if (!_robbers.Contains(hostile.Key)) _robbers.Add(hostile.Key);
+            }
+            while (_robbers.Count > RobbersKept) _robbers.RemoveAt(0);
+        }
+
+        public bool IsRobber(int id) { return _robbers.Contains(id); }
+
+        /// Погоню дают, только пока жив хоть один грабитель.
+        public bool AnyRobberAlive(Func<int, bool> alive)
+        {
+            foreach (int id in _robbers)
+                if (alive(id)) return true;
+            return false;
         }
     }
 }

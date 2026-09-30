@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 104;
+    const int Expected = 107;
     static int _ran;
     static int _failed;
 
@@ -51,6 +51,7 @@ public static class CoreTests
         WarbandRules();
         HeroRules();
         RespawnRules();
+        CommanderRules();
 
         if (_ran < Expected)
         {
@@ -923,5 +924,39 @@ public static class CoreTests
         var spawn = Factions.Spawn[(int)Faction.Elves];
         Check(Math.Abs(start.X - (spawn.X + Respawn.SlotStep)) < 0.01f && none.Distance(spawn) < 0.01f,
             "в партию входят у точки стороны (место по остатку от шести), без домов — там же", "слот 7 — " + start);
+    }
+
+    static void CommanderRules()
+    {
+        var post = new CommanderPost();
+        bool talk = post.InRange(CommanderPost.Position + new V3(5f, -6f, 3f));
+        post.OnDied();
+        bool silent = !post.InRange(CommanderPost.Position);
+        bool back = false;
+        float waited = 0f;
+        while (!back && waited < 1000f)
+        {
+            back = post.Tick(1f);
+            waited += 1f;
+        }
+        Check(talk && silent && back && Math.Abs(waited - CommanderPost.RespawnDelay) < 1.1f && post.OnDuty,
+            "распорядитель убиваем, но через три минуты снова на посту; павшему не доложишь",
+            "вернулся через " + waited + " с");
+
+        var robbed = new CommanderPost();
+        var near = new List<KeyValuePair<int, V3>>
+        {
+            new KeyValuePair<int, V3>(1, new V3(10f, 0f, 0f)),
+            new KeyValuePair<int, V3>(2, new V3(60f, 0f, 0f)),
+        };
+        robbed.OnCaravanLost(new V3(0f, 0f, 0f), near);
+        Check(robbed.IsRobber(1) && !robbed.IsRobber(2) && robbed.AnyRobberAlive(id => id == 1) && !robbed.AnyRobberAlive(id => false),
+            "грабители — враги в 30 м от ограбленного обоза; погоня — пока жив хоть один", "дальний не записан");
+
+        var crowd = new List<KeyValuePair<int, V3>>();
+        for (int i = 0; i < 20; i++) crowd.Add(new KeyValuePair<int, V3>(100 + i, new V3(i, 0f, 0f)));
+        robbed.OnCaravanLost(new V3(0f, 0f, 0f), crowd);
+        Check(!robbed.IsRobber(1) && !robbed.IsRobber(107) && robbed.IsRobber(108) && robbed.IsRobber(119),
+            "память о грабителях — последние двенадцать", "старые забыты");
     }
 }
