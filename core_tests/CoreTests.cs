@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 125;
+    const int Expected = 133;
     static int _ran;
     static int _failed;
 
@@ -55,6 +55,7 @@ public static class CoreTests
         PlacementRules();
         TripRules();
         LabourerRules();
+        UnitRules();
 
         if (_ran < Expected)
         {
@@ -1178,5 +1179,75 @@ public static class CoreTests
         two.Sites.Remove(near);
         var next = fell.Tick(0.1f, two);
         Check(next.Site == far, "дерево повалили — батрак сразу идёт к другому", "цель " + next.Goal);
+    }
+
+    static void UnitRules()
+    {
+        var here = new V3(0f, 0f, 0f);
+        var sword = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard);
+        var bow = new UnitBrain(UnitKind.Archer, (int)Faction.Guard);
+        var around = new List<Sighting>
+        {
+            new Sighting(1, new V3(16f, 0f, 0f), (int)Faction.Villain, null),
+            new Sighting(2, new V3(3f, 0f, 0f), (int)Faction.Guard, null),
+            new Sighting(3, new V3(0f, 0f, 5f), -1, null),
+        };
+        var none = sword.FindTarget(here, around);
+        var shot = bow.FindTarget(here, around);
+        around.Add(new Sighting(4, new V3(12f, 0f, 0f), (int)Faction.Villain, null));
+        var near = sword.FindTarget(here, around);
+        Check(!none.HasValue && shot.HasValue && shot.Value.Id == 1 && near.Value.Id == 4,
+            "мечник вступает с 14 м, лучник видит на 32; своих и неизвестных не бьют",
+            "лучник целит " + shot.Value.Id + ", мечник " + near.Value.Id);
+
+        var led = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard)
+            { AiLed = true, AiAnchor = new V3(-20f, 0f, 0f), Leash = AiStats.MarchLeash };
+        var far = new List<Sighting> { new Sighting(5, new V3(10f, 0f, 0f), (int)Faction.Villain, null) };
+        var loose = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard);
+        Check(!led.Engage(here, far).HasValue && loose.Engage(here, far).HasValue,
+            "на поводке у якоря отряда за врагом дальше 26 м от якоря не идёт; без поводка — идёт", "якорь в 30 м от врага");
+
+        var archer = new UnitBrain(UnitKind.Archer, (int)Faction.Guard) { AiLed = true, AiAnchor = new V3(100f, 0f, 0f), AiYaw = (float)(Math.PI / 2), AiFormation = FormationKind.Line };
+        var spot = archer.IdleDestination(here, null, 0f, null);
+        var slot0 = Formations.SlotOffset(FormationKind.Line, 0);
+        Check(Math.Abs(spot.X - (100f + slot0.Z + UnitStats.ArcherRear)) < 0.01f && Math.Abs(spot.Z + slot0.X) < 0.01f,
+            "без цели — на своё место в строю за якорем, развёрнутым по курсу; лучник на 7 м позади",
+            "место " + spot);
+
+        var homebody = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard) { Home = new V3(5f, 0f, 5f), Leash = 90f };
+        var idle = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard);
+        Check(homebody.IdleDestination(here, null, 0f, null).Distance(homebody.Home) < 0.01f
+            && idle.IdleDestination(new V3(7f, 0f, 7f), null, 0f, null).Distance(new V3(7f, 0f, 7f)) < 0.01f,
+            "гарнизон без цели возвращается домой; боец без дома и поводка стоит где стоит", "дом " + homebody.Home);
+
+        var storage = new Sighting(6, here, (int)Faction.Villain, BuildingKind.Storage);
+        var size = Res.BuildingSize(BuildingKind.Storage);
+        Check(Math.Abs(sword.ReachOf(storage) - (UnitStats.StrikeRange + Math.Max(size.X, size.Z) * 0.5f)) < 0.01f
+            && bow.ReachOf(storage) == UnitStats.ArcherRange,
+            "по постройке бьют с её края, а не из центра; лучник стреляет с 24 м", "досягаемость " + sword.ReachOf(storage));
+
+        bool first = bow.TryStrike(true);
+        bool again = bow.TryStrike(true);
+        bow.Tick(1.01f);
+        bool later = bow.TryStrike(true);
+        bool maimed = sword.TryStrike(UnitBrain.ArmsWork(false, true, false)) && !UnitBrain.ArmsWork(true, true, false);
+        Check(first && !again && later && maimed && UnitStats.StrikeDamage(UnitKind.Archer) == Weapons.Damage[(int)WeaponKind.Bow],
+            "лучник бьёт стрелой лука (30) раз в секунду; мечнику хватит руки, лучнику нужны обе",
+            "урон лучника " + UnitStats.StrikeDamage(UnitKind.Archer));
+
+        var charmed = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard) { AiLed = true, Leash = 26f };
+        charmed.Charm((int)Faction.Villain, Abilities.ParalysisCharm, new V3(3f, 0f, 3f));
+        bool turned = charmed.Side == (int)Faction.Villain && !charmed.AiLed && charmed.Leash == 0f;
+        for (int i = 0; i < 90; i++) charmed.Tick(0.1f);
+        Check(turned && charmed.Side == (int)Faction.Guard && !charmed.Charmed,
+            "очарованный боец воюет за злодея 8 с, потом возвращается к своим", "сторона " + charmed.Side);
+
+        var push = UnitBrain.Separation(here, new[] { new V3(0f, 0f, -1f), new V3(5f, 0f, 0f) });
+        var steer = UnitBrain.Steer(new V3(0f, 0f, -5f), push);
+        var fast = UnitBrain.Steer(new V3(0f, 0f, -8f), new V3(6f, 0f, 0f));
+        Check(push.Z > 0f && Math.Abs(steer.Z + 5f) < 0.01f && Math.Abs(fast.Length() - UnitStats.MaxFlatSpeed) < 0.01f
+            && Math.Abs(UnitBrain.WoundSpeedScale(2) * UnitStats.BaseSpeed - BodyState.CrawlSpeedBoth) < 0.01f,
+            "сосед вплотную расталкивает, но не тормозит идущего вперёд; итог не быстрее 9 м/с; без ног — ползком",
+            "толчок " + push + ", ход " + steer);
     }
 }

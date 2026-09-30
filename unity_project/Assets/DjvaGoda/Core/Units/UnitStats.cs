@@ -52,6 +52,8 @@ namespace DjvaGoda.Core
             {
                 case UnitKind.Champion: return 32f;
                 case UnitKind.Beast: return 14f;
+                // Лучник стреляет стрелой лука, а не бьёт как мечник.
+                case UnitKind.Archer: return Weapons.Damage[(int)WeaponKind.Bow];
                 default: return 22f;
             }
         }
@@ -62,6 +64,7 @@ namespace DjvaGoda.Core
             {
                 case UnitKind.Champion: return 1f;
                 case UnitKind.Beast: return 0.8f;
+                case UnitKind.Archer: return Weapons.Cooldown[(int)WeaponKind.Bow];
                 default: return 1.1f;
             }
         }
