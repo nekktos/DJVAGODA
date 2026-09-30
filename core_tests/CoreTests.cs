@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 72;
+    const int Expected = 74;
     static int _ran;
     static int _failed;
 
@@ -45,6 +45,7 @@ public static class CoreTests
         ElderRules();
         Damage();
         Spells();
+        Loot();
 
         if (_ran < Expected)
         {
@@ -556,6 +557,24 @@ public static class CoreTests
         var broke = elf.Begin(Faction.Elves, AbilityKind.Summon, poor, null, out why);
         Check(nope == CastStart.Refused && broke == CastStart.Refused && why.Contains("маны"),
             "чужое заклинание не колдуется; без маны — отказ с числами", why);
+    }
+
+    static void Loot()
+    {
+        var fallen = new Kit { Side = Faction.Guard, GearTier = 2, ArmorTier = 1, PotionsHeal = 0, Arrows = 40 };
+        var fallenBody = new BodyState { Bandages = 5 };
+        var pile = LootPile.FromBody(new[] { 0, 0, 30, 10 }, fallen, fallenBody);
+
+        var looter = new Kit { Side = Faction.Elves, GearTier = 0, ArmorTier = 2, Arrows = 50 };
+        var looterBody = new BodyState { Bandages = 8 };
+        var wallet = new Wallet();
+        int took = pile.Collect(wallet, looter, looterBody);
+        Check(took > 0 && pile.Taken && looter.GearTier == 2 && looter.ArmorTier == 2
+            && looterBody.Bandages == Res.BandageLimit && looter.Arrows == Res.QuiverLimit
+            && wallet.GetAmount(ResourceKind.Gold) == 30,
+            "смерть роняет всё; подобравший берёт лучшее снаряжение и расходники до потолков",
+            pile.Summary());
+        Check(pile.Collect(wallet, looter, looterBody) == 0, "подобранную кучу второй раз не взять", "пусто");
     }
 
     static void Mines()
