@@ -351,7 +351,12 @@ func _test_raid(me: Node3D) -> void:
 	# Подбирает любой, кто подошёл.
 	if _loot().is_empty():
 		return
-	var pile: Node3D = _loot()[0]
+	# Ближайшую к месту гибели обоза, а не первую в мире: мир живой, и первой
+	# в списке бывала куча павшего бойца — без золота, и проверка падала.
+	var pile: Node3D = null
+	for candidate in _loot():
+		if pile == null or (candidate as Node3D).global_position.distance_to(point) 				< pile.global_position.distance_to(point):
+			pile = candidate
 	me.global_position = pile.global_position + Vector3(0.0, 1.0, 1.0)
 	me.sync_position = me.global_position
 	await get_tree().create_timer(0.3).timeout

@@ -140,10 +140,20 @@ func _test_formations(me: Node3D) -> void:
 		return
 	# Командира ставим рядом с отрядом: иначе бойцы меряются на марше к нему,
 	# так и не успев построиться, и проверка прошла бы при сломанных слотах.
-	var barracks: Node3D = _world.barracks_of(int(me.faction))
-	me.global_position = barracks.global_position + Vector3(0.0, 2.0, 20.0)
+	# На РОВНОМ поле посреди карты, и отряд — туда же. У казармы этой стороны
+	# склон холма: место в строю ложилось на крутизну, где сетки нет, ближайшая
+	# к нему точка сетки оказывалась на вершине, и боец уходил от своего места.
+	# Раскладка сетки меняется от любой постройки на карте (так её сдвинули
+	# парапеты пандуса у дворца), и проверка строя падала без всякой правки
+	# строя. Проверяется строй, а не склоны.
+	var field := Vector3(0.0, 2.0, 100.0)
+	me.global_position = field
 	me.sync_position = me.global_position
 	me.rotation.y = 0.0
+	for i in squad.size():
+		var unit: Node3D = squad[i]
+		if is_instance_valid(unit):
+			unit.global_position = field + Vector3(float(i % 4) * 2.0 - 3.0, 0.0, 6.0 + float(i / 4) * 2.0)
 
 	me.request_formation(FORMATIONS.Kind.LINE)
 	me.request_squad_follow()
