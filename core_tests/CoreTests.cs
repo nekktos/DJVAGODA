@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 100;
+    const int Expected = 104;
     static int _ran;
     static int _failed;
 
@@ -50,6 +50,7 @@ public static class CoreTests
         ReliefRules();
         WarbandRules();
         HeroRules();
+        RespawnRules();
 
         if (_ran < Expected)
         {
@@ -895,5 +896,32 @@ public static class CoreTests
         Check(blocked && !inside && !beside && !field,
             "постройка на прямой — обходить по пути; к самой постройке и через поле — напрямик",
             "насквозь " + blocked + ", к ней " + inside + ", мимо " + beside + ", поле " + field);
+    }
+
+    static void RespawnRules()
+    {
+        Check(Respawn.ElfHouseLimit(0) == 5 && Respawn.ElfHouseLimit(3) == 15 && Respawn.ElfHousesStart.Length == 3,
+            "эльфам — пять домов на игрока (за пустую сторону — как на одного), три стоят со старта",
+            "потолок при трёх " + Respawn.ElfHouseLimit(3));
+
+        bool wait = Respawn.Verdict(Faction.Elves, false, 0, false) == RespawnVerdict.WaitForHouse;
+        bool gone = Respawn.Verdict(Faction.Elves, false, 0, true) == RespawnVerdict.Never;
+        bool leader = Respawn.Verdict(Faction.Guard, true, 0, false) == RespawnVerdict.Never;
+        bool guard = Respawn.Verdict(Faction.Guard, false, 0, false) == RespawnVerdict.Now;
+        Check(wait && gone && leader && guard && Respawn.Verdict(Faction.Elves, false, 1, false) == RespawnVerdict.Now,
+            "эльф без домов ждёт отстройки, при выбывших эльфах — не встаёт; вожак пал насовсем",
+            "ждёт " + wait + ", выбыли " + gone + ", вожак " + leader);
+
+        var houses = new List<V3> { new V3(-255f, 0f, -300f), new V3(-310f, 0f, -343.9f) };
+        var point = Respawn.SpawnPoint(Faction.Elves, 1, true, new V3(-300f, 0f, -350f), houses);
+        float back = Res.BuildingSize(BuildingKind.ElfHouse).Z * 0.5f + 3f;
+        Check(Math.Abs(point.X - (-310f + Respawn.HouseSlotStep)) < 0.01f && Math.Abs(point.Z - (-343.9f - back)) < 0.01f,
+            "эльф встаёт у ближайшего достроенного дома, с северной стороны", "точка " + point);
+
+        var start = Respawn.SpawnPoint(Faction.Elves, 7, false, new V3(0f, 0f, 0f), houses);
+        var none = Respawn.SpawnPoint(Faction.Elves, 0, true, new V3(0f, 0f, 0f), new List<V3>());
+        var spawn = Factions.Spawn[(int)Faction.Elves];
+        Check(Math.Abs(start.X - (spawn.X + Respawn.SlotStep)) < 0.01f && none.Distance(spawn) < 0.01f,
+            "в партию входят у точки стороны (место по остатку от шести), без домов — там же", "слот 7 — " + start);
     }
 }
