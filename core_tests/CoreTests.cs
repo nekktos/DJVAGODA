@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 139;
+    const int Expected = 145;
     static int _ran;
     static int _failed;
 
@@ -57,6 +57,7 @@ public static class CoreTests
         LabourerRules();
         UnitRules();
         ForestRules();
+        WorldPlanRules();
 
         if (_ran < Expected)
         {
@@ -1297,5 +1298,89 @@ public static class CoreTests
         forest.CollectAround(from, Forest.SolidRadius, Forest.SolidRelease, new HashSet<int> { 20 }, kept);
         Check(!fresh.Contains(20) && kept.Contains(20),
             "ствол в 80 м твердеет только с 70 м, а твёрдым остаётся до 88 — на границе не мигает", "взято " + kept.Count);
+    }
+
+    /// Упирается ли прямой путь на высоте level в глухую коробку группы (стены, башни,
+    /// донжон). Пол под ногами (верх ниже level + 1) и перемычка над головой
+    /// (низ выше level + 2) — не стена.
+    static bool Walled(WorldPlan plan, string group, V3 from, V3 to, float level)
+    {
+        foreach (var piece in plan.InGroup(group))
+        {
+            if (piece.Decor || piece.Shape != PieceShape.Box || piece.Yaw != 0f) continue;
+            float bottom = piece.Center.Y - piece.Size.Y * 0.5f, top = piece.Center.Y + piece.Size.Y * 0.5f;
+            if (top < level + 1f || bottom > level + 2f) continue;
+            if (Geometry.SegmentHitsBox(from.X - piece.Center.X, from.Z - piece.Center.Z, to.X - piece.Center.X, to.Z - piece.Center.Z,
+                piece.Size.X * 0.5f, piece.Size.Z * 0.5f)) return true;
+        }
+        return false;
+    }
+
+    static void WorldPlanRules()
+    {
+        var relief = Relief.ForMap();
+        var plan = WorldPlan.ForMap(relief);
+        var villain = Factions.Spawn[(int)Faction.Villain];
+        var fort = MapLayout.ZoneCenters[(int)Zone.Villain] + WorldPlan.FortOffset;
+        bool inside = Math.Abs(villain.X - fort.X) < WorldPlan.FortHalf && Math.Abs(villain.Z - fort.Z) < WorldPlan.FortHalf;
+        bool gate = !Walled(plan, "ZoneVillain", villain, new V3(villain.X, 0f, fort.Z + 140f), 0f);
+        bool wall = Walled(plan, "ZoneVillain", villain, new V3(fort.X + 140f, 0f, villain.Z), 0f);
+        Check(inside && gate && wall, "злодей появляется в форте и выходит на юг через ворота; в стену не пройти",
+            "ворота " + gate + ", стена на восток " + wall);
+
+        var guard = Factions.Spawn[(int)Faction.Guard];
+        var palace = MapLayout.ZoneCenters[(int)Zone.Emperor];
+        bool court = Math.Abs(guard.X - palace.X) < WorldPlan.CourtWall && Math.Abs(guard.Z - palace.Z) < WorldPlan.CourtWall
+            && guard.Y >= MapLayout.PlateauHeight;
+        bool ramp = false;
+        foreach (var piece in plan.InGroup("ZoneEmperor"))
+            if (piece.Shape == PieceShape.Ramp && piece.Center.FlatDistance(MapLayout.RampFoot) < 0.1f) ramp = true;
+        bool courtGate = !Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z + 100f), new V3(palace.X, 0f, palace.Z + 170f), MapLayout.PlateauHeight);
+        bool hall = !Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z + 60f), new V3(palace.X, 0f, palace.Z), MapLayout.PlateauHeight);
+        bool side = Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z), new V3(palace.X + 100f, 0f, palace.Z), MapLayout.PlateauHeight);
+        Check(court && ramp && courtGate && hall && side,
+            "стража — на плато во дворе; с пандуса через проём двора и ворота дворца — к точке захвата",
+            "пандус " + ramp + ", двор " + courtGate + ", ворота дворца " + hall + ", стена сбоку " + side);
+
+        int grove = 0, trees = 0, stones = 0, microStone = 0, microGold = 0;
+        foreach (var piece in plan.Pieces)
+        {
+            if (!piece.Harvest.HasValue) continue;
+            if (piece.Group == "ZoneVillain" && piece.Harvest == ResourceKind.Wood) grove++;
+            if (piece.Group == "Crossroads" && piece.Harvest == ResourceKind.Wood) trees++;
+            if (piece.Group == "Crossroads" && piece.Harvest == ResourceKind.Stone) stones++;
+            if (piece.Group == "ZoneVillain" && piece.Harvest == ResourceKind.Stone && piece.Hits == Res.MicroStoneHitsEach) microStone++;
+            if (piece.Group == "ZoneVillain" && piece.Harvest == ResourceKind.Gold && piece.Hits == Res.MicroGoldHitsEach) microGold++;
+        }
+        Check(grove == 26 && trees == 14 && stones == 9 && microStone == 2 && microGold == 2,
+            "добыча на карте: роща злодея 26, у перекрёстка 14 деревьев и 9 камней, микро-шахта — 2 камня и 2 золота",
+            "роща " + grove + ", перекрёсток " + trees + "/" + stones);
+
+        int hill = 0, low = 0;
+        foreach (var piece in plan.InGroup("Scatter"))
+        {
+            hill++;
+            if (piece.Center.Y < 3f) low++;
+        }
+        Check(hill == WorldPlan.HillTrees && low == 0, "170 деревьев на холмах — и все на высоте от 3 м", "ниже 3 м: " + low);
+
+        float nearestPeak = float.MaxValue;
+        bool offMap = false;
+        foreach (var piece in plan.InGroup("ZoneVillain"))
+        {
+            if (piece.Shape != PieceShape.Peak && piece.Shape != PieceShape.Rock) continue;
+            if (piece.Harvest.HasValue) continue;
+            nearestPeak = Math.Min(nearestPeak, piece.Center.FlatDistance(fort));
+            if (Math.Abs(piece.Center.X) > 600f || Math.Abs(piece.Center.Z) > 600f) offMap = true;
+        }
+        Check(nearestPeak > WorldPlan.FortHalf * 1.2f && !offMap, "гряда гор — за фортом, а не в нём, и не за краем мира",
+            "ближайшая скала в " + nearestPeak.ToString("0") + " м от центра форта");
+
+        var again = WorldPlan.ForMap(relief);
+        int differ = again.Pieces.Count == plan.Pieces.Count ? 0 : 1;
+        for (int i = 0; differ == 0 && i < plan.Pieces.Count; i++)
+            if (again.Pieces[i].Center.Distance(plan.Pieces[i].Center) > 0.001f || again.Pieces[i].Size.Distance(plan.Pieces[i].Size) > 0.001f) differ++;
+        Check(differ == 0,
+            "план мира одинаков на всех машинах", plan.Pieces.Count + " кусков");
     }
 }
