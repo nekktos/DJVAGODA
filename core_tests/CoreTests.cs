@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 161;
+    const int Expected = 165;
     static int _ran;
     static int _failed;
 
@@ -61,6 +61,7 @@ public static class CoreTests
         SwingAndSpellRules();
         LobbyRules();
         MotorRules();
+        ProjectileRules();
 
         if (_ran < Expected)
         {
@@ -1524,5 +1525,50 @@ public static class CoreTests
         var ride = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Run = true }, riderVitals, new BodyState(), true, false, true);
         Check(Math.Abs(ride.Z + Movement.Speed * HorseStats.RideSpeedScale) < 0.01f && riderVitals.Stamina == Vitals.BaseStamina,
             "верхом — в 1.55 раза быстрее, и силы не тратятся: устаёт лошадь", "ход " + ride);
+    }
+
+    static void ProjectileRules()
+    {
+        var arrow = new ProjectileFlight(WeaponKind.Bow, new V3(0f, 1.5f, 0f), new V3(0f, 0f, -1f));
+        V3 to;
+        int frames = 0;
+        while (!arrow.Expired && frames < 1000)
+        {
+            arrow.Segment(0.05f, out to);
+            arrow.Advance(to);
+            frames++;
+        }
+        var after = new ProjectileFlight(WeaponKind.Bow, new V3(0f, 1.5f, 0f), new V3(0f, 0f, -1f));
+        for (int i = 0; i < 20; i++)
+        {
+            after.Segment(0.05f, out to);
+            after.Advance(to);
+        }
+        Check(Math.Abs(after.Position.Z + 55f) < 0.5f && after.Position.Y < 1.5f && Math.Abs(after.Velocity.Y + 4f) < 0.01f
+            && Math.Abs(frames * 0.05f - Weapons.ProjectileLifetime) < 0.11f,
+            "стрела летит 55 м/с с лёгкой дугой (4 м/с² вниз) и живёт 6 с", "за секунду — " + after.Position);
+
+        float head = ProjectileFlight.HitDamage(WeaponKind.Bow, "head", 0, 1f);
+        float bolt = ProjectileFlight.HitDamage(WeaponKind.Crossbow, "torso", 0, Formations.DamageScale(FormationKind.ShieldWall, false));
+        Check(head == Weapons.Damage[(int)WeaponKind.Bow] * 2f && bolt > Weapons.Damage[(int)WeaponKind.Crossbow],
+            "стрела в голову — вдвое; болт пробивает защиту стены щитов", "болт до строя " + bolt.ToString("0.0"));
+
+        var point = new V3(0f, 0f, 0f);
+        var zones = new List<ZoneHit>
+        {
+            new ZoneHit(1, "torso", new V3(2f, 0f, 0f)), new ZoneHit(1, "head", new V3(2.5f, 0f, 0f)),
+            new ZoneHit(2, "torso", new V3(5.95f, 0f, 0f)),
+        };
+        var blast = ProjectileFlight.Blast(point, zones, 0);
+        Check(blast.Count == 1 && blast[1].Key.Zone == "torso"
+            && Math.Abs(blast[1].Value - DamageRules.Blast(2f, "torso", 0)) < 0.01f,
+            "взрыв бьёт цель раз — по ближайшей к центру зоне; задетое краем не в счёт", "урон " + blast[1].Value.ToString("0.0"));
+
+        var feet = new V3(0f, 0f, 0f);
+        var right = Aim.Direction(feet, 0f, 0f, new V3(10f, 1.5f, -10f));
+        var close = Aim.Direction(feet, 0f, 0.5f, Aim.Origin(feet) + new V3(0.1f, 0f, 0f));
+        Check(Math.Abs(right.X - right.Z * -1f) < 0.01f && right.X > 0f && close.Y > 0f && close.Z < 0f,
+            "выстрел — из глаз в точку, куда смотрит камера из-за плеча; вплотную — прямо по взгляду",
+            "в точку " + right + ", вплотную " + close);
     }
 }
