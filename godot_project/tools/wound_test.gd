@@ -20,7 +20,7 @@ var _world: Node3D
 
 func start(world: Node3D) -> void:
 	tag = "раны"
-	expected_host = 42
+	expected_host = 43
 	expected_client = 4
 	_world = world
 	_run.call_deferred()
@@ -443,6 +443,15 @@ func _test_necrotic(me: Node3D, body: Node, health: Node) -> void:
 	check(body.tier(BODY.Limb.LEG_L) == 0,
 		"без трофеев некротический протез не ставится",
 		"уровень протеза %d" % body.tier(BODY.Limb.LEG_L))
+
+	# Трофеев хватает на одну ногу, а оторваны две: отказ целиком. Раньше
+	# проверка шла по каждой ноге отдельно (15 >= 10), а списание — за обе, и
+	# трофеев становилось минус пять (нашли проверки ядра Unity-версии).
+	me.trophies = PackedInt32Array([0, BODY.NECROTIC_PRICE + 5, 0])
+	me.request_prosthetic(BODY.NECROTIC_TIER)
+	check(body.tier(BODY.Limb.LEG_L) == 0 and me.trophies[me.Trophy.LEGS] == BODY.NECROTIC_PRICE + 5,
+		"трофеев на одну ногу при двух оторванных — отказ, трофеи целы",
+		"уровень %d, трофеев %d" % [body.tier(BODY.Limb.LEG_L), me.trophies[me.Trophy.LEGS]])
 
 	# Десять ног на ногу. Ног оторвано две — значит и платить надо дважды.
 	me.trophies = PackedInt32Array([0, BODY.NECROTIC_PRICE * 2, 0])

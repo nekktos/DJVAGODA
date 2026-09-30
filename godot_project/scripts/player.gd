@@ -1897,11 +1897,17 @@ func request_prosthetic(new_tier: int) -> void:
 	# Некротический покупается НЕ ресурсами, а чужими конечностями. Это и есть
 	# его смысл: за золото такого не купить ни у кого, только нарубить самому.
 	if new_tier == BODY.NECROTIC_TIER:
+		# Цена — за КАЖДУЮ конечность из запаса своего вида: две ноги — двадцать
+		# ног. Раньше проверка шла по конечности отдельно, а списание — за все,
+		# и трофеи уходили в минус.
+		var need := [0, 0, 0]
+		for limb in targets:
+			need[_trophy_kind(limb)] += BODY.NECROTIC_PRICE
 		for limb in targets:
 			var kind := _trophy_kind(limb)
-			if trophies[kind] < BODY.NECROTIC_PRICE:
+			if trophies[kind] < need[kind]:
 				_refuse("на некротический протез нужно %d чужих %s, есть %d"
-					% [BODY.NECROTIC_PRICE, _trophy_name(kind), trophies[kind]])
+					% [need[kind], _trophy_name(kind), trophies[kind]])
 				return
 		for limb in targets:
 			var kind := _trophy_kind(limb)
