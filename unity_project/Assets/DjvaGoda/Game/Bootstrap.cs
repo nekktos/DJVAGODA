@@ -38,7 +38,7 @@ namespace DjvaGoda.Game
             var view = body.GetComponent<MeshRenderer>();
             if (view != null) view.sharedMaterial = Palette.Of("accent");
             Player = root.AddComponent<PlayerCharacter>();
-            Player.Side = Side;
+            Player.Faction = Side;
 
             var eye = new GameObject("Камера");
             eye.tag = "MainCamera";

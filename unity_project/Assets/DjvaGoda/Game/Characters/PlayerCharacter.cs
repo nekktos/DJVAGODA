@@ -10,13 +10,13 @@ using UnityEngine;
 namespace DjvaGoda.Game
 {
     [RequireComponent(typeof(CharacterController))]
-    public class PlayerCharacter : MonoBehaviour
+    public class PlayerCharacter : Actor
     {
         /// Радиан поворота на пиксель мыши.
         public const float MouseSensitivity = 0.0025f;
         public const float PitchLimit = 1.3f;
 
-        public Faction Side = Faction.Guard;
+        public Faction Faction = Faction.Guard;
         public readonly Vitals Vitals = new Vitals();
         public readonly BodyState Body = new BodyState();
         public readonly SpellState Spells = new SpellState();
@@ -33,7 +33,7 @@ namespace DjvaGoda.Game
         public MotorInput? Scripted;
         public bool LocalControl = true;
 
-        public V3 Feet { get { return transform.position.ToCore(); } }
+        public V3 Feet { get { return At; } }
         public V3 Velocity { get { return _motor.Velocity; } }
         public bool Running { get { return _motor.Running; } }
 
@@ -49,11 +49,39 @@ namespace DjvaGoda.Game
         }
 
         /// Сторону назначают после AddComponent (Awake уже прошёл) — снаряжение узнаёт её здесь.
-        void Start() { Kit.Side = Side; }
+        void Start()
+        {
+            Kit.Side = Faction;
+            Side = (int)Faction;
+        }
+
+        public override bool Alive { get { return Vitals.Alive; } }
+
+        /// Урон по персонажу: доспех, правило стражи для злодея (снаряжённость
+        /// источника), ранение по зоне; любой удар срывает каст и паралич.
+        public override void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)
+        {
+            if (!Alive) return;
+            int gear = 0, armor = 0;
+            var hitter = source as PlayerCharacter;
+            if (hitter != null)
+            {
+                gear = hitter.Kit.GearTier;
+                armor = hitter.Kit.ArmorTier;
+            }
+            float taken = DamageRules.ToCharacter(amount, Kit, source != null ? source.Side : -1, gear, armor);
+            Vitals.ApplyDamage(taken);
+            Body.RegisterHit(zone, taken, weapon);
+            Spells.OnDamaged();
+        }
 
         void Update()
         {
+            // Павший не ходит: встанет по правилам возрождения (Respawn).
+            if (!Alive) return;
             float delta = Time.deltaTime;
+            Spells.Tick(delta);
+            Vitals.TickMana(delta);
             var input = Scripted ?? ReadInput();
             if (Scripted == null && LocalControl && Cursor.lockState == CursorLockMode.Locked)
             {
@@ -64,7 +92,7 @@ namespace DjvaGoda.Game
             }
             bool rallied = Spells.Rally > 0f;
             bool paralysed = Spells.Paralysis > 0f;
-            var velocity = _motor.Step(input, delta, Yaw, _controller.isGrounded, Side, Vitals, Body, paralysed, Mounted, rallied);
+            var velocity = _motor.Step(input, delta, Yaw, _controller.isGrounded, Faction, Vitals, Body, paralysed, Mounted, rallied);
             var move = velocity.ToUnity();
             // На земле — лёгкий прижим, иначе isGrounded мигает на спуске.
             if (_controller.isGrounded && move.y <= 0f) move.y = -2f;
