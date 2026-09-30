@@ -11,10 +11,16 @@ namespace DjvaGoda.Game
     /// Что можно добывать: дерево плана, камень, золото. У деревьев леса — номер.
     public class Harvestable : MonoBehaviour
     {
+        /// Все стоящие источники: батраки ищут по списку, а не по сцене каждый кадр.
+        public static readonly List<Harvestable> All = new List<Harvestable>();
+
         public ResourceKind Resource;
         public int HitsLeft;
         /// Номер дерева леса эльфов; −1 — не из леса.
         public int TreeIndex = -1;
+
+        void OnEnable() { All.Add(this); }
+        void OnDisable() { All.Remove(this); }
     }
 
     public class WorldBuilder : MonoBehaviour
