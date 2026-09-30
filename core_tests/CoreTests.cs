@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 48;
+    const int Expected = 50;
     static int _ran;
     static int _failed;
 
@@ -37,6 +37,7 @@ public static class CoreTests
         Wounds();
         Character();
         Caravans();
+        Map();
 
         if (_ran < Expected)
         {
@@ -354,6 +355,20 @@ public static class CoreTests
         Check(!all && cargo[(int)ResourceKind.Iron] == 20 && wallet.Stored.GetAmount(ResourceKind.Iron) == 100,
             "полный склад: выгружено, сколько влезло, остаток ждёт в обозе",
             "в обозе осталось " + cargo[(int)ResourceKind.Iron]);
+    }
+
+    static void Map()
+    {
+        var iron = MapLayout.MineOf(ResourceKind.Iron).Value.At;
+        float toVillain = iron.FlatDistance(Factions.Spawn[(int)Faction.Villain]);
+        float toGuard = iron.FlatDistance(Factions.Spawn[(int)Faction.Guard]);
+        Check(Math.Abs(toVillain - toGuard) < 5f,
+            "железная шахта — поровну злодею и страже", toVillain + " против " + toGuard);
+        var elves = MapLayout.ZoneCenters[(int)Zone.Elves];
+        bool outward = true;
+        foreach (var mine in MapLayout.Mines)
+            outward &= MapLayout.MineEntrance(mine.At).FlatDistance(elves) > mine.At.FlatDistance(elves);
+        Check(outward, "входы шахт смотрят прочь от поселения эльфов", "все четыре");
     }
 
     static void Mines()
