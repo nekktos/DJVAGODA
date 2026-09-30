@@ -145,6 +145,13 @@ namespace DjvaGoda.Core
             return running;
         }
 
+        /// Потратить силы (рывок): восстановление начнётся после передышки.
+        public void SpendStamina(float amount)
+        {
+            Stamina = Math.Max(0f, Stamina - amount);
+            _restLeft = StaminaRest;
+        }
+
         /// Прыжок стоит сил (верхом — нет). Возвращает, прыгнул ли.
         public bool TryJump(bool mounted)
         {

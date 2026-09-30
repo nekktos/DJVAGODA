@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 153;
+    const int Expected = 161;
     static int _ran;
     static int _failed;
 
@@ -60,6 +60,7 @@ public static class CoreTests
         WorldPlanRules();
         SwingAndSpellRules();
         LobbyRules();
+        MotorRules();
 
         if (_ran < Expected)
         {
@@ -1451,5 +1452,77 @@ public static class CoreTests
             "за занятого злодея — " + Factions.Names[villainTaken]);
         Check(Lobby.NextFreeSlot(new List<int> { 0, 1, 3 }) == 2 && Lobby.NextFreeSlot(new List<int>()) == 0,
             "номер места — первый свободный", "после 0, 1, 3 — " + Lobby.NextFreeSlot(new List<int> { 0, 1, 3 }));
+    }
+
+    static V3 Walk(CharacterMotor motor, Faction side, float yaw, MotorInput input, Vitals vitals, BodyState body,
+        bool onFloor = true, bool paralysed = false, bool mounted = false)
+    {
+        return motor.Step(input, 0.1f, yaw, onFloor, side, vitals, body, paralysed, mounted, false);
+    }
+
+    static void MotorRules()
+    {
+        var forward = new MotorInput { MoveY = -1f };
+        var guard = Walk(new CharacterMotor(), Faction.Guard, 0f, forward, new Vitals(), new BodyState());
+        var elf = Walk(new CharacterMotor(), Faction.Elves, 0f, forward, new Vitals(), new BodyState());
+        var turned = Walk(new CharacterMotor(), Faction.Guard, (float)(Math.PI / 2), forward, new Vitals(), new BodyState());
+        Check(Math.Abs(guard.Z + Movement.Speed) < 0.01f && Math.Abs(elf.Z + Movement.Speed * 1.15f) < 0.01f
+            && Math.Abs(turned.X + Movement.Speed) < 0.01f && Math.Abs(turned.Z) < 0.01f,
+            "шаг 6 м/с «вперёд» по −Z с поворотом персонажа; эльф на 15% быстрее", "стража " + guard + ", эльф " + elf);
+
+        var runner = new CharacterMotor();
+        var tired = new Vitals();
+        var run = new MotorInput { MoveY = -1f, Run = true };
+        var fast = Walk(runner, Faction.Guard, 0f, run, tired, new BodyState());
+        int steps = 0;
+        while (runner.Running && steps < 200)
+        {
+            Walk(runner, Faction.Guard, 0f, run, tired, new BodyState());
+            steps++;
+        }
+        Check(Math.Abs(fast.Z + Movement.Speed * Movement.RunScale) < 0.01f && tired.Winded && Math.Abs(steps * 0.1f - 10f) < 0.35f,
+            "бегом 10.5 м/с, выносливости на 10 с бега — потом выдохся и идёт шагом", "выдохся через " + (steps * 0.1f).ToString("0.0") + " с");
+
+        var stuck = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Jump = true }, new Vitals(), new BodyState(), true, true);
+        Check(stuck.Length() < 0.01f, "парализованный не ходит и не прыгает", "скорость " + stuck);
+
+        var jumper = new Vitals();
+        var hop = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { Jump = true }, jumper, new BodyState());
+        var weak = new Vitals();
+        weak.Stamina = 5f;
+        var flat = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { Jump = true }, weak, new BodyState());
+        Check(Math.Abs(hop.Y - Movement.JumpVelocity) < 0.01f && Math.Abs(jumper.Stamina - (Vitals.BaseStamina - Vitals.StaminaJump)) < 0.01f && flat.Y == 0f,
+            "прыжок 5.5 м/с стоит 12 сил; без сил — не прыгнуть", "осталось " + jumper.Stamina);
+
+        var elfMotor = new CharacterMotor();
+        var elfVitals = new Vitals();
+        Walk(elfMotor, Faction.Elves, 0f, new MotorInput(), elfVitals, new BodyState());
+        var second = Walk(elfMotor, Faction.Elves, 0f, new MotorInput { Jump = true }, elfVitals, new BodyState(), false);
+        var third = Walk(elfMotor, Faction.Elves, 0f, new MotorInput { Jump = true }, elfVitals, new BodyState(), false);
+        var guardMotor = new CharacterMotor();
+        Walk(guardMotor, Faction.Guard, 0f, new MotorInput(), new Vitals(), new BodyState());
+        var guardAir = Walk(guardMotor, Faction.Guard, 0f, new MotorInput { Jump = true }, new Vitals(), new BodyState(), false);
+        Check(Math.Abs(second.Y - Movement.JumpVelocity) < 0.01f && third.Y < Movement.JumpVelocity - 0.5f && guardAir.Y < 0f,
+            "у эльфа один прыжок в воздухе, у стражи — нет", "третий прыжок " + third.Y.ToString("0.0"));
+
+        var dasher = new CharacterMotor();
+        var dash = Walk(dasher, Faction.Elves, 0f, new MotorInput { Dash = true }, new Vitals(), new BodyState());
+        var again = Walk(dasher, Faction.Elves, 0f, new MotorInput { Dash = true }, new Vitals(), new BodyState());
+        var noDash = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { Dash = true }, new Vitals(), new BodyState());
+        Check(Math.Abs(dash.Z + Movement.DashSpeed) < 0.01f && dasher.Dashing == false && Math.Abs(again.Z + Movement.DashSpeed) < 0.01f
+            && noDash.Length() < 0.01f,
+            "рывок эльфа — 22 м/с вперёд на 0.18 с (стоя — туда, куда смотрит); у стражи рывка нет", "рывок " + dash);
+
+        var lame = new BodyState();
+        lame.SeveredMask = 1 << (int)Limb.LegL;
+        var lameVitals = new Vitals();
+        var crawl = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Run = true, Jump = true }, lameVitals, lame);
+        Check(Math.Abs(crawl.Z + BodyState.CrawlSpeedOne) < 0.01f && crawl.Y == 0f && lameVitals.Stamina == Vitals.BaseStamina,
+            "без ноги — ползком 1.4 м/с: ни бега, ни прыжка", "ход " + crawl);
+
+        var riderVitals = new Vitals();
+        var ride = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Run = true }, riderVitals, new BodyState(), true, false, true);
+        Check(Math.Abs(ride.Z + Movement.Speed * HorseStats.RideSpeedScale) < 0.01f && riderVitals.Stamina == Vitals.BaseStamina,
+            "верхом — в 1.55 раза быстрее, и силы не тратятся: устаёт лошадь", "ход " + ride);
     }
 }
