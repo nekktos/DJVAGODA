@@ -9,7 +9,7 @@ using DjvaGoda.Core;
 
 public static class CoreTests
 {
-    const int Expected = 110;
+    const int Expected = 117;
     static int _ran;
     static int _failed;
 
@@ -53,6 +53,7 @@ public static class CoreTests
         RespawnRules();
         CommanderRules();
         PlacementRules();
+        TripRules();
 
         if (_ran < Expected)
         {
@@ -983,5 +984,93 @@ public static class CoreTests
         bool home = Placement.Buildable(MapLayout.ZoneCenters[(int)Zone.Villain], BuildingKind.Storage, relief, none);
         bool outside = Placement.Buildable(new V3(598f, 0f, 150f), BuildingKind.Storage, relief, none);
         Check(home && !outside, "в зоне злодея ставить можно, за краем мира — нет", "зона " + home + ", край " + outside);
+    }
+
+    static List<V3> Road()
+    {
+        return new List<V3> { new V3(0f, 0f, 0f), new V3(0f, 0f, 100f), new V3(0f, 0f, 200f) };
+    }
+
+    static int[] Iron(int amount)
+    {
+        var cargo = Res.Empty();
+        cargo[(int)ResourceKind.Iron] = amount;
+        return cargo;
+    }
+
+    static void TripRules()
+    {
+        var trip = new CaravanTrip(Faction.Villain, 1, Road(), 2);
+        var wallet = new Wallet();
+        wallet.Stored.Capacity = 500;
+        var none = new List<KeyValuePair<BuildingKind, V3>>();
+        var dock = new List<KeyValuePair<BuildingKind, V3>> { new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, 0f)) };
+        var events = new List<TripEvent>();
+        float t = 0f;
+        while (trip.State != CaravanState.Finished && t < 200f)
+        {
+            var e = trip.Tick(0.1f, false, dock, at => at.FlatDistance(new V3(0f, 0f, 200f)) < 10f ? Iron(50) : null, wallet);
+            if (e != TripEvent.None) events.Add(e);
+            t += 0.1f;
+        }
+        float expected = 400f / CaravanRules.SpeedFor(2) + 2f * CaravanRules.LoadSeconds;
+        Check(trip.State == CaravanState.Finished && wallet.Stored.GetAmount(ResourceKind.Iron) == 50
+            && events.Count == 3 && events[0] == TripEvent.Loaded && Math.Abs(t - expected) < 2f,
+            "обоз едет к шахте, грузится, возвращается тем же путём и выгружает на склад (свой склад в конце пути — не помеха)",
+            "рейс " + t.ToString("0.0") + " с при расчётных " + expected.ToString("0.0"));
+
+        var stopped = new CaravanTrip(Faction.Villain, 1, Road(), 2);
+        for (int i = 0; i < 20; i++) stopped.Tick(0.1f, true, none, null, wallet);
+        Check(stopped.Halted && stopped.Position.Distance(new V3(0f, 0f, 0f)) < 0.01f,
+            "враг рядом — обоз встаёт", "сдвинулся на " + stopped.Position.Distance(new V3(0f, 0f, 0f)));
+
+        var full = new CaravanTrip(Faction.Villain, 1, Road(), 6);
+        var tight = new Wallet();
+        tight.Stored.Capacity = 30;
+        int alarms = 0;
+        for (int i = 0; i < 1000 && full.State != CaravanState.Finished; i++)
+        {
+            if (full.Tick(0.1f, false, none, at => Iron(50), tight) == TripEvent.StorageFull) alarms++;
+            if (i == 800) tight.Stored.Capacity = 100;
+        }
+        Check(alarms == 1 && full.State == CaravanState.Finished && tight.Stored.GetAmount(ResourceKind.Iron) == 50,
+            "склад полон — обоз ждёт у склада с грузом, оповещает один раз и выгружает, когда место появилось",
+            "оповещений " + alarms);
+
+        var detour = new CaravanTrip(Faction.Villain, 1, Road(), 2);
+        var house = new List<KeyValuePair<BuildingKind, V3>> { new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, 100f)) };
+        var size = Res.BuildingSize(BuildingKind.Storage);
+        float closest = float.MaxValue;
+        for (int i = 0; i < 1000 && detour.State != CaravanState.Finished; i++)
+        {
+            detour.Tick(0.1f, false, house, null, null);
+            closest = Math.Min(closest, CaravanTrip.BoxGap(detour.Position, new V3(0f, 0f, 100f), size.X * 0.5f, size.Z * 0.5f));
+        }
+        Check(detour.State == CaravanState.Finished && closest > 0f,
+            "дом, поставленный на линии маршрута, обоз объезжает туда и обратно, точку внутри пропускает",
+            "ближе всего к стене " + closest.ToString("0.0") + " м");
+
+        var harness = new CaravanTrip(Faction.Guard, 0, Road(), 2);
+        harness.HurtHarness(50f);
+        int afterFirst = harness.Horses;
+        harness.HurtHarness(20f);
+        int afterSecond = harness.Horses;
+        int early = harness.CaptureHorses();
+        harness.HurtHarness(60f);
+        Check(afterFirst == 2 && afterSecond == 1 && early == 0 && harness.Horses == 0 && harness.Halted && harness.SpeedNow == 0f,
+            "лошади гибнут по одной с общего запаса; без лошадей обоз встал; у едущего не увести",
+            afterFirst + " → " + afterSecond + " → " + harness.Horses);
+
+        var robbed = new CaravanTrip(Faction.Guard, 0, Road(), 3);
+        robbed.Tick(0.1f, true, none, null, wallet);
+        Check(robbed.CaptureHorses() == 3 && robbed.Horses == 0, "у стоящего обоза уводят всю упряжку", "уведено 3");
+
+        var ahead = new CaravanTrip(Faction.Villain, 1, Road(), 2);
+        int outbound = ahead.PathAhead().Count;
+        ahead.Redirect(Faction.Guard, 2, new List<V3> { new V3(0f, 0f, 200f), new V3(300f, 0f, -200f) });
+        var home = ahead.PathAhead();
+        Check(outbound == 5 && ahead.State == CaravanState.ToHome && ahead.Side == Faction.Guard
+            && home.Count == 2 && home[home.Count - 1].Distance(new V3(0f, 0f, 200f)) < 0.01f,
+            "путь вперёд — туда и обратно; перехваченный обоз едет к складу перехватчика", "впереди " + outbound + " точек");
     }
 }
