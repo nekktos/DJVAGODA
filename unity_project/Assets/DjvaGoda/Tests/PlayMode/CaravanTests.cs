@@ -63,6 +63,32 @@ namespace DjvaGoda.Tests
             Assert.That(Object.FindObjectsByType<CaravanActor>(FindObjectsSortMode.None).Length, Is.EqualTo(0), "обоз ушёл без лошадей");
         }
 
+        /// Упряжка выбирается в конюшне: столько лошадей и уходит в обоз; у
+        /// обоза в пути считается остаток пути (окно склада).
+        [UnityTest]
+        public IEnumerator ChosenHarnessGoesToCart()
+        {
+            var villain = TestArena.Fighter(Faction.Villain, TestArena.Centre, 0f);
+            villain.Kit.IsLeader = true;
+            BuildingActor.Spawn(BuildingKind.Storage, Faction.Villain, TestArena.Ground(TestArena.Centre + new Vector3(0f, 0f, 15f)).ToCore(), true, null);
+            var wallet = Treasury.Of(Faction.Villain);
+            wallet.Horses = 6;
+            wallet.HorsesOut = 0;
+            yield return TestArena.Settle();
+            villain.GetComponent<Shop>().Request(DealKind.Harness, 4);
+            Assert.That(villain.HarnessSize, Is.EqualTo(4), "упряжка не выбрана");
+            villain.GetComponent<Shop>().Request(DealKind.Harness, 99);
+            Assert.That(villain.HarnessSize, Is.EqualTo(CaravanRules.HorsesMax), "упряжка сверх предела");
+            villain.GetComponent<Shop>().Request(DealKind.Harness, 4);
+            villain.GetComponent<Builder>().ServerSendCaravan(new V3[0]);
+            CaravanActor cart = null;
+            foreach (var actor in Actor.All) if (actor is CaravanActor) cart = (CaravanActor)actor;
+            Assert.That(cart, Is.Not.Null, "обоз не ушёл");
+            Assert.That(cart.HorsesNow, Is.EqualTo(4), "в обозе не та упряжка");
+            Assert.That(wallet.HorsesOut, Is.EqualTo(4), "в упряжке числится не столько");
+            Assert.That(cart.LeftNow, Is.GreaterThan(50f), "остаток пути до шахты не считается");
+        }
+
         [UnityTest]
         public IEnumerator FullTripBringsIron()
         {

@@ -121,6 +121,14 @@ namespace DjvaGoda.Game
             }
         }
 
+        /// Окно склада: «проложить маршрут» — сразу в вид сверху и в рисование.
+        public void StartRoute()
+        {
+            GameMode.Strategy = true;
+            Stop();
+            Routing = true;
+        }
+
         /// Приказы отряду сверху: G — ко мне, H — с обозом, F2–F5 — строй,
         /// ПКМ по земле — идти туда (когда не ставим постройку и не ведём маршрут).
         void SquadOrders()
@@ -229,9 +237,10 @@ namespace DjvaGoda.Game
             var route = new List<V3> { storage.At };
             route.AddRange(points);
             route.Add(Mines.Dock(Mines.Nearest(route[route.Count - 1])));
-            int team = Mathf.Min(HarnessSize, wallet.HorsesFree);
+            int want = Mathf.Clamp(_character.HarnessSize, CaravanRules.HorsesMin, CaravanRules.HorsesMax);
+            int team = Mathf.Min(want, wallet.HorsesFree);
             wallet.HorsesOut += team;
-            if (team < HarnessSize && _combat != null) _combat.Tell("свободных лошадей " + team + " — запрягли столько");
+            if (team < want && _combat != null) _combat.Tell("свободных лошадей " + team + " — запрягли столько");
             CaravanActor.Spawn(side, OwnerId, route, team, Object.FindAnyObjectByType<World>(), wallet, Mines.Load);
         }
 

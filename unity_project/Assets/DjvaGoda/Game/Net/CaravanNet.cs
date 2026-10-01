@@ -13,9 +13,14 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> Horses = new NetworkVariable<int>();
         public readonly NetworkVariable<bool> Halted = new NetworkVariable<bool>();
         public readonly NetworkVariable<int> Cargo = new NetworkVariable<int>();
+        /// Чей рейс, что делает, сколько метров осталось — для окна склада у владельца.
+        public readonly NetworkVariable<int> Owner = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> State = new NetworkVariable<int>();
+        public readonly NetworkVariable<float> Left = new NetworkVariable<float>();
         [System.NonSerialized] public Faction AssignedSide;
 
         CaravanActor _cart;
+        float _leftT;
 
         public override void OnNetworkSpawn()
         {
@@ -36,12 +41,24 @@ namespace DjvaGoda.Game
                 Horses.Value = _cart.Trip.Horses;
                 Halted.Value = _cart.Trip.Halted;
                 Cargo.Value = _cart.Trip.CargoTotal;
+                Owner.Value = _cart.Trip.Owner;
+                State.Value = (int)_cart.Trip.State;
+                // Длина пути — не каждый кадр: на глаз цифра меняется раз в секунды.
+                _leftT -= UnityEngine.Time.deltaTime;
+                if (_leftT <= 0f)
+                {
+                    _leftT = 0.5f;
+                    Left.Value = _cart.LeftNow;
+                }
                 return;
             }
             _cart.Side = Side.Value;
             _cart.ShownHorses = Horses.Value;
             _cart.ShownHalted = Halted.Value;
             _cart.ShownCargo = Cargo.Value;
+            _cart.ShownOwner = Owner.Value;
+            _cart.ShownState = State.Value;
+            _cart.ShownLeft = Left.Value;
         }
     }
 }

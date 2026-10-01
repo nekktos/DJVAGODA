@@ -104,7 +104,7 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<bool> Mounted = new NetworkVariable<bool>();
         /// Опыт и уровни: опыт (16 бит) | уровни по 3 бита с 16-го.
         public readonly NetworkVariable<int> Progress = new NetworkVariable<int>();
-        /// Сводка отряда: бойцов | строй << 8 | стоит на точке << 10.
+        /// Сводка отряда: бойцов | строй << 8 | стоит на точке << 10 | упряжка обоза << 12.
         public readonly NetworkVariable<int> Squad = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
@@ -211,7 +211,8 @@ namespace DjvaGoda.Game
                 Tasks.Value = (tasks.Task.HasValue ? (int)tasks.Task.Value + 1 : 0) | Mathf.Min(tasks.Progress, 4095) << 4
                     | Mathf.Min(tasks.TasksDone, 255) << 16;
                 Mounted.Value = _character.Mounted;
-                Squad.Value = Mathf.Min(Squads.Of(_character).Count, 255) | (int)_character.SquadFormation << 8 | (_character.SquadHold ? 1 << 10 : 0);
+                Squad.Value = Mathf.Min(Squads.Of(_character).Count, 255) | (int)_character.SquadFormation << 8 | (_character.SquadHold ? 1 << 10 : 0)
+                    | _character.HarnessSize << 12;
                 var levels = _character.Vitals.Levels;
                 Progress.Value = Mathf.Min(_character.Vitals.Experience, 65535)
                     | levels[0] << 16 | levels[1] << 19 | levels[2] << 22 | levels[3] << 25;
@@ -249,6 +250,7 @@ namespace DjvaGoda.Game
                 _character.Mounted = Mounted.Value;
                 _character.SquadFormation = (FormationKind)((Squad.Value >> 8) & 3);
                 _character.SquadHold = (Squad.Value & (1 << 10)) != 0;
+                _character.HarnessSize = (Squad.Value >> 12) & 7;
                 _character.Vitals.Experience = Progress.Value & 65535;
                 for (int i = 0; i < 4; i++) _character.Vitals.Levels[i] = (Progress.Value >> (16 + 3 * i)) & 7;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
@@ -340,7 +342,7 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             var shop = GetComponent<Shop>();
-            if (shop != null && deal >= 0 && deal <= (int)DealKind.Squad) shop.ServerDeal((DealKind)deal, arg);
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Harness) shop.ServerDeal((DealKind)deal, arg);
         }
 
         /// Маршрут обоза: точки игрока. Склад и шахту дорисовывает хост.

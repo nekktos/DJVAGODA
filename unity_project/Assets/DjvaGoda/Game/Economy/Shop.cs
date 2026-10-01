@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
-    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan, Upgrade, Train, Squad }
+    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan, Upgrade, Train, Squad, Harness }
 
     /// Дела у верстака: arg = дело * 10 + ступень (протез) или 1/0 (коляска).
     public enum BenchOp { Prosthetic, Eye, Splint, Wheelchair }
@@ -217,6 +217,9 @@ namespace DjvaGoda.Game
                     }
                     else if (arg >= 10 && arg < 10 + Formations.Names.Length) Squads.SetFormation(_character, (FormationKind)(arg - 10));
                     return;
+                case DealKind.Harness:
+                    _character.HarnessSize = Mathf.Clamp(arg, CaravanRules.HorsesMin, CaravanRules.HorsesMax);
+                    return;
                 case DealKind.Upgrade:
                     if (arg < 0 || arg >= Progression.Names.Length) return;
                     if (!_character.Vitals.BuyLevel((Stat)arg) && _combat != null) _combat.Tell("на этот уровень не хватает опыта");
@@ -328,6 +331,49 @@ namespace DjvaGoda.Game
             }
         }
 
+        /// Сколько лошадей в упряжку следующего обоза: чем больше, тем быстрее он едет.
+        void HarnessRow()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("В упряжку следующего обоза: " + _character.HarnessSize);
+            GUI.enabled = _character.HarnessSize > CaravanRules.HorsesMin;
+            if (GUILayout.Button("−1 лошадь", _style, GUILayout.Height(30))) Ask(DealKind.Harness, _character.HarnessSize - 1);
+            GUI.enabled = _character.HarnessSize < CaravanRules.HorsesMax;
+            if (GUILayout.Button("+1 лошадь", _style, GUILayout.Height(30))) Ask(DealKind.Harness, _character.HarnessSize + 1);
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+        }
+
+        static readonly string[] CartStates = { "едет к шахте", "грузится", "едет домой", "разгружается", "доехал" };
+
+        /// Склад: что в нём, упряжка, маршрут — и обозы в пути (жив ли, где, когда ждать).
+        void StoragePanel(Wallet wallet)
+        {
+            var stored = "";
+            for (int i = 0; i < Res.Count; i++) stored += Res.Short[i] + " " + wallet.Stored.GetAmount(i) + "  ";
+            GUILayout.Label("Склад: " + stored);
+            GUILayout.Label("Отсюда обоз уходит на шахту и сюда же привозит груз. В упряжку: " + _character.HarnessSize
+                + ", свободно " + wallet.HorsesFree);
+            if (GUILayout.Button("проложить маршрут и отправить обоз", _style, GUILayout.Height(32)))
+            {
+                Close();
+                var builder = GetComponent<Builder>();
+                if (builder != null) builder.StartRoute();
+            }
+            int shown = 0;
+            foreach (var actor in Actor.All)
+            {
+                var cart = actor as CaravanActor;
+                if (cart == null || !cart.Present || cart.OwnerNow != OwnerId || cart.Side != (int)_character.Faction) continue;
+                float speed = CaravanRules.SpeedFor(cart.HorsesNow);
+                string when = speed <= 0.01f || cart.HaltedNow ? "стоит" : (int)(cart.LeftNow / speed) + " с";
+                GUILayout.Label("Обоз: " + CartStates[Mathf.Clamp(cart.StateNow, 0, CartStates.Length - 1)] + ", лошадей " + cart.HorsesNow
+                    + ", осталось " + (int)cart.LeftNow + " м, придёт через " + when);
+                shown++;
+            }
+            if (shown == 0) GUILayout.Label("Обозов в пути нет.");
+        }
+
         void ChiefPanel()
         {
             if (_character.Faction == Faction.Guard)
@@ -431,11 +477,13 @@ namespace DjvaGoda.Game
             }
             if (BuildingAtHand(BuildingKind.Stable) != null)
             {
-                GUILayout.Label("Конюшня: лошадей " + wallet.Horses + " (в упряжке " + wallet.HorsesOut + ")");
+                GUILayout.Label("Конюшня: лошадей " + wallet.HorsesFree + " свободно из " + wallet.Horses + ", больше " + Res.HorseLimit + " не держит");
                 GUI.enabled = wallet.CanAfford(Res.HorseCost) && wallet.Horses < Res.HorseLimit;
                 if (GUILayout.Button("взять лошадь — " + Res.FormatCost(Res.HorseCost), _style, GUILayout.Height(32))) Ask(DealKind.Horse, 0);
                 GUI.enabled = true;
+                HarnessRow();
             }
+            if (BuildingAtHand(BuildingKind.Storage) != null) StoragePanel(wallet);
             foreach (var barracks in new[] { BuildingKind.SwordBarracks, BuildingKind.ArcherBarracks })
             {
                 if (BuildingAtHand(barracks) == null) continue;

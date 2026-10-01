@@ -211,6 +211,7 @@ namespace DjvaGoda.Game
             saved.armorTier = kit.ArmorTier;
             saved.potionsHeal = kit.PotionsHeal;
             saved.potionsMana = kit.PotionsMana;
+            saved.harnessSize = player.HarnessSize;
             saved.isLeader = kit.IsLeader;
             saved.ordersDone = player.Service.OrdersDone;
             saved.finalThreshold = player.Service.FinalThreshold;
@@ -287,6 +288,7 @@ namespace DjvaGoda.Game
             kit.ArmorTier = saved.armorTier;
             kit.PotionsHeal = saved.potionsHeal;
             kit.PotionsMana = saved.potionsMana;
+            player.HarnessSize = Mathf.Clamp(saved.harnessSize, CaravanRules.HorsesMin, CaravanRules.HorsesMax);
             kit.IsLeader = saved.isLeader;
             player.Service.IsLeader = saved.isLeader && player.Faction == Faction.Guard;
             player.Service.OrdersDone = saved.ordersDone;

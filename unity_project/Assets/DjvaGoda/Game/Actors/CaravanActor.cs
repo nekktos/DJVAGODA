@@ -29,6 +29,28 @@ namespace DjvaGoda.Game
         [System.NonSerialized] public int ShownHorses;
         [System.NonSerialized] public bool ShownHalted;
         [System.NonSerialized] public int ShownCargo;
+        [System.NonSerialized] public int ShownOwner;
+        [System.NonSerialized] public int ShownState;
+        [System.NonSerialized] public float ShownLeft;
+        public int OwnerNow { get { return Trip != null ? Trip.Owner : ShownOwner; } }
+        public int StateNow { get { return Trip != null ? (int)Trip.State : ShownState; } }
+        /// Сколько метров рейса осталось.
+        public float LeftNow
+        {
+            get
+            {
+                if (Trip == null) return ShownLeft;
+                var ahead = Trip.PathAhead();
+                float total = 0f;
+                var from = Trip.Position;
+                foreach (var point in ahead)
+                {
+                    total += from.FlatDistance(point);
+                    from = point;
+                }
+                return total;
+            }
+        }
         public int HorsesNow { get { return Trip != null ? Trip.Horses : ShownHorses; } }
         public bool HaltedNow { get { return Trip != null ? Trip.Halted : ShownHalted; } }
         public int CargoNow { get { return Trip != null ? Trip.CargoTotal : ShownCargo; } }

@@ -44,6 +44,8 @@ namespace DjvaGoda.Game
         public bool SquadHold;
         public V3 SquadRally;
         public float SquadRallyYaw;
+        /// Сколько лошадей запрягать в следующий обоз (выбирают в конюшне).
+        public int HarnessSize = Builder.HarnessSize;
         /// Ввод героя ИИ; пусто — ввод игрока.
         public MotorInput? Scripted;
         public bool LocalControl = true;
