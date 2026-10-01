@@ -3,7 +3,6 @@
     "rootNamespace": "DjvaGoda.Tests",
     "references": [
         "DjvaGoda.Core",
-        "DjvaGoda.CoreOld",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
