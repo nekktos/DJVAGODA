@@ -46,6 +46,7 @@ namespace DjvaGoda.Game
             Player = root.AddComponent<PlayerCharacter>();
             Player.Faction = side;
             root.AddComponent<PlayerCombat>();
+            root.AddComponent<PlayerSpells>();
             Rig.Target = Player;
             return Player;
         }

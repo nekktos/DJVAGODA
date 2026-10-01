@@ -92,8 +92,7 @@ namespace DjvaGoda.Game
             // Павший не ходит: встанет по правилам возрождения (Respawn).
             if (!Alive || !Simulate) return;
             float delta = Time.deltaTime;
-            Spells.Tick(delta);
-            Vitals.TickMana(delta);
+            // Таймеры заклинаний и ману считает хост (PlayerSpells).
             var input = Scripted ?? ReadInput();
             if (Scripted == null && LocalControl && Cursor.lockState == CursorLockMode.Locked)
             {

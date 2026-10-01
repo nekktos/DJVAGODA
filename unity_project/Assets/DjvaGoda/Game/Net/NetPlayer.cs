@@ -10,6 +10,64 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
+    /// Состояние заклинаний для клиентов: откаты, сроки, каст, мана. Считает хост.
+    public struct SpellSync : INetworkSerializable, System.IEquatable<SpellSync>
+    {
+        public float Mana, Rally, Paralysis, Wither, Blind, CastLeft;
+        public int CastKind;
+        public float Cd0, Cd1, Cd2, Cd3, Cd4, Cd5;
+
+        public void NetworkSerialize<T>(BufferSerializer<T> s) where T : IReaderWriter
+        {
+            s.SerializeValue(ref Mana);
+            s.SerializeValue(ref Rally);
+            s.SerializeValue(ref Paralysis);
+            s.SerializeValue(ref Wither);
+            s.SerializeValue(ref Blind);
+            s.SerializeValue(ref CastLeft);
+            s.SerializeValue(ref CastKind);
+            s.SerializeValue(ref Cd0);
+            s.SerializeValue(ref Cd1);
+            s.SerializeValue(ref Cd2);
+            s.SerializeValue(ref Cd3);
+            s.SerializeValue(ref Cd4);
+            s.SerializeValue(ref Cd5);
+        }
+
+        /// Десятые доли секунды: таймеры тикают каждый кадр, а слать их чаще незачем.
+        static bool Near(float a, float b) { return System.Math.Abs(a - b) < 0.1f; }
+
+        public bool Equals(SpellSync o)
+        {
+            return Near(Mana, o.Mana) && Near(Rally, o.Rally) && Near(Paralysis, o.Paralysis) && Near(Wither, o.Wither)
+                && Near(Blind, o.Blind) && Near(CastLeft, o.CastLeft) && CastKind == o.CastKind
+                && Near(Cd0, o.Cd0) && Near(Cd1, o.Cd1) && Near(Cd2, o.Cd2) && Near(Cd3, o.Cd3) && Near(Cd4, o.Cd4) && Near(Cd5, o.Cd5);
+        }
+
+        public static SpellSync Of(Vitals vitals, SpellState spells)
+        {
+            var c = spells.Cooldowns;
+            return new SpellSync
+            {
+                Mana = vitals.Mana, Rally = spells.Rally, Paralysis = spells.Paralysis, Wither = spells.Wither,
+                Blind = spells.Blind, CastLeft = spells.CastLeft, CastKind = spells.CastKind.HasValue ? (int)spells.CastKind.Value : -1,
+                Cd0 = c[0], Cd1 = c[1], Cd2 = c[2], Cd3 = c[3], Cd4 = c[4], Cd5 = c[5],
+            };
+        }
+
+        public void Apply(Vitals vitals, SpellState spells)
+        {
+            vitals.Mana = Mana;
+            spells.Rally = Rally;
+            spells.Paralysis = Paralysis;
+            spells.Wither = Wither;
+            spells.Blind = Blind;
+            spells.MirrorCast(CastKind >= 0 ? (AbilityKind?)CastKind : null, CastLeft);
+            var c = spells.Cooldowns;
+            c[0] = Cd0; c[1] = Cd1; c[2] = Cd2; c[3] = Cd3; c[4] = Cd4; c[5] = Cd5;
+        }
+    }
+
     [RequireComponent(typeof(PlayerCharacter))]
     public class NetPlayer : NetworkBehaviour
     {
@@ -34,6 +92,7 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> ArmorTier = new NetworkVariable<int>();
         public readonly NetworkVariable<int> Arrows = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
+        public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
 
         /// Сторона и место, назначенные хостом до спавна: в сетевые переменные
         /// их пишет OnNetworkSpawn — до спавна переменная ещё не привязана.
@@ -43,6 +102,7 @@ namespace DjvaGoda.Game
 
         PlayerCharacter _character;
         PlayerCombat _combat;
+        PlayerSpells _spells;
         float _deadFor;
         bool _wasAlive = true;
 
@@ -50,6 +110,7 @@ namespace DjvaGoda.Game
         {
             _character = GetComponent<PlayerCharacter>();
             _combat = GetComponent<PlayerCombat>();
+            _spells = GetComponent<PlayerSpells>();
         }
 
         public override void OnNetworkSpawn()
@@ -102,6 +163,7 @@ namespace DjvaGoda.Game
                 ArmorTier.Value = _character.Kit.ArmorTier;
                 Arrows.Value = _character.Kit.Arrows;
                 if (_combat != null) Stagger.Value = _combat.Stagger;
+                Spells.Value = SpellSync.Of(_character.Vitals, _character.Spells);
             }
             else
             {
@@ -115,6 +177,7 @@ namespace DjvaGoda.Game
                 _character.Kit.ArmorTier = ArmorTier.Value;
                 _character.Kit.Arrows = Arrows.Value;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
+                Spells.Value.Apply(_character.Vitals, _character.Spells);
             }
         }
 
@@ -163,6 +226,19 @@ namespace DjvaGoda.Game
             if (kind < 0 || kind >= Weapons.Names.Length || _combat == null) return;
             _combat.ServerAttack((WeaponKind)kind, origin.ToCore(), dir.ToCore());
         }
+
+        /// Заявка на заклинание. Решает хост (PlayerSpells.ServerCast).
+        [Rpc(SendTo.Server)]
+        public void CastRpc(int kind, RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            if (kind < 0 || kind >= Abilities.Names.Length || _spells == null) return;
+            _spells.ServerCast((AbilityKind)kind);
+        }
+
+        /// Вспышка заклинания — всем, и хосту тоже.
+        [Rpc(SendTo.Everyone)]
+        public void SpellFxRpc(int kind, Vector3 at) { SpellFx.Show((AbilityKind)kind, at); }
 
         /// Заявка на перевязку: бинт и кровь — у хоста.
         [Rpc(SendTo.Server)]

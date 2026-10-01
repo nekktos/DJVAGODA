@@ -30,6 +30,15 @@ namespace DjvaGoda.Game
                 return;
             }
 
+            // Слепота: заклятие злодея и выбитые глаза — экран темнеет.
+            float blind = Mathf.Max(me.Spells.Blind > 0f ? 0.85f : 0f, me.Body.Blindness() * 0.6f);
+            if (blind > 0f)
+            {
+                GUI.color = new Color(0f, 0f, 0f, blind);
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+            }
+
             // Прицел; откат — полоской под ним.
             float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
             GUI.Label(new Rect(cx - 6, cy - 14, 20, 30), "+", _label);
@@ -46,7 +55,30 @@ namespace DjvaGoda.Game
             if (me.Body.Bleeding) notes += "кровотечение — держите B, чтобы перевязаться (бинтов " + me.Body.Bandages + ")   ";
             if (combat != null && combat.Stagger > 0f) notes += "сбит с ног   ";
             if (me.Spells.Paralysis > 0f) notes += "паралич   ";
+            if (me.Spells.Wither > 0f) notes += "увядание   ";
+            if (me.Spells.Rally > 0f) notes += "клич леса   ";
             if (notes.Length > 0) GUI.Label(new Rect(x, y - 30, 900, 24), notes, _label);
+
+            // Каст — полоса над прицелом.
+            if (me.Spells.Casting && me.Spells.CastKind.HasValue)
+            {
+                float full = Abilities.CastTime(me.Spells.CastKind.Value);
+                Bar(new Rect(cx - 80, cy - 60, 160, 8), full > 0f ? 1f - me.Spells.CastLeft / full : 1f, new Color(0.6f, 0.3f, 0.9f));
+                GUI.Label(new Rect(cx - 80, cy - 86, 300, 24), Abilities.NameOf(me.Spells.CastKind.Value) + "…", _label);
+            }
+
+            // Заклинания стороны: 4/5/6, мана и откат.
+            var known = Factions.AbilitiesOf(me.Faction);
+            for (int i = 0; i < known.Length; i++)
+            {
+                var kind = known[i];
+                float cd = me.Spells.Cooldowns[(int)kind];
+                string title = (4 + i) + " " + Abilities.NameOf(kind) + (cd > 0f ? " " + Mathf.CeilToInt(cd) : "");
+                bool can = cd <= 0f && me.Vitals.Mana >= Abilities.ManaCost[(int)kind];
+                GUI.color = can ? Color.white : new Color(1f, 1f, 1f, 0.5f);
+                GUI.Box(new Rect(16 + i * 150, Screen.height - 160, 144, 30), title, new GUIStyle(GUI.skin.box) { fontSize = 14 });
+                GUI.color = Color.white;
+            }
 
             if (combat == null) return;
             var set = Factions.WeaponsOf(me.Faction);

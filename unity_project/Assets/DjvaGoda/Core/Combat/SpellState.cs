@@ -25,6 +25,14 @@ namespace DjvaGoda.Core
 
         public bool Casting { get { return _castLeft > 0f; } }
         public float CastLeft { get { return _castLeft; } }
+        public AbilityKind? CastKind { get { return _casting; } }
+
+        /// Каст, присланный хостом (клиент сам заклинания не считает).
+        public void MirrorCast(AbilityKind? kind, float left)
+        {
+            _casting = kind;
+            _castLeft = left;
+        }
 
         public bool Ready(AbilityKind kind) { return Cooldowns[(int)kind] <= 0f; }
 

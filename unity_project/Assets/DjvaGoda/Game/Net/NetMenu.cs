@@ -9,6 +9,8 @@
 //                           движения по сети)
 //   -attack N               взять оружие из слота N (1..4) и держать удар
 //                           (проверка боя по сети)
+//   -cast N                 произносить заклинание из слота N (1..3), как
+//                           только оно готово
 using System;
 using DjvaGoda.Core;
 using Unity.Netcode;
@@ -41,6 +43,8 @@ namespace DjvaGoda.Game
             _walk = Array.IndexOf(args, "-walk") >= 0;
             int attack = Array.IndexOf(args, "-attack");
             if (attack >= 0 && attack + 1 < args.Length) int.TryParse(args[attack + 1], out _attackSlot);
+            int cast = Array.IndexOf(args, "-cast");
+            if (cast >= 0 && cast + 1 < args.Length) int.TryParse(args[cast + 1], out _castSlot);
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-host") _session.Host(PortAt(args, i + 1));
@@ -50,10 +54,11 @@ namespace DjvaGoda.Game
 
         bool _walk;
         int _attackSlot;
+        int _castSlot;
 
         void Update()
         {
-            if (!_walk && _attackSlot <= 0) return;
+            if (!_walk && _attackSlot <= 0 && _castSlot <= 0) return;
             var net = NetworkManager.Singleton;
             if (net == null || net.LocalClient == null || net.LocalClient.PlayerObject == null) return;
             var me = net.LocalClient.PlayerObject.GetComponent<PlayerCharacter>();
@@ -66,6 +71,10 @@ namespace DjvaGoda.Game
                 combat.Weapon = set[_attackSlot - 1];
                 combat.ScriptedAttack = true;
             }
+            var spells = me.GetComponent<PlayerSpells>();
+            var known = Factions.AbilitiesOf(me.Faction);
+            if (spells != null && _castSlot > 0 && _castSlot <= known.Length && me.Spells.Ready(known[_castSlot - 1]))
+                spells.ScriptedCast = (int)known[_castSlot - 1];
         }
 
         static ushort PortAt(string[] args, int i)

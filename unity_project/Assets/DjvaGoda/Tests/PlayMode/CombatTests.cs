@@ -7,63 +7,23 @@ using DjvaGoda.Core;
 using DjvaGoda.Game;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
 namespace DjvaGoda.Tests
 {
     public class CombatTests
     {
-        /// Ровное место — дорога вдоль x у перекрёстка, вдали от построек.
-        static readonly Vector3 Arena = new Vector3(140f, 0f, 0f);
-
-        Bootstrap _boot;
+        static readonly Vector3 Arena = TestArena.Centre;
 
         [UnitySetUp]
-        public IEnumerator Build()
-        {
-            SceneManager.LoadScene("Main");
-            yield return null;
-            _boot = Object.FindAnyObjectByType<Bootstrap>();
-        }
+        public IEnumerator Build() { yield return TestArena.Load(); }
 
         [UnityTearDown]
-        public IEnumerator Clear()
-        {
-            foreach (var root in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
-                if (root != null && root.parent == null) Object.Destroy(root.gameObject);
-            yield return null;
-        }
+        public IEnumerator Clear() { yield return TestArena.Clear(); }
 
-        static Vector3 Ground(Vector3 at)
-        {
-            RaycastHit hit;
-            if (Physics.Raycast(at + Vector3.up * 50f, Vector3.down, out hit, 100f, HitZone.WorldMask, QueryTriggerInteraction.Ignore))
-                return hit.point;
-            return at;
-        }
-
-        /// Боец без управления: стоит, получает удары.
-        static PlayerCharacter Fighter(Faction side, Vector3 at, float yaw)
-        {
-            var root = new GameObject("Боец " + side);
-            root.transform.position = Ground(at) + Vector3.up * 0.05f;
-            Bootstrap.AddBody(root.transform, side);
-            var character = root.AddComponent<PlayerCharacter>();
-            character.Faction = side;
-            character.LocalControl = false;
-            character.Yaw = yaw;
-            root.transform.rotation = CoreSpace.YawToRotation(yaw);
-            root.AddComponent<PlayerCombat>();
-            return character;
-        }
-
-        static IEnumerator Settle()
-        {
-            yield return null;
-            yield return new WaitForFixedUpdate();
-            yield return null;
-        }
+        static PlayerCharacter Fighter(Faction side, Vector3 at, float yaw) { return TestArena.Fighter(side, at, yaw); }
+        static IEnumerator Settle() { return TestArena.Settle(); }
+        static Vector3 Ground(Vector3 at) { return TestArena.Ground(at); }
 
         static V3 AimAt(PlayerCharacter from, PlayerCharacter to, float height)
         {
