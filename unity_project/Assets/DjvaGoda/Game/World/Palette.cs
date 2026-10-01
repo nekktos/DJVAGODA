@@ -3,6 +3,7 @@
 // До ассетов автора мир — заливка цветом. Земля и рельеф — ОДНИМ материалом:
 // разными низкий рельеф читался бы кляксами на поле (находка Godot-версии).
 using System.Collections.Generic;
+using DjvaGoda.Core;
 using UnityEngine;
 
 namespace DjvaGoda.Game
@@ -42,12 +43,24 @@ namespace DjvaGoda.Game
                 if (_shader == null) _shader = Shader.Find("Standard");
             }
             Color color;
-            if (!Colors.TryGetValue(key, out color)) color = Color.magenta;
+            if (!Colors.TryGetValue(key, out color)) color = SideColor(key);
             material = new Material(_shader) { name = "Заглушка " + key, color = color, enableInstancing = true };
             if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.1f);
             if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.1f);
             Cache[key] = material;
             return material;
+        }
+
+        /// Цвет стороны (Factions.Colors) — им красятся персонажи, пока нет ассетов.
+        public static Material Side(Faction side) { return Of("side_" + (int)side); }
+
+        static Color SideColor(string key)
+        {
+            int side;
+            if (!key.StartsWith("side_") || !int.TryParse(key.Substring(5), out side) || side < 0 || side >= Factions.Count)
+                return Color.magenta;
+            var rgb = Factions.Colors[side];
+            return new Color(rgb.R, rgb.G, rgb.B);
         }
     }
 }

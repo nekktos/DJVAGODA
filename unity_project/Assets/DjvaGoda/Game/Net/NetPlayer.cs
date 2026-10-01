@@ -37,6 +37,8 @@ namespace DjvaGoda.Game
         public override void OnNetworkSpawn()
         {
             _character.Faction = (Faction)Side.Value;
+            Bootstrap.AddBody(transform, (Faction)Side.Value);
+            name = "Игрок " + OwnerClientId + " (" + Factions.Names[Side.Value] + ")";
             _character.LocalControl = IsOwner;
             _character.Simulate = IsOwner;
             if (IsOwner)
@@ -56,8 +58,9 @@ namespace DjvaGoda.Game
                 if (Mathf.Abs(Yaw.Value - _character.Yaw) > 0.001f) Yaw.Value = _character.Yaw;
                 if (Mathf.Abs(Pitch.Value - _character.Pitch) > 0.001f) Pitch.Value = _character.Pitch;
             }
-            else
+            else if (Position.Value != Vector3.zero)
             {
+                // Ноль — владелец ещё не прислал положение: стоим, где поставил спавн.
                 float t = Mathf.Clamp01(Time.deltaTime * 14f);
                 transform.position = Vector3.Lerp(transform.position, Position.Value, t);
                 _character.Yaw = Mathf.LerpAngle(_character.Yaw * Mathf.Rad2Deg, Yaw.Value * Mathf.Rad2Deg, t) * Mathf.Deg2Rad;

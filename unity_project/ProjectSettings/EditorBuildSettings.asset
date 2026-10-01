@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/DjvaGoda/Scenes/Main.unity
+    guid: 39c32bf4c5a233b41ad4fa5c6bb924ae
   m_configObjects: {}

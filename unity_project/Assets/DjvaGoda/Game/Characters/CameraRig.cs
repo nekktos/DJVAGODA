@@ -32,10 +32,11 @@ namespace DjvaGoda.Game
         void Update()
         {
             if (GameInput.Pressed("toggle_view")) FirstPerson = !FirstPerson;
-            // Клик — захватить мышь; Escape — отпустить (меню, окна).
+            // Клик — захватить мышь; Escape — отпустить (меню, окна). Без
+            // персонажа (меню сессии) мышь не захватывается: клик — по кнопкам.
             var mouse = UnityEngine.InputSystem.Mouse.current;
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
-            if (mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
+            if (Target != null && mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
             {
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;

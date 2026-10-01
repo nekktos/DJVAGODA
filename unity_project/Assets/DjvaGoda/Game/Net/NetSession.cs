@@ -30,6 +30,14 @@ namespace DjvaGoda.Game
 
         void Awake() { Instance = this; }
 
+        // Подписка одна на сессию: Host/Join зовутся снова после выхода.
+        void Start() { Net.OnClientDisconnectCallback += Left; }
+
+        void OnDestroy()
+        {
+            if (NetworkManager.Singleton != null) NetworkManager.Singleton.OnClientDisconnectCallback -= Left;
+        }
+
         static NetworkManager Net { get { return NetworkManager.Singleton; } }
 
         byte[] Request() { return Encoding.UTF8.GetBytes((int)Wanted + "|" + Profile); }
@@ -39,7 +47,6 @@ namespace DjvaGoda.Game
             Net.GetComponent<UnityTransport>().SetConnectionData("0.0.0.0", port);
             Net.NetworkConfig.ConnectionApproval = true;
             Net.ConnectionApprovalCallback = Approve;
-            Net.OnClientDisconnectCallback += Left;
             // Сам хост тоже проходит одобрение: его запрос — его сторона.
             Net.NetworkConfig.ConnectionData = Request();
             if (!Net.StartHost())
@@ -116,7 +123,8 @@ namespace DjvaGoda.Game
                 _toSpawn.Remove(client);
                 int faction = _faction[client];
                 int slot = _slot[client];
-                var at = Respawn.SpawnPoint((Faction)faction, slot, false, new V3(0f, 0f, 0f), new List<V3>());
+                // Метр над точкой — как одиночный загрузчик: капсула не встаёт в землю.
+                var at = Respawn.SpawnPoint((Faction)faction, slot, false, new V3(0f, 0f, 0f), new List<V3>()) + new V3(0f, 1f, 0f);
                 var go = Instantiate(PlayerPrefab, at.ToUnity(), Quaternion.identity);
                 var player = go.GetComponent<NetPlayer>();
                 player.Side.Value = faction;
@@ -127,6 +135,13 @@ namespace DjvaGoda.Game
 
         void Left(ulong client)
         {
+            if (!Net.IsServer)
+            {
+                // Клиента отключили (отказ хоста, хост ушёл, не дозвонились).
+                string reason = Net.DisconnectReason;
+                Status = string.IsNullOrEmpty(reason) ? "Связь с хостом потеряна." : reason;
+                return;
+            }
             _faction.Remove(client);
             _slot.Remove(client);
             Status = "Игрок " + client + " отключился.";
