@@ -116,7 +116,7 @@ namespace DjvaGoda.Core
             var course = Course(centre, Route);
             Anchor = here;
             float yaw = 0f;
-            if (course.Length() > 0.5f) yaw = (float)Math.Atan2(-course.X, -course.Z);
+            if (course.Length() > 0.5f) yaw = (float)Math.Atan2(course.X, course.Z);
             return new WarbandOrder
             {
                 Anchor = here,

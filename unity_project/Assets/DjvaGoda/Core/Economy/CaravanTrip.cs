@@ -121,7 +121,7 @@ namespace DjvaGoda.Core
             if (toTarget.Length() <= CaravanRules.WaypointReach) return NextLeg();
             var dir = AvoidBuildings(toTarget.Normalized(), buildings);
             Position = Position + dir * (SpeedNow * delta);
-            Yaw = RotateToward(Yaw, (float)Math.Atan2(-dir.X, -dir.Z), TurnRate * delta);
+            Yaw = RotateToward(Yaw, (float)Math.Atan2(dir.X, dir.Z), TurnRate * delta);
             return false;
         }
 

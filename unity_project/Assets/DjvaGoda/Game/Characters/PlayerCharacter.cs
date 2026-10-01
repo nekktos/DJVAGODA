@@ -25,7 +25,7 @@ namespace DjvaGoda.Game
         readonly Bandaging _bandaging = new Bandaging();
         CharacterController _controller;
 
-        /// Поворот и наклон головы в ядре: yaw — как у Godot, «вперёд» — −Z.
+        /// Поворот и наклон головы: yaw в радианах, растёт вправо; «вперёд» — +Z.
         public float Yaw;
         public float Pitch;
         public bool Mounted;
@@ -93,8 +93,8 @@ namespace DjvaGoda.Game
             if (Scripted == null && LocalControl && Cursor.lockState == CursorLockMode.Locked)
             {
                 var look = GameInput.Look();
-                // Мышь вправо — поворот вправо: в Unity это рост угла Y, в ядре — убыль yaw.
-                Yaw -= look.x * MouseSensitivity;
+                // Мышь вправо — поворот вправо: рост yaw (угла Y в Unity).
+                Yaw += look.x * MouseSensitivity;
                 Pitch = Mathf.Clamp(Pitch + look.y * MouseSensitivity, -PitchLimit, PitchLimit);
             }
             bool rallied = Spells.Rally > 0f;

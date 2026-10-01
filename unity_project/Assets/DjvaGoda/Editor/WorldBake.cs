@@ -207,7 +207,7 @@ namespace DjvaGoda.EditorTools
         {
             GameObject go;
             var at = piece.Center.ToUnity();
-            var size = piece.Size.SizeToUnity();
+            var size = piece.Size.ToUnity();
             switch (piece.Shape)
             {
                 case PieceShape.Box:
@@ -297,10 +297,9 @@ namespace DjvaGoda.EditorTools
             float length = Mathf.Sqrt(run * run + rise * rise);
             float pitch = Mathf.Atan2(rise, run) * Mathf.Rad2Deg;
             var root = new GameObject("Пандус");
-            // Подножие у фасада (в ядре — больший z), подъём — к плато. После
-            // отражения z плато лежит к +z Unity, и плиту наклоняем −pitch:
-            // её дальний (+z) конец поднимается.
-            var centre = (piece.Center + new V3(0f, rise * 0.5f, -run * 0.5f)).ToUnity();
+            // Подножие у фасада, подъём — к плато (к +z): плиту наклоняем −pitch,
+            // и её дальний (+z) конец поднимается.
+            var centre = (piece.Center + new V3(0f, rise * 0.5f, run * 0.5f)).ToUnity();
             root.transform.SetPositionAndRotation(centre, Quaternion.Euler(-pitch, 0f, 0f));
             var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
             slab.name = "Плита";

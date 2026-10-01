@@ -646,11 +646,11 @@ public class CoreTests
         mustBeFlat.Add(MapLayout.Workbench);
         mustBeFlat.Add(MapLayout.RampFoot);
         mustBeFlat.Add(new V3(0f, 0f, 0f));
-        mustBeFlat.Add(new V3(0f, 0f, -410f));
+        mustBeFlat.Add(new V3(0f, 0f, 410f));
         mustBeFlat.Add(new V3(530f, 0f, 0f));
-        mustBeFlat.Add(new V3(600f, 0f, 150f));
+        mustBeFlat.Add(new V3(600f, 0f, -150f));
         var emperor = MapLayout.ZoneCenters[(int)Zone.Emperor];
-        mustBeFlat.Add(new V3(emperor.X + 180f, 0f, emperor.Z + 180f));
+        mustBeFlat.Add(new V3(emperor.X + 180f, 0f, emperor.Z - 180f));
         foreach (var mine in MapLayout.Mines)
         {
             mustBeFlat.Add(mine.At);
@@ -698,7 +698,7 @@ public class CoreTests
     public void WarbandRules()
     {
         var elfHome = Factions.Spawn[(int)Faction.Elves];
-        var villainFort = new V3(-300f, 0f, 290f);
+        var villainFort = new V3(-300f, 0f, -290f);
         var elves = new WarbandBrain(Faction.Elves);
         var view = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
         view.Buildings.Add(new SidedPoint(villainFort, (int)Faction.Villain));
@@ -721,7 +721,7 @@ public class CoreTests
 
         var villain = new WarbandBrain(Faction.Villain);
         var villainView = new WarbandView { Band = BandAt(Factions.Spawn[(int)Faction.Villain], AiStats.GarrisonSize) };
-        villainView.Buildings.Add(new SidedPoint(new V3(-300f, 0f, -250f), (int)Faction.Elves));
+        villainView.Buildings.Add(new SidedPoint(new V3(-300f, 0f, 250f), (int)Faction.Elves));
         villainView.SidesLeft = 2;
         villain.Think(villainView, null);
         bool settling = villain.State == WarbandState.Hold;
@@ -745,14 +745,14 @@ public class CoreTests
         var march = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
         march.Buildings.Add(new SidedPoint(villainFort, (int)Faction.Villain));
         thinned.Think(march, null);
-        march.Band = BandAt(elfHome + new V3(0f, 0f, 200f), 1);
+        march.Band = BandAt(elfHome + new V3(0f, 0f, -200f), 1);
         thinned.Think(march, null);
         Check(thinned.State == WarbandState.Return && thinned.Goal.Value.Distance(elfHome) < 0.1f,
             "отряд проредили на марше до одного — бросает набег и уходит домой", thinned.StateName);
 
         var keeper = new WarbandBrain(Faction.Elves);
         var home = new WarbandView { Band = BandAt(elfHome, AiStats.GarrisonSize) };
-        var house = elfHome + new V3(60f, 0f, 60f);
+        var house = elfHome + new V3(60f, 0f, -60f);
         home.Posts.Add(house);
         home.Fighters.Add(new SidedPoint(house + new V3(12f, 0f, 0f), (int)Faction.Guard));
         keeper.Think(home, null);
@@ -760,12 +760,12 @@ public class CoreTests
             "враг у своего дома — отряд идёт защищать хозяйство", keeper.StateName);
 
         var cart = new CartSighting { Id = 7, At = new V3(0f, 0f, 0f), Side = (int)Faction.Villain };
-        for (int i = 1; i <= 10; i++) cart.Ahead.Add(new V3(0f, 0f, 30f * i));
+        for (int i = 1; i <= 10; i++) cart.Ahead.Add(new V3(0f, 0f, -30f * i));
         var hunter = new WarbandBrain(Faction.Elves);
-        var meet = hunter.Intercept(BandAt(new V3(60f, 0f, 150f), 4), cart);
-        float cartTime = meet.Z / CaravanRules.Speed;
-        float bandTime = new V3(60f, 0f, 150f).FlatDistance(meet) / UnitStats.BaseSpeed;
-        Check(meet.Z > 0f && bandTime <= cartTime && meet.Z < 300f,
+        var meet = hunter.Intercept(BandAt(new V3(60f, 0f, -150f), 4), cart);
+        float cartTime = -meet.Z / CaravanRules.Speed;
+        float bandTime = new V3(60f, 0f, -150f).FlatDistance(meet) / UnitStats.BaseSpeed;
+        Check(meet.Z < 0f && bandTime <= cartTime && meet.Z > -300f,
             "перехват: первая точка пути обоза, куда отряд успеет раньше него", "встреча на " + meet);
 
         var slow = new WarbandBrain(Faction.Elves);
@@ -890,20 +890,20 @@ public class CoreTests
             "ранен — пьёт зелье и парализует; кучка из трёх — увядание", panic.Spell + ", " + curse.Spell);
 
         var carter = VillainHero(at);
-        carter.OwnCart = new V3(0f, 0f, 5f);
+        carter.OwnCart = new V3(0f, 0f, -5f);
         carter.Others.Add(new SidedPoint(new V3(3f, 0f, 0f), (int)Faction.Guard));
         Check(!HeroBrain.Decide(carter).Attack,
             "у своего обоза молотом не машет: удар задел бы лошадей", "обоз в 5 м");
 
         var buildings = new List<KeyValuePair<BuildingKind, V3>>
         {
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, 10f)),
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, new V3(0f, 0f, 40f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, -10f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, new V3(0f, 0f, -40f)),
         };
-        bool blocked = Geometry.BuildingBetween(new V3(0f, 0f, 0f), new V3(0f, 0f, 20f), buildings);
-        bool inside = Geometry.BuildingBetween(new V3(0f, 0f, 0f), new V3(0f, 0f, 10f), buildings);
-        bool beside = Geometry.BuildingBetween(new V3(20f, 0f, 0f), new V3(20f, 0f, 20f), buildings);
-        bool field = Geometry.BuildingBetween(new V3(0f, 0f, 30f), new V3(0f, 0f, 50f), buildings);
+        bool blocked = Geometry.BuildingBetween(new V3(0f, 0f, 0f), new V3(0f, 0f, -20f), buildings);
+        bool inside = Geometry.BuildingBetween(new V3(0f, 0f, 0f), new V3(0f, 0f, -10f), buildings);
+        bool beside = Geometry.BuildingBetween(new V3(20f, 0f, 0f), new V3(20f, 0f, -20f), buildings);
+        bool field = Geometry.BuildingBetween(new V3(0f, 0f, -30f), new V3(0f, 0f, -50f), buildings);
         Check(blocked && !inside && !beside && !field,
             "постройка на прямой — обходить по пути; к самой постройке и через поле — напрямик",
             "насквозь " + blocked + ", к ней " + inside + ", мимо " + beside + ", поле " + field);
@@ -924,10 +924,10 @@ public class CoreTests
             "эльф без домов ждёт отстройки, при выбывших эльфах — не встаёт; вожак пал насовсем",
             "ждёт " + wait + ", выбыли " + gone + ", вожак " + leader);
 
-        var houses = new List<V3> { new V3(-255f, 0f, -300f), new V3(-310f, 0f, -343.9f) };
-        var point = Respawn.SpawnPoint(Faction.Elves, 1, true, new V3(-300f, 0f, -350f), houses);
+        var houses = new List<V3> { new V3(-255f, 0f, 300f), new V3(-310f, 0f, 343.9f) };
+        var point = Respawn.SpawnPoint(Faction.Elves, 1, true, new V3(-300f, 0f, 350f), houses);
         float back = Res.BuildingSize(BuildingKind.ElfHouse).Z * 0.5f + 3f;
-        Check(Math.Abs(point.X - (-310f + Respawn.HouseSlotStep)) < 0.01f && Math.Abs(point.Z - (-343.9f - back)) < 0.01f,
+        Check(Math.Abs(point.X - (-310f + Respawn.HouseSlotStep)) < 0.01f && Math.Abs(point.Z - (343.9f + back)) < 0.01f,
             "эльф встаёт у ближайшего достроенного дома, с северной стороны", "точка " + point);
 
         var start = Respawn.SpawnPoint(Faction.Elves, 7, false, new V3(0f, 0f, 0f), houses);
@@ -941,7 +941,7 @@ public class CoreTests
     public void CommanderRules()
     {
         var post = new CommanderPost();
-        bool talk = post.InRange(CommanderPost.Position + new V3(5f, -6f, 3f));
+        bool talk = post.InRange(CommanderPost.Position + new V3(5f, -6f, -3f));
         post.OnDied();
         bool silent = !post.InRange(CommanderPost.Position);
         bool back = false;
@@ -993,13 +993,13 @@ public class CoreTests
         var relief = Relief.ForMap();
         var none = new List<KeyValuePair<BuildingKind, V3>>();
         bool home = Placement.Buildable(MapLayout.ZoneCenters[(int)Zone.Villain], BuildingKind.Storage, relief, none);
-        bool outside = Placement.Buildable(new V3(598f, 0f, 150f), BuildingKind.Storage, relief, none);
+        bool outside = Placement.Buildable(new V3(598f, 0f, -150f), BuildingKind.Storage, relief, none);
         Check(home && !outside, "в зоне злодея ставить можно, за краем мира — нет", "зона " + home + ", край " + outside);
     }
 
     static List<V3> Road()
     {
-        return new List<V3> { new V3(0f, 0f, 0f), new V3(0f, 0f, 100f), new V3(0f, 0f, 200f) };
+        return new List<V3> { new V3(0f, 0f, 0f), new V3(0f, 0f, -100f), new V3(0f, 0f, -200f) };
     }
 
     static int[] Iron(int amount)
@@ -1021,7 +1021,7 @@ public class CoreTests
         float t = 0f;
         while (trip.State != CaravanState.Finished && t < 200f)
         {
-            var e = trip.Tick(0.1f, false, dock, at => at.FlatDistance(new V3(0f, 0f, 200f)) < 10f ? Iron(50) : null, wallet);
+            var e = trip.Tick(0.1f, false, dock, at => at.FlatDistance(new V3(0f, 0f, -200f)) < 10f ? Iron(50) : null, wallet);
             if (e != TripEvent.None) events.Add(e);
             t += 0.1f;
         }
@@ -1050,13 +1050,13 @@ public class CoreTests
             "оповещений " + alarms);
 
         var detour = new CaravanTrip(Faction.Villain, 1, Road(), 2);
-        var house = new List<KeyValuePair<BuildingKind, V3>> { new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, 100f)) };
+        var house = new List<KeyValuePair<BuildingKind, V3>> { new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(0f, 0f, -100f)) };
         var size = Res.BuildingSize(BuildingKind.Storage);
         float closest = float.MaxValue;
         for (int i = 0; i < 1000 && detour.State != CaravanState.Finished; i++)
         {
             detour.Tick(0.1f, false, house, null, null);
-            closest = Math.Min(closest, CaravanTrip.BoxGap(detour.Position, new V3(0f, 0f, 100f), size.X * 0.5f, size.Z * 0.5f));
+            closest = Math.Min(closest, CaravanTrip.BoxGap(detour.Position, new V3(0f, 0f, -100f), size.X * 0.5f, size.Z * 0.5f));
         }
         Check(detour.State == CaravanState.Finished && closest > 0f,
             "дом, поставленный на линии маршрута, обоз объезжает туда и обратно, точку внутри пропускает",
@@ -1079,10 +1079,10 @@ public class CoreTests
 
         var ahead = new CaravanTrip(Faction.Villain, 1, Road(), 2);
         int outbound = ahead.PathAhead().Count;
-        ahead.Redirect(Faction.Guard, 2, new List<V3> { new V3(0f, 0f, 200f), new V3(300f, 0f, -200f) });
+        ahead.Redirect(Faction.Guard, 2, new List<V3> { new V3(0f, 0f, -200f), new V3(300f, 0f, 200f) });
         var home = ahead.PathAhead();
         Check(outbound == 5 && ahead.State == CaravanState.ToHome && ahead.Side == Faction.Guard
-            && home.Count == 2 && home[home.Count - 1].Distance(new V3(0f, 0f, 200f)) < 0.01f,
+            && home.Count == 2 && home[home.Count - 1].Distance(new V3(0f, 0f, -200f)) < 0.01f,
             "путь вперёд — туда и обратно; перехваченный обоз едет к складу перехватчика", "впереди " + outbound + " точек");
     }
 
@@ -1097,7 +1097,7 @@ public class CoreTests
         var home = new V3(0f, 0f, 0f);
         var tree = Site(1, SiteKind.Harvestable, Faction.Villain, new V3(40f, 0f, 0f), 1f, ResourceKind.Wood);
         var rock = Site(2, SiteKind.Harvestable, Faction.Villain, new V3(10f, 0f, 0f), 3f, ResourceKind.Stone);
-        var ours = Site(3, SiteKind.Storage, Faction.Villain, new V3(0f, 0f, 30f), 6f, ResourceKind.Wood);
+        var ours = Site(3, SiteKind.Storage, Faction.Villain, new V3(0f, 0f, -30f), 6f, ResourceKind.Wood);
         var theirs = Site(4, SiteKind.Storage, Faction.Guard, new V3(35f, 0f, 0f), 6f, ResourceKind.Wood);
         var view = new LabourerView { At = home, Home = home };
         view.Sites.AddRange(new[] { tree, rock, ours, theirs });
@@ -1122,16 +1122,16 @@ public class CoreTests
             "полная ноша (30) — на ближайший свой склад, чужой не в счёт; не влезшее — в казну при себе",
             "склад " + wallet.Stored.GetAmount(ResourceKind.Wood) + ", при себе " + wallet.Carried.GetAmount(ResourceKind.Wood));
 
-        var scared = new LabourerView { At = new V3(10f, 0f, 0f), Home = new V3(10f, 0f, -100f) };
+        var scared = new LabourerView { At = new V3(10f, 0f, 0f), Home = new V3(10f, 0f, 100f) };
         scared.Others.Add(new SidedPoint(new V3(8f, 0f, 0f), (int)Faction.Villain));
         scared.Others.Add(new SidedPoint(new V3(20f, 0f, 0f), (int)Faction.Elves));
         var flee = new LabourerBrain(Faction.Villain, LabourerRole.Lumberjack).Tick(0.1f, scared);
         var run = (flee.Goal - scared.At).Flat();
-        Check(flee.Fleeing && Math.Abs(run.Length() - LabourerStats.FleeRadius) < 0.01f && run.X < 0f && run.Z < 0f,
+        Check(flee.Fleeing && Math.Abs(run.Length() - LabourerStats.FleeRadius) < 0.01f && run.X < 0f && run.Z > 0f,
             "враг в 18 м — батрак бежит: наполовину прочь, наполовину к дому; свой не пугает", "бежит на " + run);
 
-        var mine = Site(9, SiteKind.Mine, Faction.Villain, new V3(-167f, 0f, -158f), 17f, ResourceKind.Iron);
-        mine.Dock = new V3(-150f, 0f, -140f);
+        var mine = Site(9, SiteKind.Mine, Faction.Villain, new V3(-167f, 0f, 158f), 17f, ResourceKind.Iron);
+        mine.Dock = new V3(-150f, 0f, 140f);
         var pit = new LabourerView { At = home, Home = home, SideMine = mine };
         pit.Sites.Add(rock);
         var miner = new LabourerBrain(Faction.Villain, LabourerRole.Miner);
@@ -1144,7 +1144,7 @@ public class CoreTests
             "шахтёр копает в 9 м от входа шахты своей стороны, мимо камня, и руду не носит — её везёт обоз",
             "цель " + go.Goal);
 
-        var farm = Site(5, SiteKind.Farm, Faction.Villain, new V3(0f, 0f, -20f), 10f, ResourceKind.Food);
+        var farm = Site(5, SiteKind.Farm, Faction.Villain, new V3(0f, 0f, 20f), 10f, ResourceKind.Food);
         var field = new LabourerView { At = farm.At, Home = home };
         field.Sites.AddRange(new[] { farm, ours });
         var farmer = new LabourerBrain(Faction.Villain, LabourerRole.Farmer);
@@ -1176,7 +1176,7 @@ public class CoreTests
         var yard = new LabourerView { At = home, Home = home };
         yard.Sites.Add(site);
         var build = new LabourerBrain(Faction.Villain, LabourerRole.Builder).Tick(0.1f, yard);
-        var post = new LabourerView { At = new V3(5f, 0f, 5f), Home = home };
+        var post = new LabourerView { At = new V3(5f, 0f, -5f), Home = home };
         var militia = new LabourerBrain(Faction.Villain, LabourerRole.Militia).Tick(0.1f, post);
         Check(build.Action == LabourAction.Build && militia.Action == LabourAction.None && militia.Goal.Distance(post.At) < 0.01f,
             "строитель стоит у стройки; ополченца ведёт отряд, а не работа", build.Action.ToString());
@@ -1202,7 +1202,7 @@ public class CoreTests
         {
             new Sighting(1, new V3(16f, 0f, 0f), (int)Faction.Villain, null),
             new Sighting(2, new V3(3f, 0f, 0f), (int)Faction.Guard, null),
-            new Sighting(3, new V3(0f, 0f, 5f), -1, null),
+            new Sighting(3, new V3(0f, 0f, -5f), -1, null),
         };
         var none = sword.FindTarget(here, around);
         var shot = bow.FindTarget(here, around);
@@ -1219,17 +1219,17 @@ public class CoreTests
         Check(!led.Engage(here, far).HasValue && loose.Engage(here, far).HasValue,
             "на поводке у якоря отряда за врагом дальше 26 м от якоря не идёт; без поводка — идёт", "якорь в 30 м от врага");
 
-        var archer = new UnitBrain(UnitKind.Archer, (int)Faction.Guard) { AiLed = true, AiAnchor = new V3(100f, 0f, 0f), AiYaw = (float)(Math.PI / 2), AiFormation = FormationKind.Line };
+        var archer = new UnitBrain(UnitKind.Archer, (int)Faction.Guard) { AiLed = true, AiAnchor = new V3(100f, 0f, 0f), AiYaw = -(float)(Math.PI / 2), AiFormation = FormationKind.Line };
         var spot = archer.IdleDestination(here, null, 0f, null);
         var slot0 = Formations.SlotOffset(FormationKind.Line, 0);
-        Check(Math.Abs(spot.X - (100f + slot0.Z + UnitStats.ArcherRear)) < 0.01f && Math.Abs(spot.Z + slot0.X) < 0.01f,
+        Check(Math.Abs(spot.X - (100f - slot0.Z + UnitStats.ArcherRear)) < 0.01f && Math.Abs(spot.Z - slot0.X) < 0.01f,
             "без цели — на своё место в строю за якорем, развёрнутым по курсу; лучник на 7 м позади",
             "место " + spot);
 
-        var homebody = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard) { Home = new V3(5f, 0f, 5f), Leash = 90f };
+        var homebody = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard) { Home = new V3(5f, 0f, -5f), Leash = 90f };
         var idle = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard);
         Check(homebody.IdleDestination(here, null, 0f, null).Distance(homebody.Home) < 0.01f
-            && idle.IdleDestination(new V3(7f, 0f, 7f), null, 0f, null).Distance(new V3(7f, 0f, 7f)) < 0.01f,
+            && idle.IdleDestination(new V3(7f, 0f, -7f), null, 0f, null).Distance(new V3(7f, 0f, -7f)) < 0.01f,
             "гарнизон без цели возвращается домой; боец без дома и поводка стоит где стоит", "дом " + homebody.Home);
 
         var storage = new Sighting(6, here, (int)Faction.Villain, BuildingKind.Storage);
@@ -1248,16 +1248,16 @@ public class CoreTests
             "урон лучника " + UnitStats.StrikeDamage(UnitKind.Archer));
 
         var charmed = new UnitBrain(UnitKind.Swordsman, (int)Faction.Guard) { AiLed = true, Leash = 26f };
-        charmed.Charm((int)Faction.Villain, Abilities.ParalysisCharm, new V3(3f, 0f, 3f));
+        charmed.Charm((int)Faction.Villain, Abilities.ParalysisCharm, new V3(3f, 0f, -3f));
         bool turned = charmed.Side == (int)Faction.Villain && !charmed.AiLed && charmed.Leash == 0f;
         for (int i = 0; i < 90; i++) charmed.Tick(0.1f);
         Check(turned && charmed.Side == (int)Faction.Guard && !charmed.Charmed,
             "очарованный боец воюет за злодея 8 с, потом возвращается к своим", "сторона " + charmed.Side);
 
-        var push = UnitBrain.Separation(here, new[] { new V3(0f, 0f, -1f), new V3(5f, 0f, 0f) });
-        var steer = UnitBrain.Steer(new V3(0f, 0f, -5f), push);
-        var fast = UnitBrain.Steer(new V3(0f, 0f, -8f), new V3(6f, 0f, 0f));
-        Check(push.Z > 0f && Math.Abs(steer.Z + 5f) < 0.01f && Math.Abs(fast.Length() - UnitStats.MaxFlatSpeed) < 0.01f
+        var push = UnitBrain.Separation(here, new[] { new V3(0f, 0f, 1f), new V3(5f, 0f, 0f) });
+        var steer = UnitBrain.Steer(new V3(0f, 0f, 5f), push);
+        var fast = UnitBrain.Steer(new V3(0f, 0f, 8f), new V3(6f, 0f, 0f));
+        Check(push.Z < 0f && Math.Abs(steer.Z - 5f) < 0.01f && Math.Abs(fast.Length() - UnitStats.MaxFlatSpeed) < 0.01f
             && Math.Abs(UnitBrain.WoundSpeedScale(2) * UnitStats.BaseSpeed - BodyState.CrawlSpeedBoth) < 0.01f,
             "сосед вплотную расталкивает, но не тормозит идущего вперёд; итог не быстрее 9 м/с; без ног — ползком",
             "толчок " + push + ", ход " + steer);
@@ -1286,12 +1286,12 @@ public class CoreTests
 
         var twin = Forest.ForMap();
         Check(twin.Positions[777].Distance(forest.Positions[777]) < 0.001f && twin.Scales[1234] == forest.Scales[1234]
-            && forest.Positions[0].Distance(new V3(-325.5727f, 0f, -476.1389f)) < 0.01f,
+            && forest.Positions[0].Distance(new V3(-325.5727f, 0f, 476.1389f)) < 0.01f,
             "лес одинаков у хоста и клиента: дерево адресуется номером, первое — там, где записано",
             "дерево 0 — " + forest.Positions[0]);
-        Check(new Rng(0).NextULong() == 0xE220A8397B1DCDAFUL && Math.Abs(Relief.ForMap().Height(-120f, 215f) - 20.375f) < 0.01f,
+        Check(new Rng(0).NextULong() == 0xE220A8397B1DCDAFUL && Math.Abs(Relief.ForMap().Height(-120f, -215f) - 20.375f) < 0.01f,
             "генератор ядра — эталонный SplitMix64: лес и холмы не зависят от среды выполнения",
-            "холм в (-120, 215) — " + Relief.ForMap().Height(-120f, 215f).ToString("0.000"));
+            "холм в (-120, -215) — " + Relief.ForMap().Height(-120f, -215f).ToString("0.000"));
 
         int first = forest.Hit(10);
         int left = first;
@@ -1335,7 +1335,7 @@ public class CoreTests
         var villain = Factions.Spawn[(int)Faction.Villain];
         var fort = MapLayout.ZoneCenters[(int)Zone.Villain] + WorldPlan.FortOffset;
         bool inside = Math.Abs(villain.X - fort.X) < WorldPlan.FortHalf && Math.Abs(villain.Z - fort.Z) < WorldPlan.FortHalf;
-        bool gate = !Walled(plan, "ZoneVillain", villain, new V3(villain.X, 0f, fort.Z + 140f), 0f);
+        bool gate = !Walled(plan, "ZoneVillain", villain, new V3(villain.X, 0f, fort.Z - 140f), 0f);
         bool wall = Walled(plan, "ZoneVillain", villain, new V3(fort.X + 140f, 0f, villain.Z), 0f);
         Check(inside && gate && wall, "злодей появляется в форте и выходит на юг через ворота; в стену не пройти",
             "ворота " + gate + ", стена на восток " + wall);
@@ -1347,8 +1347,8 @@ public class CoreTests
         bool ramp = false;
         foreach (var piece in plan.InGroup("ZoneEmperor"))
             if (piece.Shape == PieceShape.Ramp && piece.Center.FlatDistance(MapLayout.RampFoot) < 0.1f) ramp = true;
-        bool courtGate = !Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z + 100f), new V3(palace.X, 0f, palace.Z + 170f), MapLayout.PlateauHeight);
-        bool hall = !Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z + 60f), new V3(palace.X, 0f, palace.Z), MapLayout.PlateauHeight);
+        bool courtGate = !Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z - 100f), new V3(palace.X, 0f, palace.Z - 170f), MapLayout.PlateauHeight);
+        bool hall = !Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z - 60f), new V3(palace.X, 0f, palace.Z), MapLayout.PlateauHeight);
         bool side = Walled(plan, "ZoneEmperor", new V3(palace.X, 0f, palace.Z), new V3(palace.X + 100f, 0f, palace.Z), MapLayout.PlateauHeight);
         Check(court && ramp && courtGate && hall && side,
             "стража — на плато во дворе; с пандуса через проём двора и ворота дворца — к точке захвата",
@@ -1400,17 +1400,17 @@ public class CoreTests
     public void SwingAndSpellRules()
     {
         var eye = new V3(0f, 1f, 0f);
-        var aim = new V3(0f, 0f, -1f);
-        bool ahead = MeleeRules.InArc(aim, eye, new V3(0f, 0f, -2f));
-        bool slant = MeleeRules.InArc(aim, eye, new V3(1.6f, 0f, -2f));
-        bool side = MeleeRules.InArc(aim, eye, new V3(2f, 0f, -0.5f));
+        var aim = new V3(0f, 0f, 1f);
+        bool ahead = MeleeRules.InArc(aim, eye, new V3(0f, 0f, 2f));
+        bool slant = MeleeRules.InArc(aim, eye, new V3(1.6f, 0f, 2f));
+        bool side = MeleeRules.InArc(aim, eye, new V3(2f, 0f, 0.5f));
         Check(ahead && slant && !side, "замах бьёт в дуге ±0.9 рад от прицела, сбоку — мимо", "вбок " + side);
 
-        var feet = new Dictionary<int, V3> { { 1, new V3(0f, 0f, -2f) }, { 2, new V3(0f, 0f, 2f) }, { 7, new V3(0f, 0f, 0f) } };
+        var feet = new Dictionary<int, V3> { { 1, new V3(0f, 0f, 2f) }, { 2, new V3(0f, 0f, -2f) }, { 7, new V3(0f, 0f, 0f) } };
         var hits = new List<ZoneHit>
         {
-            new ZoneHit(1, "torso", new V3(0f, 1f, -2f)), new ZoneHit(1, "head", new V3(0f, 1.7f, -2f)),
-            new ZoneHit(1, "arm_l", new V3(0.4f, 1f, -2f)), new ZoneHit(2, "head", new V3(0f, 1.7f, 2f)),
+            new ZoneHit(1, "torso", new V3(0f, 1f, 2f)), new ZoneHit(1, "head", new V3(0f, 1.7f, 2f)),
+            new ZoneHit(1, "arm_l", new V3(0.4f, 1f, 2f)), new ZoneHit(2, "head", new V3(0f, 1.7f, -2f)),
             new ZoneHit(7, "torso", eye),
         };
         var best = MeleeRules.BestZones(hits, aim, eye, id => feet[id], 7);
@@ -1445,9 +1445,9 @@ public class CoreTests
             "лечение: +45 здоровья, кровь остановлена, срастается одна перебитая конечность; целого не лечит",
             "здоровье " + vitals.Health);
 
-        var wolf = SpellEffects.SummonPoint(new V3(10f, 0f, 10f), 0f);
+        var wolf = SpellEffects.SummonPoint(new V3(10f, 0f, -10f), 0f);
         Check(SpellEffects.CanSummon(1) && !SpellEffects.CanSummon(Abilities.SummonLimit)
-            && wolf.Distance(new V3(10f, 0f, 10f - Abilities.RangeOf(AbilityKind.Summon))) < 0.01f
+            && wolf.Distance(new V3(10f, 0f, -10f + Abilities.RangeOf(AbilityKind.Summon))) < 0.01f
             && SpellEffects.RallySpeedScale(true) > 1f && SpellEffects.RallyAttackScale(true) < 1f,
             "волков не больше двух, встают перед эльфом; клич — быстрее ход, чаще удар", "волк " + wolf);
     }
@@ -1478,9 +1478,9 @@ public class CoreTests
         var guard = Walk(new CharacterMotor(), Faction.Guard, 0f, forward, new Vitals(), new BodyState());
         var elf = Walk(new CharacterMotor(), Faction.Elves, 0f, forward, new Vitals(), new BodyState());
         var turned = Walk(new CharacterMotor(), Faction.Guard, (float)(Math.PI / 2), forward, new Vitals(), new BodyState());
-        Check(Math.Abs(guard.Z + Movement.Speed) < 0.01f && Math.Abs(elf.Z + Movement.Speed * 1.15f) < 0.01f
-            && Math.Abs(turned.X + Movement.Speed) < 0.01f && Math.Abs(turned.Z) < 0.01f,
-            "шаг 6 м/с «вперёд» по −Z с поворотом персонажа; эльф на 15% быстрее", "стража " + guard + ", эльф " + elf);
+        Check(Math.Abs(guard.Z - Movement.Speed) < 0.01f && Math.Abs(elf.Z - Movement.Speed * 1.15f) < 0.01f
+            && Math.Abs(turned.X - Movement.Speed) < 0.01f && Math.Abs(turned.Z) < 0.01f,
+            "шаг 6 м/с «вперёд» по +Z, поворот на +90° — вправо (+X); эльф на 15% быстрее", "стража " + guard + ", эльф " + elf);
 
         var runner = new CharacterMotor();
         var tired = new Vitals();
@@ -1492,7 +1492,7 @@ public class CoreTests
             Walk(runner, Faction.Guard, 0f, run, tired, new BodyState());
             steps++;
         }
-        Check(Math.Abs(fast.Z + Movement.Speed * Movement.RunScale) < 0.01f && tired.Winded && Math.Abs(steps * 0.1f - 10f) < 0.35f,
+        Check(Math.Abs(fast.Z - Movement.Speed * Movement.RunScale) < 0.01f && tired.Winded && Math.Abs(steps * 0.1f - 10f) < 0.35f,
             "бегом 10.5 м/с, выносливости на 10 с бега — потом выдохся и идёт шагом", "выдохся через " + (steps * 0.1f).ToString("0.0") + " с");
 
         var stuck = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Jump = true }, new Vitals(), new BodyState(), true, true);
@@ -1521,7 +1521,7 @@ public class CoreTests
         var dash = Walk(dasher, Faction.Elves, 0f, new MotorInput { Dash = true }, new Vitals(), new BodyState());
         var again = Walk(dasher, Faction.Elves, 0f, new MotorInput { Dash = true }, new Vitals(), new BodyState());
         var noDash = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { Dash = true }, new Vitals(), new BodyState());
-        Check(Math.Abs(dash.Z + Movement.DashSpeed) < 0.01f && dasher.Dashing == false && Math.Abs(again.Z + Movement.DashSpeed) < 0.01f
+        Check(Math.Abs(dash.Z - Movement.DashSpeed) < 0.01f && dasher.Dashing == false && Math.Abs(again.Z - Movement.DashSpeed) < 0.01f
             && noDash.Length() < 0.01f,
             "рывок эльфа — 22 м/с вперёд на 0.18 с (стоя — туда, куда смотрит); у стражи рывка нет", "рывок " + dash);
 
@@ -1529,19 +1529,19 @@ public class CoreTests
         lame.SeveredMask = 1 << (int)Limb.LegL;
         var lameVitals = new Vitals();
         var crawl = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Run = true, Jump = true }, lameVitals, lame);
-        Check(Math.Abs(crawl.Z + BodyState.CrawlSpeedOne) < 0.01f && crawl.Y == 0f && lameVitals.Stamina == Vitals.BaseStamina,
+        Check(Math.Abs(crawl.Z - BodyState.CrawlSpeedOne) < 0.01f && crawl.Y == 0f && lameVitals.Stamina == Vitals.BaseStamina,
             "без ноги — ползком 1.4 м/с: ни бега, ни прыжка", "ход " + crawl);
 
         var riderVitals = new Vitals();
         var ride = Walk(new CharacterMotor(), Faction.Guard, 0f, new MotorInput { MoveY = -1f, Run = true }, riderVitals, new BodyState(), true, false, true);
-        Check(Math.Abs(ride.Z + Movement.Speed * HorseStats.RideSpeedScale) < 0.01f && riderVitals.Stamina == Vitals.BaseStamina,
+        Check(Math.Abs(ride.Z - Movement.Speed * HorseStats.RideSpeedScale) < 0.01f && riderVitals.Stamina == Vitals.BaseStamina,
             "верхом — в 1.55 раза быстрее, и силы не тратятся: устаёт лошадь", "ход " + ride);
     }
 
     [Test]
     public void ProjectileRules()
     {
-        var arrow = new ProjectileFlight(WeaponKind.Bow, new V3(0f, 1.5f, 0f), new V3(0f, 0f, -1f));
+        var arrow = new ProjectileFlight(WeaponKind.Bow, new V3(0f, 1.5f, 0f), new V3(0f, 0f, 1f));
         V3 to;
         int frames = 0;
         while (!arrow.Expired && frames < 1000)
@@ -1550,13 +1550,13 @@ public class CoreTests
             arrow.Advance(to);
             frames++;
         }
-        var after = new ProjectileFlight(WeaponKind.Bow, new V3(0f, 1.5f, 0f), new V3(0f, 0f, -1f));
+        var after = new ProjectileFlight(WeaponKind.Bow, new V3(0f, 1.5f, 0f), new V3(0f, 0f, 1f));
         for (int i = 0; i < 20; i++)
         {
             after.Segment(0.05f, out to);
             after.Advance(to);
         }
-        Check(Math.Abs(after.Position.Z + 55f) < 0.5f && after.Position.Y < 1.5f && Math.Abs(after.Velocity.Y + 4f) < 0.01f
+        Check(Math.Abs(after.Position.Z - 55f) < 0.5f && after.Position.Y < 1.5f && Math.Abs(after.Velocity.Y + 4f) < 0.01f
             && Math.Abs(frames * 0.05f - Weapons.ProjectileLifetime) < 0.11f,
             "стрела летит 55 м/с с лёгкой дугой (4 м/с² вниз) и живёт 6 с", "за секунду — " + after.Position);
 
@@ -1577,9 +1577,9 @@ public class CoreTests
             "взрыв бьёт цель раз — по ближайшей к центру зоне; задетое краем не в счёт", "урон " + blast[1].Value.ToString("0.0"));
 
         var feet = new V3(0f, 0f, 0f);
-        var right = Aim.Direction(feet, 0f, 0f, new V3(10f, 1.5f, -10f));
+        var right = Aim.Direction(feet, 0f, 0f, new V3(10f, 1.5f, 10f));
         var close = Aim.Direction(feet, 0f, 0.5f, Aim.Origin(feet) + new V3(0.1f, 0f, 0f));
-        Check(Math.Abs(right.X - right.Z * -1f) < 0.01f && right.X > 0f && close.Y > 0f && close.Z < 0f,
+        Check(Math.Abs(right.X - right.Z) < 0.01f && right.X > 0f && close.Y > 0f && close.Z > 0f,
             "выстрел — из глаз в точку, куда смотрит камера из-за плеча; вплотную — прямо по взгляду",
             "в точку " + right + ", вплотную " + close);
     }
@@ -1662,7 +1662,7 @@ public class CoreTests
         PathFinder grid = (from, to) =>
         {
             asked++;
-            return new List<V3> { from, new V3(from.X, 0f, (from.Z + to.Z) * 0.5f + 20f), to };
+            return new List<V3> { from, new V3(from.X, 0f, (from.Z + to.Z) * 0.5f - 20f), to };
         };
         var follower = new PathFollower();
         var here = new V3(0f, 0f, 0f);
@@ -1670,10 +1670,10 @@ public class CoreTests
         Check(near.Distance(new V3(10f, 0f, 0f)) < 0.01f && asked == 0,
             "цель ближе 25 м — напрямую, сетку не спрашивает", "спрошено " + asked);
 
-        var far = new V3(0f, 0f, -100f);
+        var far = new V3(0f, 0f, 100f);
         var step = follower.NextStep(here, far, grid, null);
         follower.NextStep(here, far + new V3(3f, 0f, 0f), grid, null);
-        Check(asked == 1 && step.Distance(new V3(0f, 0f, -30f)) < 0.01f,
+        Check(asked == 1 && step.Distance(new V3(0f, 0f, 30f)) < 0.01f,
             "далеко — по точкам сетки; цель сдвинулась меньше 6 м — путь не перезапрашивает", "шаг к " + step);
         follower.NextStep(here, far + new V3(10f, 0f, 0f), grid, null);
         Check(asked == 2, "цель ушла на 10 м — путь перезапрошен", "спрошено " + asked);
@@ -1682,7 +1682,7 @@ public class CoreTests
         PathFinder away = (from, to) =>
         {
             askedAway++;
-            return new List<V3> { from, new V3(0f, 0f, 50f) };
+            return new List<V3> { from, new V3(0f, 0f, -50f) };
         };
         var stubborn = new PathFollower();
         var direct = stubborn.NextStep(here, far, away, null);

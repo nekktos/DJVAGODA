@@ -24,9 +24,9 @@ namespace DjvaGoda.Core
         /// Стартовые дома эльфов: три в кольце поселения.
         public static readonly V3[] ElfHousesStart =
         {
-            new V3(-255f, 0f, -300f),
-            new V3(-340.4f, 0f, -280.3f),
-            new V3(-310f, 0f, -343.9f),
+            new V3(-255f, 0f, 300f),
+            new V3(-340.4f, 0f, 280.3f),
+            new V3(-310f, 0f, 343.9f),
         };
 
         /// Сколько домов могут держать эльфы: пять на игрока, не меньше чем на одного
@@ -61,7 +61,7 @@ namespace DjvaGoda.Core
             }
             if (!best.HasValue) return null;
             float back = Res.BuildingSize(BuildingKind.ElfHouse).Z * 0.5f + 3f;
-            return best.Value + new V3(0f, 1f, -back);
+            return best.Value + new V3(0f, 1f, back);
         }
 
         /// Где появиться: в партию — у точки стороны, эльфу после смерти — у дома.

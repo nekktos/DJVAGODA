@@ -120,7 +120,7 @@ namespace DjvaGoda.Core
         /// Волк появляется перед призывающим на дальности заклинания.
         public static V3 SummonPoint(V3 here, float yaw)
         {
-            return here + UnitBrain.Rotate(new V3(0f, 0f, -Abilities.RangeOf(AbilityKind.Summon)), yaw);
+            return here + UnitBrain.Rotate(new V3(0f, 0f, Abilities.RangeOf(AbilityKind.Summon)), yaw);
         }
     }
 }

@@ -78,7 +78,7 @@ namespace DjvaGoda.Core
         /// Прямо по взгляду: поворот и наклон головы («вперёд» — −Z).
         public static V3 Straight(float yaw, float pitch)
         {
-            var look = new V3(0f, (float)Math.Sin(pitch), -(float)Math.Cos(pitch));
+            var look = new V3(0f, (float)Math.Sin(pitch), (float)Math.Cos(pitch));
             return UnitBrain.Rotate(look, yaw);
         }
 

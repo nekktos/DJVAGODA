@@ -156,7 +156,7 @@ namespace DjvaGoda.Core
                 for (int i = 0; i < SpotAngles; i++)
                 {
                     double angle = 2.0 * Math.PI * i / SpotAngles;
-                    var point = new V3(home.X + (float)Math.Cos(angle) * radius, 0f, home.Z + (float)Math.Sin(angle) * radius);
+                    var point = new V3(home.X + (float)Math.Cos(angle) * radius, 0f, home.Z - (float)Math.Sin(angle) * radius);
                     if (buildable == null || buildable(point)) return point;
                 }
             return null;
@@ -166,7 +166,7 @@ namespace DjvaGoda.Core
         public static V3 HireSpot(V3 home, int crew)
         {
             float angle = crew * 0.9f, radius = 5f + crew;
-            return home + new V3((float)Math.Cos(angle) * radius, 0.5f, (float)Math.Sin(angle) * radius);
+            return home + new V3((float)Math.Cos(angle) * radius, 0.5f, -(float)Math.Sin(angle) * radius);
         }
 
         /// Кого снять с роли, чтобы добрать нехватку: у кого больше всего лишних; −1 — лишних нет.
@@ -220,7 +220,7 @@ namespace DjvaGoda.Core
         public static V3 TrainSpot(V3 home, int slot)
         {
             float angle = slot * 0.9f;
-            return home + new V3((float)Math.Cos(angle) * 8f, 0.5f, (float)Math.Sin(angle) * 8f);
+            return home + new V3((float)Math.Cos(angle) * 8f, 0.5f, -(float)Math.Sin(angle) * 8f);
         }
 
         /// Ещё склад: обоз ждёт у полного склада, новый склад не строится, и он по карману.

@@ -94,8 +94,10 @@ namespace DjvaGoda.Core
             if (mask <= 0f) return 0f;
             // Шум переводится в 0..1 СДВИГОМ, а не обрезкой: обрезка даёт плоские
             // блюдца с видимой кромкой. Степень 1.6 — низины шире, вершины уже.
-            float big = (float)Math.Pow(_big.Sample(x / BigWave, z / BigWave) * 0.5f + 0.5f, 1.6);
-            float small = (float)Math.Pow(_small.Sample(x / SmallWave, z / SmallWave) * 0.5f + 0.5f, 1.6);
+            // Шум берётся по −z: холмы — те же, что были в осях Godot-версии
+            // (ядро перешло на оси Unity отражением z).
+            float big = (float)Math.Pow(_big.Sample(x / BigWave, -z / BigWave) * 0.5f + 0.5f, 1.6);
+            float small = (float)Math.Pow(_small.Sample(x / SmallWave, -z / SmallWave) * 0.5f + 0.5f, 1.6);
             return (big * BigHeight + small * SmallHeight) * mask;
         }
 

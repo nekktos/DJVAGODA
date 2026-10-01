@@ -57,7 +57,7 @@ namespace DjvaGoda.Core
         public const float DefendRadius = 90f;
         public const float MineRadius = 45f;
         public const float RobberRadius = 30f;
-        public static readonly V3 RaidPoint = new V3(-300f, 2f, 296f);
+        public static readonly V3 RaidPoint = new V3(-300f, 2f, -296f);
         public const float RaidRadius = 45f;
         public const float TalkRange = 8f;
 

@@ -14,7 +14,7 @@ namespace DjvaGoda.Core
         static readonly int[] RankWidth = { 8, 8, 2, 4 };
         public const float FrontGap = 3.5f;
 
-        /// Смещение места в строю от командира: X — вбок, Z — назад.
+        /// Смещение места в строю от командира: X — вправо, −Z — назад (вперёд — +Z).
         public static V3 SlotOffset(FormationKind kind, int index)
         {
             int k = (int)kind;
@@ -24,7 +24,7 @@ namespace DjvaGoda.Core
             float x = (column - (width - 1) * 0.5f) * SpacingX[k];
             float z = FrontGap + row * SpacingZ[k];
             if (kind == FormationKind.Loose && row % 2 == 1) x += SpacingX[k] * 0.5f;
-            return new V3(x, 0f, z);
+            return new V3(x, 0f, -z);
         }
 
         public static float DamageScale(FormationKind kind, bool aoe)

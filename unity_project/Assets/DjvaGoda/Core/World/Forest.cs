@@ -54,7 +54,7 @@ namespace DjvaGoda.Core
                 double wobble = 0.85 - 0.15 * (Math.Sin(a * 3.0) * 0.5 + Math.Sin(a * 7.0 + 2.1) * 0.3 + Math.Sin(a * 11.0 + 4.7) * 0.2);
                 float r = (float)(Math.Sqrt(rng.NextDouble()) * radius * wobble);
                 if (r < clearing) continue;
-                var p = new V3(centre.X + (float)Math.Cos(a) * r, 0f, centre.Z + (float)Math.Sin(a) * r);
+                var p = new V3(centre.X + (float)Math.Cos(a) * r, 0f, centre.Z - (float)Math.Sin(a) * r);
                 if (InHole(p, holes)) continue;
                 Positions.Add(p);
                 Scales.Add(0.75f + (float)rng.NextDouble() * 0.7f);

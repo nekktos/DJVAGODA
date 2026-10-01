@@ -121,11 +121,12 @@ namespace DjvaGoda.Core
         public V3 FormationOffset(FormationKind formation)
         {
             var offset = Formations.SlotOffset(formation, Slot);
-            if (IsArcher) offset = offset + new V3(0f, 0f, UnitStats.ArcherRear);
+            if (IsArcher) offset = offset + new V3(0f, 0f, -UnitStats.ArcherRear);
             return offset;
         }
 
-        /// Повернуть смещение на yaw вокруг вертикали (как Basis(UP, yaw) в Godot).
+        /// Повернуть смещение на yaw вокруг вертикали — как Quaternion.Euler(0, yaw°, 0)
+        /// в Unity: при yaw > 0 «вперёд» (+Z) уходит вправо (+X).
         public static V3 Rotate(V3 offset, float yaw)
         {
             float c = (float)Math.Cos(yaw), s = (float)Math.Sin(yaw);

@@ -31,7 +31,7 @@ namespace DjvaGoda.Core
         float _dashCooldown;
         V3 _dashDir;
 
-        /// yaw — поворот персонажа в ядре («вперёд» — −Z).
+        /// yaw — поворот персонажа (оси Unity: «вперёд» — +Z, yaw растёт вправо).
         public V3 Step(MotorInput input, float delta, float yaw, bool onFloor, Faction side,
             Vitals vitals, BodyState body, bool paralysed, bool mounted, bool rallied)
         {
@@ -73,14 +73,15 @@ namespace DjvaGoda.Core
                 }
             }
 
-            var dir = UnitBrain.Rotate(new V3(mx, 0f, my), yaw).Flat();
+            // Ввод: X — вправо, Y — назад (как get_vector Godot); вперёд — +Z.
+            var dir = UnitBrain.Rotate(new V3(mx, 0f, -my), yaw).Flat();
             dir = dir.Length() > 1e-4f ? dir.Normalized() : new V3(0f, 0f, 0f);
 
             _dashCooldown = Math.Max(0f, _dashCooldown - delta);
             if (input.Dash && mobility.Dash && !mounted && _dashCooldown <= 0f && _dashLeft <= 0f && !paralysed
                 && !body.IsCrawling() && vitals.Stamina >= Movement.DashStamina)
             {
-                _dashDir = dir.Length() > 0.1f ? dir : UnitBrain.Rotate(new V3(0f, 0f, -1f), yaw);
+                _dashDir = dir.Length() > 0.1f ? dir : UnitBrain.Rotate(new V3(0f, 0f, 1f), yaw);
                 _dashLeft = Movement.DashTime;
                 _dashCooldown = Movement.DashCooldown;
                 vitals.SpendStamina(Movement.DashStamina);

@@ -12,7 +12,7 @@ namespace DjvaGoda.Game
     {
         public static readonly V3 ThirdPivot = new V3(0.65f, 1.6f, 0f);
         public const float ThirdArm = 4.5f;
-        public static readonly V3 FirstPivot = new V3(0f, 1.36f, -0.12f);
+        public static readonly V3 FirstPivot = new V3(0f, 1.36f, 0.12f);
         public const float CameraRadius = 0.25f;
 
         public PlayerCharacter Target;

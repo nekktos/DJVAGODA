@@ -89,8 +89,8 @@ namespace DjvaGoda.Tests
             }
             player.Scripted = null;
             var moved = player.Feet - start;
-            // «Вперёд» ядра при yaw = 0 — это −Z ядра.
-            Assert.That(-moved.Z, Is.GreaterThan(8f), "за 2 с шагом прошёл " + moved);
+            // «Вперёд» при yaw = 0 — это +Z.
+            Assert.That(moved.Z, Is.GreaterThan(8f), "за 2 с шагом прошёл " + moved);
             Assert.That(Mathf.Abs(moved.X), Is.LessThan(1f), "увело вбок: " + moved);
         }
 
@@ -99,9 +99,9 @@ namespace DjvaGoda.Tests
         {
             var player = _boot.Player;
             var controller = player.GetComponent<CharacterController>();
-            // Встать у подножия пандуса лицом к плато (к −Z ядра).
+            // Встать у подножия пандуса лицом к плато (к +Z).
             controller.enabled = false;
-            player.transform.position = (MapLayout.RampFoot + new V3(0f, 1f, 8f)).ToUnity();
+            player.transform.position = (MapLayout.RampFoot + new V3(0f, 1f, -8f)).ToUnity();
             controller.enabled = true;
             player.Yaw = 0f;
             player.Scripted = new MotorInput { MoveY = -1f };

@@ -34,7 +34,7 @@ namespace DjvaGoda.Game
         void Rebuild()
         {
             if (_view != null) Destroy(_view.gameObject);
-            var size = Res.BuildingSize(State.Kind).SizeToUnity();
+            var size = Res.BuildingSize(State.Kind).ToUnity();
             var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
             box.name = "Вид";
             box.transform.SetParent(transform, false);

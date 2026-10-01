@@ -54,9 +54,9 @@ namespace DjvaGoda.Core
 
         public static readonly V3[] Spawn =
         {
-            new V3(-300f, 2f, 296f),
-            new V3(-300f, 2f, -300f),
-            new V3(300f, 8f, -240f),
+            new V3(-300f, 2f, -296f),
+            new V3(-300f, 2f, 300f),
+            new V3(300f, 8f, 240f),
         };
 
         public static readonly int[] Slots = { 1, 5, 5 };

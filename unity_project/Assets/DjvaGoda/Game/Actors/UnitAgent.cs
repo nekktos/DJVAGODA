@@ -80,7 +80,7 @@ namespace DjvaGoda.Game
                 if (to.Length() < 0.01f) to = (destination - here).Flat();
                 var formation = Brain.Formation(Commander != null ? CommanderFormation : (FormationKind?)null);
                 desired = to.Normalized() * Brain.MoveSpeed(formation, 1f);
-                transform.rotation = CoreSpace.YawToRotation(Mathf.Atan2(-to.X, -to.Z));
+                transform.rotation = CoreSpace.YawToRotation(Mathf.Atan2(to.X, to.Z));
             }
             else if (facingTarget)
             {

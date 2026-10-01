@@ -96,7 +96,7 @@ namespace DjvaGoda.Core
             {
                 _site = null;
                 var away = (view.At - danger.Value).Flat();
-                if (away.Length() < 0.1f) away = new V3(0f, 0f, -1f);
+                if (away.Length() < 0.1f) away = new V3(0f, 0f, 1f);
                 var homeward = (view.Home - view.At).Flat();
                 var run = (away.Normalized() * 0.5f + homeward.Normalized() * 0.5f).Normalized();
                 return new LabourOrder { Goal = view.At + run * LabourerStats.FleeRadius, Fleeing = true };

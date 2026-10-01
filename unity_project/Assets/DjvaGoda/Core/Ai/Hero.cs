@@ -296,7 +296,7 @@ namespace DjvaGoda.Core
                 for (int i = 0; i < AiStats.ElfAngles; i++)
                 {
                     double angle = 2.0 * Math.PI * i / AiStats.ElfAngles;
-                    var at = new V3(centre.X + (float)Math.Cos(angle) * radius, 0f, centre.Z + (float)Math.Sin(angle) * radius);
+                    var at = new V3(centre.X + (float)Math.Cos(angle) * radius, 0f, centre.Z - (float)Math.Sin(angle) * radius);
                     if (view.ElfSpotBuildable != null && !view.ElfSpotBuildable(at)) continue;
                     float gap = view.At.FlatDistance(at);
                     if (gap < bestGap)

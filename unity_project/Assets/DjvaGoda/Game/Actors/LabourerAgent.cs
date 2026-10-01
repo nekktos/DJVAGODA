@@ -117,7 +117,7 @@ namespace DjvaGoda.Game
                 var to = (step - here).Flat();
                 if (to.Length() < 0.01f) to = (goal - here).Flat();
                 desired = to.Normalized() * UnitStats.Speed(UnitKind.Swordsman);
-                transform.rotation = CoreSpace.YawToRotation(Mathf.Atan2(-to.X, -to.Z));
+                transform.rotation = CoreSpace.YawToRotation(Mathf.Atan2(to.X, to.Z));
             }
             _fall = _controller.isGrounded ? -2f : _fall - CharacterMotor.Gravity * delta;
             _controller.Move(new V3(desired.X, _fall, desired.Z).ToUnity() * delta);
