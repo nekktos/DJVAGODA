@@ -67,6 +67,34 @@ namespace DjvaGoda.Game
             return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
         }
 
+        /// Текущая раскладка: действие -> клавиши (свои или по умолчанию).
+        public static Dictionary<string, string[]> Current()
+        {
+            var map = KeyActions.Defaults();
+            foreach (var key in KeyActions.All)
+            {
+                string saved = PlayerPrefs.GetString(OverridePrefix + key.Name, "");
+                if (saved.Length > 0) map[key.Name] = saved.Split('|');
+            }
+            return map;
+        }
+
+        /// Вернуть раскладку по умолчанию.
+        public static void ResetAll()
+        {
+            foreach (var key in KeyActions.All)
+            {
+                PlayerPrefs.DeleteKey(OverridePrefix + key.Name);
+                var action = Of(key.Name);
+                if (action == null) continue;
+                action.Disable();
+                for (int i = action.bindings.Count - 1; i >= 0; i--) action.ChangeBinding(i).Erase();
+                foreach (var path in key.Defaults) action.AddBinding(path);
+                action.Enable();
+            }
+            PlayerPrefs.Save();
+        }
+
         /// Переназначить клавиши действия (пути Input System) и запомнить.
         public static void Rebind(string name, string[] paths)
         {

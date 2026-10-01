@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
-    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan }
+    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan, Upgrade }
 
     /// Дела у верстака: arg = дело * 10 + ступень (протез) или 1/0 (коляска).
     public enum BenchOp { Prosthetic, Eye, Splint, Wheelchair }
@@ -162,6 +162,9 @@ namespace DjvaGoda.Game
 
         void Close() { _open = false; }
 
+        /// Заявка из окон интерфейса (меню прокачки и др.): у хоста — сразу, у клиента — хосту.
+        public void Request(DealKind deal, int arg) { Ask(deal, arg); }
+
         void Ask(DealKind deal, int arg)
         {
             if (Hosting) ServerDeal(deal, arg);
@@ -195,6 +198,10 @@ namespace DjvaGoda.Game
                     return;
                 case DealKind.Mount:
                     ToggleMount();
+                    return;
+                case DealKind.Upgrade:
+                    if (arg < 0 || arg >= Progression.Names.Length) return;
+                    if (!_character.Vitals.BuyLevel((Stat)arg) && _combat != null) _combat.Tell("на этот уровень не хватает опыта");
                     return;
                 case DealKind.Caravan:
                     CaravanDeal();

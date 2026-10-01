@@ -27,7 +27,21 @@ namespace DjvaGoda.Game
         string _address = "127.0.0.1";
         string _port = DefaultPort.ToString();
 
-        void Awake() { _session = GetComponent<NetSession>(); }
+        const string ProfileKey = "profile";
+
+        void Awake()
+        {
+            _session = GetComponent<NetSession>();
+            // Профиль — ключ сохранения у хоста: одно имя на этой машине, пока его не сменят.
+            string profile = PlayerPrefs.GetString(ProfileKey, "");
+            if (profile.Length == 0)
+            {
+                profile = "игрок-" + UnityEngine.Random.Range(1000, 9999);
+                PlayerPrefs.SetString(ProfileKey, profile);
+                PlayerPrefs.Save();
+            }
+            _session.Profile = profile;
+        }
 
         void Start()
         {
@@ -109,6 +123,15 @@ namespace DjvaGoda.Game
 
             GUILayout.BeginArea(new Rect(Screen.width * 0.5f - 220, Screen.height * 0.5f - 170, 440, 340), GUI.skin.box);
             GUILayout.Label("ДжваГода");
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Имя", GUILayout.Width(80));
+            string named = GUILayout.TextField(_session.Profile, 24);
+            if (named != _session.Profile)
+            {
+                _session.Profile = named;
+                PlayerPrefs.SetString(ProfileKey, named);
+            }
+            GUILayout.EndHorizontal();
             GUILayout.Label("Сторона:");
             _session.Wanted = (Faction)GUILayout.Toolbar((int)_session.Wanted, Factions.Names);
             GUILayout.Space(8);

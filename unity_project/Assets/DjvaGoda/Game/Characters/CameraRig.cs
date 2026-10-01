@@ -59,7 +59,7 @@ namespace DjvaGoda.Game
             // персонажа (меню сессии) мышь не захватывается: клик — по кнопкам.
             var mouse = UnityEngine.InputSystem.Mouse.current;
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
-            if (Target != null && mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
+            if (Target != null && !GameMenu.Open && mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
             {
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;

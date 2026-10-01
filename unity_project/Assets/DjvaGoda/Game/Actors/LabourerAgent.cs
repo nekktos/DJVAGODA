@@ -74,7 +74,10 @@ namespace DjvaGoda.Game
                     if (farm != null && farm.State != null) Brain.Took(farm.State.TakeGrown(Brain.Room));
                     break;
                 }
-                case LabourAction.Deliver: if (Treasury != null) Brain.Unload(Treasury); break;
+                case LabourAction.Deliver:
+                    // Донесённое батраком — опыт вожаку стороны: хозяйство его дело.
+                    if (Treasury != null) Experience.ForFactionResources(Brain.Side, Brain.Unload(Treasury));
+                    break;
             }
         }
 

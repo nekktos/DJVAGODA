@@ -102,6 +102,8 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> Tasks = new NetworkVariable<int>();
         /// Верхом ли: решает хост, ехать быстрее — владельцу (он считает движение).
         public readonly NetworkVariable<bool> Mounted = new NetworkVariable<bool>();
+        /// Опыт и уровни: опыт (16 бит) | уровни по 3 бита с 16-го.
+        public readonly NetworkVariable<int> Progress = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
         /// Оружие в руке — выбирает владелец, видят все (WeaponView).
@@ -207,6 +209,9 @@ namespace DjvaGoda.Game
                 Tasks.Value = (tasks.Task.HasValue ? (int)tasks.Task.Value + 1 : 0) | Mathf.Min(tasks.Progress, 4095) << 4
                     | Mathf.Min(tasks.TasksDone, 255) << 16;
                 Mounted.Value = _character.Mounted;
+                var levels = _character.Vitals.Levels;
+                Progress.Value = Mathf.Min(_character.Vitals.Experience, 65535)
+                    | levels[0] << 16 | levels[1] << 19 | levels[2] << 22 | levels[3] << 25;
                 if (_combat != null) Stagger.Value = _combat.Stagger;
                 Spells.Value = SpellSync.Of(_character.Vitals, _character.Spells);
             }
@@ -239,6 +244,8 @@ namespace DjvaGoda.Game
                 _character.Tasks.Progress = (k >> 4) & 4095;
                 _character.Tasks.TasksDone = (k >> 16) & 255;
                 _character.Mounted = Mounted.Value;
+                _character.Vitals.Experience = Progress.Value & 65535;
+                for (int i = 0; i < 4; i++) _character.Vitals.Levels[i] = (Progress.Value >> (16 + 3 * i)) & 7;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
                 Spells.Value.Apply(_character.Vitals, _character.Spells);
             }
@@ -328,7 +335,7 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             var shop = GetComponent<Shop>();
-            if (shop != null && deal >= 0 && deal <= (int)DealKind.Caravan) shop.ServerDeal((DealKind)deal, arg);
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Upgrade) shop.ServerDeal((DealKind)deal, arg);
         }
 
         /// Маршрут обоза: точки игрока. Склад и шахту дорисовывает хост.

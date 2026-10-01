@@ -34,6 +34,7 @@ namespace DjvaGoda.Game
                 Rig = eye.AddComponent<CameraRig>();
             }
             if (Rig.GetComponent<Hud>() == null) Rig.gameObject.AddComponent<Hud>();
+            if (Rig.GetComponent<GameMenu>() == null) Rig.gameObject.AddComponent<GameMenu>();
             if (!Networked) SpawnLocal(Side);
         }
 

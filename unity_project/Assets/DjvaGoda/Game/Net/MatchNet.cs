@@ -153,7 +153,8 @@ namespace DjvaGoda.Game
                     if (building == null || building.State.Kind != BuildingKind.Storage || !building.State.Done) continue;
                     if (building.Side != (int)player.Faction) continue;
                     if (building.At.FlatDistance(player.Feet) > Res.DepositRange) continue;
-                    wallet.Deposit();
+                    // Свою ношу игрок несёт сам — и опыт за неё его, а не вожака.
+                    Experience.ForResources(player, wallet.Deposit());
                     break;
                 }
             }

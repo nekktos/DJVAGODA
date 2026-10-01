@@ -52,6 +52,7 @@ namespace DjvaGoda.Game
             gameObject.AddComponent<Commander>();
             gameObject.AddComponent<Elder>();
             gameObject.AddComponent<SaveGame>();
+            gameObject.AddComponent<Experience>();
         }
 
         public override void OnDestroy()
