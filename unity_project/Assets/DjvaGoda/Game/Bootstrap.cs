@@ -1,5 +1,5 @@
-// Загрузчик сцены: находит мир (собран в редакторе и лежит в сцене), ставит
-// камеру и — в одиночном режиме — персонажа на точке своей стороны.
+// Загрузчик сцены: находит мир (собран в редакторе и лежит в сцене) и камеру
+// и — в одиночном режиме — ставит персонажа на точке своей стороны.
 //
 // В сетевой сцене (Networked) персонажей спавнит хост (NetSession), камера
 // ждёт своего. Проверки ходьбы берут сетевую сцену и ставят персонажа сами
@@ -25,9 +25,14 @@ namespace DjvaGoda.Game
             if (World == null) Debug.LogError("В сцене нет мира: ДжваГода → Собрать мир.");
             else Nav = World.GetComponent<NavWorld>();
 
-            var eye = new GameObject("Камера");
-            eye.tag = "MainCamera";
-            Rig = eye.AddComponent<CameraRig>();
+            // Камера — в сцене (видно в окне Game и без Play); нет — своя.
+            Rig = Object.FindAnyObjectByType<CameraRig>();
+            if (Rig == null)
+            {
+                var eye = new GameObject("Камера");
+                eye.tag = "MainCamera";
+                Rig = eye.AddComponent<CameraRig>();
+            }
             if (!Networked) SpawnLocal(Side);
         }
 

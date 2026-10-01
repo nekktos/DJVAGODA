@@ -5,6 +5,8 @@
 //   -host [порт]            создать игру
 //   -join адрес [порт]      подключиться
 //   -side 0|1|2             сторона (Злодей, Лесные эльфы, Охрана дворца)
+//   -walk                   свой персонаж идёт вперёд без ввода (проверка
+//                           движения по сети)
 using System;
 using DjvaGoda.Core;
 using Unity.Netcode;
@@ -34,11 +36,23 @@ namespace DjvaGoda.Game
                     if (int.TryParse(args[i + 1], out side) && side >= 0 && side < Factions.Count) _session.Wanted = (Faction)side;
                 }
             }
+            _walk = Array.IndexOf(args, "-walk") >= 0;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-host") _session.Host(PortAt(args, i + 1));
                 else if (args[i] == "-join" && i + 1 < args.Length) _session.Join(args[i + 1], PortAt(args, i + 2));
             }
+        }
+
+        bool _walk;
+
+        void Update()
+        {
+            if (!_walk) return;
+            var net = NetworkManager.Singleton;
+            if (net == null || net.LocalClient == null || net.LocalClient.PlayerObject == null) return;
+            var me = net.LocalClient.PlayerObject.GetComponent<PlayerCharacter>();
+            if (me != null && me.Scripted == null) me.Scripted = new MotorInput { MoveY = -1f };
         }
 
         static ushort PortAt(string[] args, int i)

@@ -5,7 +5,8 @@
 // строят при каждом запуске, а собирают здесь один раз: мир видно в
 // редакторе, на места заглушек встанут ассеты, сетка навигации запечена.
 // После правки плана в ядре — собрать заново: проверка WorldMatchesPlan и
-// World.Awake скажут, если забыли.
+// World при запуске скажут, если забыли. Без правки плана пункт ничего не
+// трогает; «Собрать мир заново» — насильно (поменялся сам сборщик).
 //
 // Свои меши (рельеф, конус, валуны, вершины) и материалы заглушек ложатся
 // файлами в Generated/: в файле сцены — только ссылки на них.
@@ -24,13 +25,32 @@ namespace DjvaGoda.EditorTools
     {
         public const string GeneratedDir = "Assets/DjvaGoda/World/Generated";
 
+        /// Собрать, только если план изменился: Unity раздаёт пересозданным
+        /// объектам новые внутренние номера, и лишняя пересборка переписывает
+        /// весь файл сцены.
         [MenuItem("ДжваГода/Собрать мир")]
+        public static void BakeIfChanged()
+        {
+            var current = Object.FindAnyObjectByType<World>();
+            if (current != null && current.PlanPrint == World.Print(current.Plan, current.Forest))
+            {
+                Debug.Log("Мир уже собран по текущему плану — сцена не тронута. Пересобрать насильно: ДжваГода → Собрать мир заново.");
+                return;
+            }
+            Bake();
+        }
+
+        [MenuItem("ДжваГода/Собрать мир заново")]
         public static void Bake()
         {
             var scene = EditorSceneManager.GetActiveScene();
             foreach (var old in Object.FindObjectsByType<World>(FindObjectsInactive.Include))
                 Object.DestroyImmediate(old.gameObject);
-            ResetGenerated();
+            if (!AssetDatabase.IsValidFolder(GeneratedDir))
+            {
+                Directory.CreateDirectory(GeneratedDir);
+                AssetDatabase.Refresh();
+            }
             AgentSettings();
 
             var root = new GameObject("Мир");
@@ -44,23 +64,19 @@ namespace DjvaGoda.EditorTools
             surface.collectObjects = CollectObjects.Children;
             surface.useGeometry = UnityEngine.AI.NavMeshCollectGeometry.PhysicsColliders;
             surface.BuildNavMesh();
-            AssetDatabase.CreateAsset(surface.navMeshData, GeneratedDir + "/NavMesh.asset");
 
-            SaveGeneratedAssets(root);
+            var kept = new HashSet<string>();
+            SaveGeneratedAssets(root, kept);
+            // Сетка — тоже на место прежней: ссылка из сцены не меняется.
+            surface.enabled = false;
+            surface.navMeshData = (UnityEngine.AI.NavMeshData)Store(surface.navMeshData, "NavMesh.asset", kept);
+            surface.enabled = true;
+            DropStale(kept);
             Sun();
             AssetDatabase.SaveAssets();
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("Мир собран: " + world.PlanPrint + ", деревьев леса " + world.Trees.Length);
-        }
-
-        static void ResetGenerated()
-        {
-            if (AssetDatabase.IsValidFolder(GeneratedDir)) AssetDatabase.DeleteAsset(GeneratedDir);
-            // Префаб дерева прежней сборки: деревья теперь процедурные (TreeShapes).
-            if (AssetDatabase.IsValidFolder("Assets/DjvaGoda/World/Stubs")) AssetDatabase.DeleteAsset("Assets/DjvaGoda/World/Stubs");
-            Directory.CreateDirectory(GeneratedDir);
-            AssetDatabase.Refresh();
         }
 
         /// Агент сетки — как в Godot-версии: радиус 0.5, рост 2, уклон 45°
@@ -79,32 +95,64 @@ namespace DjvaGoda.EditorTools
         }
 
         /// Свои меши и материалы — в файлы; встроенные (куб, цилиндр) уже ассеты.
-        static void SaveGeneratedAssets(GameObject root)
+        /// Файл с тем же именем перезаписывается НА МЕСТЕ: GUID не меняется, и
+        /// пересборка без правки плана не трогает ни сцену, ни файлы.
+        static void SaveGeneratedAssets(GameObject root, HashSet<string> kept)
         {
-            var saved = new HashSet<Object>();
-            int n = 0;
+            var stored = new Dictionary<Object, Object>();
             // Посаженные деревья (DontSave) — не в файлы: их меши строятся при загрузке.
             foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
-                if (Kept(filter)) SaveMesh(filter.sharedMesh, saved, ref n);
+                if (Kept(filter)) filter.sharedMesh = (Mesh)StoreOnce(filter.sharedMesh, ".asset", stored, kept);
             foreach (var hull in root.GetComponentsInChildren<MeshCollider>(true))
-                if (Kept(hull)) SaveMesh(hull.sharedMesh, saved, ref n);
+                if (Kept(hull)) hull.sharedMesh = (Mesh)StoreOnce(hull.sharedMesh, ".asset", stored, kept);
             foreach (var view in root.GetComponentsInChildren<MeshRenderer>(true))
-            {
-                if (!Kept(view)) continue;
-                var material = view.sharedMaterial;
-                if (material == null || saved.Contains(material) || AssetDatabase.Contains(material)) continue;
-                saved.Add(material);
-                AssetDatabase.CreateAsset(material, GeneratedDir + "/" + material.name + ".mat");
-            }
+                if (Kept(view)) view.sharedMaterial = (Material)StoreOnce(view.sharedMaterial, ".mat", stored, kept);
         }
 
         static bool Kept(Component c) { return (c.gameObject.hideFlags & HideFlags.DontSaveInEditor) == 0; }
 
-        static void SaveMesh(Mesh mesh, HashSet<Object> saved, ref int n)
+        static Object StoreOnce(Object item, string extension, Dictionary<Object, Object> stored, HashSet<string> kept)
         {
-            if (mesh == null || saved.Contains(mesh) || AssetDatabase.Contains(mesh)) return;
-            saved.Add(mesh);
-            AssetDatabase.CreateAsset(mesh, GeneratedDir + "/" + mesh.name + " " + (n++) + ".asset");
+            if (item == null) return null;
+            Object asset;
+            if (stored.TryGetValue(item, out asset)) return asset;
+            string path = AssetDatabase.GetAssetPath(item);
+            if (path.Length > 0 && !path.StartsWith(GeneratedDir))
+                asset = item;
+            else
+                asset = Store(item, item.name + extension, kept);
+            stored[item] = asset;
+            return asset;
+        }
+
+        /// Положить в Generated/ под именем: есть файл — переписать его содержимое.
+        static Object Store(Object item, string file, HashSet<string> kept)
+        {
+            string path = GeneratedDir + "/" + file;
+            kept.Add(path);
+            if (AssetDatabase.GetAssetPath(item) == path) return item;
+            var existing = AssetDatabase.LoadAssetAtPath(path, item.GetType());
+            if (existing == null)
+            {
+                AssetDatabase.CreateAsset(item, path);
+                return item;
+            }
+            EditorUtility.CopySerialized(item, existing);
+            existing.name = Path.GetFileNameWithoutExtension(file);
+            EditorUtility.SetDirty(existing);
+            return existing;
+        }
+
+        /// Файлы прежних сборок, которые эта не записала, — убрать.
+        static void DropStale(HashSet<string> kept)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("", new[] { GeneratedDir }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!kept.Contains(path)) AssetDatabase.DeleteAsset(path);
+            }
+            // Префаб дерева одной из прежних сборок: деревья теперь процедурные.
+            if (AssetDatabase.IsValidFolder("Assets/DjvaGoda/World/Stubs")) AssetDatabase.DeleteAsset("Assets/DjvaGoda/World/Stubs");
         }
 
         static void Sun()

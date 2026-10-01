@@ -140,8 +140,9 @@ namespace DjvaGoda.Game
                 var at = Respawn.SpawnPoint((Faction)faction, slot, false, new V3(0f, 0f, 0f), new List<V3>()) + new V3(0f, 1f, 0f);
                 var go = Instantiate(PlayerPrefab, at.ToUnity(), Quaternion.identity);
                 var player = go.GetComponent<NetPlayer>();
-                player.Side.Value = faction;
-                player.Slot.Value = slot;
+                player.AssignedSide = faction;
+                player.AssignedSlot = slot;
+                player.AssignedSpawn = at.ToUnity();
                 go.GetComponent<NetworkObject>().SpawnAsPlayerObject(client);
             }
         }

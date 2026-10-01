@@ -103,7 +103,7 @@ namespace DjvaGoda.Game
                     grid[ring, seg] = new Vector3(dir.x * push, dir.y * push * squash, dir.z * push);
                 }
             }
-            var mesh = Stitch("Валун", grid, false);
+            var mesh = Stitch("Валун " + key, grid, false);
             Cache[key] = mesh;
             return mesh;
         }
@@ -130,7 +130,7 @@ namespace DjvaGoda.Game
                     grid[ring, seg] = new Vector3(Mathf.Cos(theta) * r, y, Mathf.Sin(theta) * r);
                 }
             }
-            var mesh = Stitch("Вершина", grid, true);
+            var mesh = Stitch("Вершина " + (key - 1000), grid, true);
             Cache[key] = mesh;
             return mesh;
         }
