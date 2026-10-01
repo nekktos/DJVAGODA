@@ -147,6 +147,32 @@ namespace DjvaGoda.Game
             }
         }
 
+        /// Герой под ИИ за свободную сторону (у хоста): тот же персонаж, что у
+        /// игрока, во владении хоста; ведёт его HeroDriver.
+        public PlayerCharacter SpawnAi(Faction side)
+        {
+            if (Net == null || !Net.IsServer || PlayerPrefab == null) return null;
+            // Место — дальний ряд: живые игроки стороны встают в первые.
+            var at = Respawn.SpawnPoint(side, Respawn.SlotRow - 1, false, new V3(0f, 0f, 0f), new List<V3>()) + new V3(0f, 1f, 0f);
+            var go = Instantiate(PlayerPrefab, at.ToUnity(), Quaternion.identity);
+            var player = go.GetComponent<NetPlayer>();
+            player.AssignedSide = (int)side;
+            player.AssignedSlot = Respawn.SlotRow - 1;
+            player.AssignedSpawn = at.ToUnity();
+            player.AssignedAi = true;
+            go.GetComponent<NetworkObject>().Spawn();
+            return go.GetComponent<PlayerCharacter>();
+        }
+
+        /// Люди за сторону (у хоста): одобренные подключения этой стороны.
+        public int HumansOf(Faction side)
+        {
+            int count = 0;
+            foreach (var pair in _faction)
+                if (pair.Value == (int)side && Net.ConnectedClients.ContainsKey(pair.Key)) count++;
+            return count;
+        }
+
         void Left(ulong client)
         {
             if (!Net.IsServer)

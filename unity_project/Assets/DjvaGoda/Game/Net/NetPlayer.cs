@@ -104,6 +104,9 @@ namespace DjvaGoda.Game
         [System.NonSerialized] public int AssignedSide = (int)Faction.Guard;
         [System.NonSerialized] public int AssignedSlot;
         [System.NonSerialized] public Vector3 AssignedSpawn;
+        /// Герой под ИИ: принадлежит хосту, но клавиатура и камера хоста его не трогают.
+        [System.NonSerialized] public bool AssignedAi;
+        public readonly NetworkVariable<bool> Ai = new NetworkVariable<bool>();
 
         PlayerCharacter _character;
         PlayerCombat _combat;
@@ -125,15 +128,18 @@ namespace DjvaGoda.Game
                 Side.Value = AssignedSide;
                 Slot.Value = AssignedSlot;
                 SpawnAt.Value = AssignedSpawn;
+                Ai.Value = AssignedAi;
             }
             _character.Faction = (Faction)Side.Value;
             // Вожак злодея — его единственный персонаж: его смерть окончательна.
             _character.Kit.IsLeader = _character.Faction == Faction.Villain;
             Bootstrap.AddBody(transform, (Faction)Side.Value);
-            name = "Игрок " + OwnerClientId + " (" + Factions.Names[Side.Value] + ")";
-            _character.LocalControl = IsOwner;
+            name = (Ai.Value ? "ИИ" : "Игрок " + OwnerClientId) + " (" + Factions.Names[Side.Value] + ")";
+            _character.LocalControl = IsOwner && !Ai.Value;
             _character.Simulate = IsOwner;
-            if (IsOwner)
+            if (IsOwner && Ai.Value) _character.Teleport(SpawnAt.Value);
+            if (!IsServer && Ai.Value) Debug.Log("[ИИ] у себя: герой " + name);
+            if (IsOwner && !Ai.Value)
             {
                 _character.Teleport(SpawnAt.Value);
                 if (!IsServer) _character.Bandaged = () => BandageRpc();

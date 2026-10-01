@@ -6,9 +6,7 @@
 //
 // ЕЩЁ НЕ ПЕРЕНЕСЕНО сюда (правила в ядре есть): укрепление ступенями
 // (StewardRules.CanFortify), лишний склад у полного (NeedExtraStorage),
-// охрана обоза батраками (CaravanGuards), «руда рядом» (сейчас всегда да),
-// погрузка у шахты (Load = null — обоз едет пустым). Доделать вместе с
-// шахтами в Unity-слое.
+// охрана обоза батраками (CaravanGuards), «руда рядом» (сейчас всегда да).
 using System.Collections.Generic;
 using DjvaGoda.Core;
 using UnityEngine;
@@ -22,7 +20,10 @@ namespace DjvaGoda.Game
         public NavWorld Nav;
         public World World;
         public WarbandDriver Warband;
-        public readonly List<LabourerAgent> Crew = new List<LabourerAgent>();
+        /// Артель — все батраки стороны: и нанятые распорядителем, и игроком до него.
+        List<LabourerAgent> Crew { get { return Builder.Crew(Side); } }
+        /// Хозяин обозов ИИ — не номер игрока: −1 − сторона.
+        int OwnerId { get { return -1 - (int)Side; } }
         float _think;
 
         V3 Home { get { return Factions.Spawn[(int)Side]; } }
@@ -33,7 +34,6 @@ namespace DjvaGoda.Game
             _think += Time.deltaTime;
             if (_think < StewardRules.ThinkInterval) return;
             _think = 0f;
-            Crew.RemoveAll(worker => worker == null || !worker.Alive);
             var view = View();
             Hire(view);
             Build(view);
@@ -96,7 +96,6 @@ namespace DjvaGoda.Game
             worker.World = World;
             worker.Treasury = Treasury;
             Agents.Show(go);
-            Crew.Add(worker);
         }
 
         void Build(EconomyView view)
@@ -178,7 +177,7 @@ namespace DjvaGoda.Game
                 var walked = Nav.PathBetween(storage.At, MapLayout.MineEntrance(mine.Value.At));
                 if (walked.Count >= 2) route = walked;
             }
-            CaravanActor.Spawn(Side, 0, route, team, World, Treasury, null);
+            CaravanActor.Spawn(Side, OwnerId, route, team, World, Treasury, Mines.Load);
         }
     }
 }
