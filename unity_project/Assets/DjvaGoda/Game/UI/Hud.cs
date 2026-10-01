@@ -97,6 +97,13 @@ namespace DjvaGoda.Game
             if (me.Spells.Wither > 0f) notes += "увядание   ";
             if (me.Spells.Rally > 0f) notes += "клич леса   ";
             if (notes.Length > 0) GUI.Label(new Rect(x, y - 30, 900, 24), notes, _label);
+            // Приказ стража или задание эльфа — строкой над полосами.
+            if (me.Faction == Faction.Guard && me.Service.Order.HasValue)
+                GUI.Label(new Rect(x, y - 78, 900, 24), "приказ: " + Orders.NameOf(me.Service.Order.Value) + " — "
+                    + Orders.ProgressText(me.Service.Order.Value, me.Service.Progress), _label);
+            if (me.Faction == Faction.Elves && me.Tasks.Task.HasValue)
+                GUI.Label(new Rect(x, y - 78, 900, 24), "задание: " + ElfTasks.NameOf(me.Tasks.Task.Value) + " — "
+                    + ElfTasks.ProgressText(me.Tasks.Task.Value, me.Tasks.Progress), _label);
             var t = me.Trophies;
             string wounds = me.Body.Summary();
             if (wounds != "цел" || t[0] + t[1] + t[2] > 0)

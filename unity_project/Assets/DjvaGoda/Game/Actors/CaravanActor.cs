@@ -124,8 +124,15 @@ namespace DjvaGoda.Game
             float y = Mathf.MoveTowards(transform.position.y, ground + 1f, ClimbRate * Time.deltaTime);
             var at = Trip.Position.ToUnity();
             transform.SetPositionAndRotation(new Vector3(at.x, y, at.z), CoreSpace.YawToRotation(Trip.Yaw));
-            if (e == TripEvent.Finished) Leave(Trip.Horses);
+            if (e == TripEvent.Finished)
+            {
+                if (Home != null) Home(this);
+                Leave(Trip.Horses);
+            }
         }
+
+        /// Обоз доехал до склада и рейс кончен (у хоста) — для приказа «сопроводить».
+        public static event System.Action<CaravanActor> Home;
 
         /// Рейс кончен или телега разбита: живые лошади — в конюшню, прочие — потеря.
         void Leave(int horsesBack)

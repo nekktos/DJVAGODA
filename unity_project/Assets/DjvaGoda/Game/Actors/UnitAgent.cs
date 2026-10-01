@@ -16,6 +16,8 @@ namespace DjvaGoda.Game
         public FormationKind CommanderFormation = FormationKind.Line;
         /// Сколько ещё живёт (волк призыва — минуту); ноль и меньше — без срока.
         public float Lifetime;
+        /// Распорядитель стражи или старейшина эльфов: встаёт сам и в счёт живых стороны не идёт.
+        public bool Champion;
 
         readonly PathFollower _follower = new PathFollower();
         CharacterController _controller;

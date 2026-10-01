@@ -11,13 +11,16 @@ namespace DjvaGoda.Core
         public int Progress;
         public int TasksDone;
         float _holdSeconds;
+        System.Func<ElfTaskKind, bool> _possible;
 
         public bool Done { get { return Task.HasValue && Progress >= ElfTasks.TargetOf(Task.Value); } }
 
         /// Доклад старейшине. enemyLabourers — есть ли у врагов батраки (иначе
         /// «подрубить хозяйство» не даём); headsAlive — жив ли хоть один вожак.
-        public string Report(Wallet pay, bool enemyLabourers, bool headsAlive)
+        /// possible — выполнимо ли задание сейчас (коня не пригнать, пока не на ком ездить).
+        public string Report(Wallet pay, bool enemyLabourers, bool headsAlive, System.Func<ElfTaskKind, bool> possible = null)
         {
+            _possible = possible;
             if (!Task.HasValue) return IssueNext(enemyLabourers, headsAlive);
             if (!Done) return "Задание не выполнено: " + ElfTasks.ProgressText(Task.Value, Progress);
             var reward = ElfTasks.RewardOf(Task.Value);
@@ -44,6 +47,7 @@ namespace DjvaGoda.Core
                 {
                     var candidate = ElfTasks.Rotation[(start + step) % ElfTasks.Rotation.Length];
                     if (candidate == ElfTaskKind.Labourers && !enemyLabourers) continue;
+                    if (_possible != null && !_possible(candidate)) continue;
                     kind = candidate;
                     break;
                 }

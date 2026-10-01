@@ -97,6 +97,9 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> Prosthetics = new NetworkVariable<int>();
         public readonly NetworkVariable<int> Eyes = new NetworkVariable<int>();
         public readonly NetworkVariable<int> Trophies = new NetworkVariable<int>();
+        /// Книжка стража и задания эльфа: вид+1 | ход << 4 | сдано << 16 | командир << 24.
+        public readonly NetworkVariable<int> Service = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> Tasks = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
         /// Оружие в руке — выбирает владелец, видят все (WeaponView).
@@ -186,6 +189,12 @@ namespace DjvaGoda.Game
                 Eyes.Value = body.EyesLost | body.EyeImplants << 4 | (body.InWheelchair ? 1 << 8 : 0);
                 var t = _character.Trophies;
                 Trophies.Value = t[0] | t[1] << 10 | t[2] << 20;
+                var service = _character.Service;
+                Service.Value = (service.Order.HasValue ? (int)service.Order.Value + 1 : 0) | Mathf.Min(service.Progress, 4095) << 4
+                    | Mathf.Min(service.OrdersDone, 255) << 16 | (_character.Kit.IsLeader ? 1 << 24 : 0);
+                var tasks = _character.Tasks;
+                Tasks.Value = (tasks.Task.HasValue ? (int)tasks.Task.Value + 1 : 0) | Mathf.Min(tasks.Progress, 4095) << 4
+                    | Mathf.Min(tasks.TasksDone, 255) << 16;
                 if (_combat != null) Stagger.Value = _combat.Stagger;
                 Spells.Value = SpellSync.Of(_character.Vitals, _character.Spells);
             }
@@ -208,6 +217,15 @@ namespace DjvaGoda.Game
                 body.EyeImplants = (Eyes.Value >> 4) & 15;
                 body.InWheelchair = (Eyes.Value & (1 << 8)) != 0;
                 for (int i = 0; i < 3; i++) _character.Trophies[i] = (Trophies.Value >> (10 * i)) & 1023;
+                int s = Service.Value;
+                _character.Service.Order = (s & 15) > 0 ? (OrderKind)((s & 15) - 1) : (OrderKind?)null;
+                _character.Service.Progress = (s >> 4) & 4095;
+                _character.Service.OrdersDone = (s >> 16) & 255;
+                _character.Kit.IsLeader = _character.Faction == Faction.Villain || (s & (1 << 24)) != 0;
+                int k = Tasks.Value;
+                _character.Tasks.Task = (k & 15) > 0 ? (ElfTaskKind)((k & 15) - 1) : (ElfTaskKind?)null;
+                _character.Tasks.Progress = (k >> 4) & 4095;
+                _character.Tasks.TasksDone = (k >> 16) & 255;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
                 Spells.Value.Apply(_character.Vitals, _character.Spells);
             }
@@ -227,8 +245,9 @@ namespace DjvaGoda.Game
             if (!alive && _wasAlive) _deadFor = 0f;
             _wasAlive = alive;
             if (alive) return;
+            var houses = ElfHousesDone();
             var verdict = Respawn.Verdict(_character.Faction, _character.Kit.IsLeader,
-                Respawn.ElfHousesStart.Length, false);
+                houses.Count, MatchGoals.IsOut(Faction.Elves));
             if (verdict == RespawnVerdict.Never)
             {
                 RespawnIn.Value = -1f;
@@ -236,14 +255,32 @@ namespace DjvaGoda.Game
             }
             _deadFor += delta;
             RespawnIn.Value = Mathf.Max(0f, Respawn.Delay - _deadFor);
-            if (_deadFor < Respawn.Delay) return;
-            var at = Respawn.SpawnPoint(_character.Faction, Slot.Value, true, _character.Feet,
-                new List<V3>(Respawn.ElfHousesStart)) + new V3(0f, 1f, 0f);
+            // Эльф без достроенного дома ждёт, пока живые отстроят.
+            if (_deadFor < Respawn.Delay || verdict == RespawnVerdict.WaitForHouse) return;
+            var at = Respawn.SpawnPoint(_character.Faction, Slot.Value, true, _character.Feet, houses) + new V3(0f, 1f, 0f);
+            // Здоровье возвращается, ранения — нет (GDD 4.1): встать целым было
+            // бы дешевле, чем идти за протезом. Колчан, бинты и мана — чтобы
+            // было чем играть: вещи упали кучей с тела.
             _character.Vitals.Revive();
-            _character.Body.Reset();
+            _character.Vitals.Mana = _character.Vitals.MaxMana;
+            _character.Kit.Arrows = Mathf.Max(_character.Kit.Arrows, Res.QuiverStart);
+            _character.Body.Bandages = Mathf.Max(_character.Body.Bandages, BodyState.StartBandages);
             _character.Spells.OnDamaged();
             if (IsOwner) _character.Teleport(at.ToUnity());
             else RespawnRpc(at.ToUnity());
+        }
+
+        /// Достроенные дома эльфов — места их возрождения.
+        static List<V3> ElfHousesDone()
+        {
+            var list = new List<V3>();
+            foreach (var actor in Actor.All)
+            {
+                var building = actor as BuildingActor;
+                if (building != null && building.Alive && building.State.Done && building.Side == (int)Faction.Elves
+                    && Res.IsElfHouse(building.State.Kind)) list.Add(building.At);
+            }
+            return list;
         }
 
         /// Владельцу: встать на точку возрождения (положением правит он).
@@ -278,7 +315,7 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             var shop = GetComponent<Shop>();
-            if (shop != null && deal >= 0 && deal <= (int)DealKind.Workbench) shop.ServerDeal((DealKind)deal, arg);
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Promote) shop.ServerDeal((DealKind)deal, arg);
         }
 
         /// Маршрут обоза: точки игрока. Склад и шахту дорисовывает хост.

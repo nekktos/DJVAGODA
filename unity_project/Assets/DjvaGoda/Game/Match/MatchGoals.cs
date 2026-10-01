@@ -49,6 +49,8 @@ namespace DjvaGoda.Game
             // Новая сцена — новая партия: союзы прошлой не переезжают.
             State.ApplyAlliances();
             Actor.Killed += NoteKill;
+            gameObject.AddComponent<Commander>();
+            gameObject.AddComponent<Elder>();
         }
 
         public override void OnDestroy()
@@ -174,7 +176,8 @@ namespace DjvaGoda.Game
                     if (Res.IsElfHouse(kind)) sides[actor.Side].ElfHouses++;
                     continue;
                 }
-                if (actor.Side == (int)Faction.Elves && (actor is PlayerCharacter || actor is UnitAgent)) sides[actor.Side].LivingElves++;
+                var unit = actor as UnitAgent;
+                if (actor.Side == (int)Faction.Elves && (actor is PlayerCharacter || (unit != null && !unit.Champion))) sides[actor.Side].LivingElves++;
             }
             return sides;
         }

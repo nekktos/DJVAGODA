@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
-    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench }
+    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote }
 
     /// Дела у верстака: arg = дело * 10 + ступень (протез) или 1/0 (коляска).
     public enum BenchOp { Prosthetic, Eye, Splint, Wheelchair }
@@ -74,7 +74,18 @@ namespace DjvaGoda.Game
             }
         }
 
-        bool AnyPlace { get { return AtTrader || AtBench || NeedsWood || BuildingAtHand(null) != null; } }
+        /// Свой распорядитель или старейшина рядом (живой).
+        bool AtChief
+        {
+            get
+            {
+                if (_character.Faction == Faction.Guard) return Commander.Instance != null && Commander.Instance.InRange(_character.Feet);
+                if (_character.Faction == Faction.Elves) return Elder.Instance != null && Elder.Instance.InRange(_character.Feet);
+                return false;
+            }
+        }
+
+        bool AnyPlace { get { return AtTrader || AtBench || NeedsWood || AtChief || BuildingAtHand(null) != null; } }
 
         bool HasOwn(BuildingKind kind)
         {
@@ -148,6 +159,13 @@ namespace DjvaGoda.Game
                 case DealKind.Pickup:
                     TakePickup();
                     return;
+                case DealKind.Report:
+                    if (_character.Faction == Faction.Guard && Commander.Instance != null) Commander.Instance.Report(_character);
+                    if (_character.Faction == Faction.Elves && Elder.Instance != null) Elder.Instance.Report(_character);
+                    return;
+                case DealKind.Promote:
+                    if (Commander.Instance != null) Commander.Instance.Promote(_character);
+                    return;
                 case DealKind.Workbench:
                     result = Bench((BenchOp)(arg / 10), arg % 10);
                     break;
@@ -186,6 +204,28 @@ namespace DjvaGoda.Game
                 case BenchOp.Splint: return Workbench.Splint(body, wallet, AtBench);
                 default: return Workbench.Wheelchair(body, param != 0, AtBench);
             }
+        }
+
+        void ChiefPanel()
+        {
+            if (_character.Faction == Faction.Guard)
+            {
+                var service = _character.Service;
+                GUILayout.Label("Распорядитель стражи — приказ: " + (service.Order.HasValue
+                    ? Orders.NameOf(service.Order.Value) + " (" + Orders.ProgressText(service.Order.Value, service.Progress) + ")"
+                    : "нет") + "; сдано " + service.OrdersDone);
+                if (service.Order.HasValue) GUILayout.Label(Orders.BriefOf(service.Order.Value));
+                if (GUILayout.Button(service.Order.HasValue ? "доложить" : "получить приказ", _style, GUILayout.Height(32))) Ask(DealKind.Report, 0);
+                if (!_character.Kit.IsLeader && GUILayout.Button("принять командование (сдано " + service.OrdersDone + " из "
+                    + Orders.OrdersForPromotion + ")", _style, GUILayout.Height(32))) Ask(DealKind.Promote, 0);
+                return;
+            }
+            var tasks = _character.Tasks;
+            GUILayout.Label("Старейшина — задание: " + (tasks.Task.HasValue
+                ? ElfTasks.NameOf(tasks.Task.Value) + " (" + ElfTasks.ProgressText(tasks.Task.Value, tasks.Progress) + ")"
+                : "нет") + "; выполнено " + tasks.TasksDone);
+            if (tasks.Task.HasValue) GUILayout.Label(ElfTasks.BriefOf(tasks.Task.Value));
+            if (GUILayout.Button(tasks.Task.HasValue ? "доложить" : "получить задание", _style, GUILayout.Height(32))) Ask(DealKind.Report, 0);
         }
 
         void BenchPanel(Wallet wallet)
@@ -228,7 +268,8 @@ namespace DjvaGoda.Game
             if (!_open)
             {
                 var lying = Pickup.Near(_character.Feet);
-                string where = lying != null ? "поднять: " + lying.name : AtTrader ? "лавка" : AtBench ? "верстак" : (BuildingAtHand(BuildingKind.Forge) != null && _character.Faction != Faction.Elves ? "кузня"
+                string where = lying != null ? "поднять: " + lying.name : AtChief ? (_character.Faction == Faction.Guard ? "распорядитель стражи" : "старейшина")
+                    : AtTrader ? "лавка" : AtBench ? "верстак" : (BuildingAtHand(BuildingKind.Forge) != null && _character.Faction != Faction.Elves ? "кузня"
                     : (BuildingAtHand(null) != null ? "постройка" : NeedsWood ? "деревянный протез" : null));
                 if (where != null)
                     GUI.Label(new Rect(Screen.width * 0.5f - 150, Screen.height * 0.5f + 70, 300, 26), "E — " + where,
@@ -239,6 +280,7 @@ namespace DjvaGoda.Game
             var kit = _character.Kit;
             var wallet = Treasury.Of(_character.Faction);
             GUILayout.BeginArea(new Rect(Screen.width * 0.5f - 260, Screen.height * 0.2f, 520, 520), GUI.skin.box);
+            if (AtChief) ChiefPanel();
             if (AtBench || NeedsWood) BenchPanel(wallet);
             if (AtTrader)
             {
