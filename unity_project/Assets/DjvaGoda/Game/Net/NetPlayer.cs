@@ -282,7 +282,9 @@ namespace DjvaGoda.Game
         public void BuildRpc(int kind, Vector3 at, RpcParams rpcParams = default(RpcParams))
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
-            // Сделка (Deals) и постановка (Placement) — в шаге «Экономика».
+            if (kind < 0 || kind >= Res.BuildingNames.Length) return;
+            var builder = GetComponent<Builder>();
+            if (builder != null) builder.ServerBuild((BuildingKind)kind, at.ToCore());
         }
     }
 }

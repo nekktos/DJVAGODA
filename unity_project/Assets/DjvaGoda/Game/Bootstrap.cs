@@ -48,6 +48,7 @@ namespace DjvaGoda.Game
             root.AddComponent<PlayerCombat>();
             root.AddComponent<PlayerSpells>();
             root.AddComponent<WeaponView>();
+            root.AddComponent<Builder>();
             Rig.Target = Player;
             return Player;
         }

@@ -47,6 +47,7 @@ namespace DjvaGoda.Tests
             root.AddComponent<PlayerCombat>();
             root.AddComponent<PlayerSpells>();
             root.AddComponent<WeaponView>();
+            root.AddComponent<Builder>();
             return character;
         }
 

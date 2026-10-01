@@ -48,6 +48,7 @@ namespace DjvaGoda.Game
                 _wolves.RemoveAll(w => w == null || !w.Alive);
             }
             if (!_character.LocalControl || !_character.Alive) return;
+            if (GameMode.Strategy && ScriptedCast < 0) return;
             var set = Factions.AbilitiesOf(_character.Faction);
             int wanted = -1;
             for (int slot = 0; slot < 3 && slot < set.Length; slot++)

@@ -1,8 +1,14 @@
 // Постройка в мире (перенос economy/building.gd): состояние — BuildingState
 // ядра (стройка, ступени, урон с правилом стражи), вид — серая коробка
-// размером с постройку. Твёрдая постройка вырезает себя из запечённой сетки
-// навигации (NavMeshObstacle), снесённая — возвращает место.
+// размером с постройку; недостроенная растёт из земли. Твёрдая постройка
+// вырезает себя из запечённой сетки навигации (NavMeshObstacle), снесённая —
+// возвращает место.
+//
+// Считает хост: стройку, поле, урон. По сети постройка — префаб
+// Resources/Building с NetworkObject, состояние клиентам везёт BuildingNet.
+// Без сети (проверки, одиночный загрузчик) — простой объект.
 using DjvaGoda.Core;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -15,20 +21,70 @@ namespace DjvaGoda.Game
         Transform _view;
         int _shownGrade = -1;
         bool _wasDone;
+        bool _completed;
 
         public override bool Alive { get { return State != null && !State.Destroyed; } }
         public override BuildingKind? Building { get { return State != null ? State.Kind : (BuildingKind?)null; } }
 
+        static GameObject _prefab;
+
+        /// Хост (или машина без сети) ставит постройку.
         public static BuildingActor Spawn(BuildingKind kind, Faction side, V3 at, bool prebuilt, NavWorld nav)
         {
-            var go = new GameObject(Res.BuildingNames[(int)kind]);
-            go.transform.position = at.ToUnity();
-            var actor = go.AddComponent<BuildingActor>();
-            actor.State = new BuildingState(kind, side, prebuilt);
-            actor.Side = (int)side;
-            actor.Nav = nav;
-            actor.Rebuild();
-            return actor;
+            var net = NetworkManager.Singleton;
+            if (net != null && net.IsListening && net.IsServer)
+            {
+                if (_prefab == null) _prefab = Resources.Load<GameObject>("Building");
+                var go = Instantiate(_prefab, at.ToUnity(), Quaternion.identity);
+                var actor = go.GetComponent<BuildingActor>();
+                actor.Init(kind, side, prebuilt);
+                actor.Nav = nav;
+                go.GetComponent<NetworkObject>().Spawn();
+                return actor;
+            }
+            var local = new GameObject(Res.BuildingNames[(int)kind]);
+            local.transform.position = at.ToUnity();
+            var made = local.AddComponent<BuildingActor>();
+            made.Init(kind, side, prebuilt);
+            made.Nav = nav;
+            return made;
+        }
+
+        /// Задать постройку: у хоста — при спавне, у клиента — по BuildingNet.
+        public void Init(BuildingKind kind, Faction side, bool prebuilt)
+        {
+            State = new BuildingState(kind, side, prebuilt);
+            Side = (int)side;
+            name = Res.BuildingNames[(int)kind] + " (" + Factions.Names[(int)side] + ")";
+            var size = Res.BuildingSize(kind).ToUnity();
+            if (!Res.Walkable(kind)) Carve(size);
+            Zone(size);
+            Rebuild();
+        }
+
+        /// Хозяин партии считает стройку и поле.
+        static bool Hosting
+        {
+            get
+            {
+                var net = NetworkManager.Singleton;
+                return net == null || !net.IsListening || net.IsServer;
+            }
+        }
+
+        /// Зона попадания во всю коробку: постройку бьют тем же оружием.
+        void Zone(Vector3 size)
+        {
+            var go = new GameObject("Зона попадания");
+            go.layer = HitZone.Layer;
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, size.y * 0.5f, 0f);
+            var box = go.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.size = size;
+            var zone = go.AddComponent<HitZone>();
+            zone.Zone = "torso";
+            zone.Owner = this;
         }
 
         void Rebuild()
@@ -38,18 +94,22 @@ namespace DjvaGoda.Game
             var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
             box.name = "Вид";
             box.transform.SetParent(transform, false);
-            // Недостроенная — по пояс: видно, сколько осталось.
-            float height = size.y * (State.Done ? 1f : Mathf.Max(0.15f, State.Progress));
-            box.transform.localScale = new Vector3(size.x, height, size.z);
-            box.transform.localPosition = new Vector3(0f, height * 0.5f, 0f);
             var grade = State.Grade <= 0 ? "wood" : (State.Grade == 1 ? "stone" : "dark_stone");
             box.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of(grade);
             // Поле проходимо: без коллизии.
             if (Res.Walkable(State.Kind)) Destroy(box.GetComponent<Collider>());
-            else Carve(size);
             _view = box.transform;
             _shownGrade = State.Grade;
             _wasDone = State.Done;
+            ShowProgress(size);
+        }
+
+        /// Недостроенная — по пояс: видно, сколько осталось.
+        void ShowProgress(Vector3 size)
+        {
+            float height = size.y * (State.Done ? 1f : Mathf.Max(0.15f, State.Progress));
+            _view.localScale = new Vector3(size.x, height, size.z);
+            _view.localPosition = new Vector3(0f, height * 0.5f, 0f);
         }
 
         /// Вырез в сетке во всю постройку (а не по недостроенной высоте):
@@ -68,8 +128,23 @@ namespace DjvaGoda.Game
         void Update()
         {
             if (State == null) return;
+            if (Hosting)
+            {
+                // Строители-батраки прибавят скорость в шаге «батраки»; пока — хозяин.
+                State.Build(Time.deltaTime, 0);
+                if (State.Done) State.Grow(Time.deltaTime);
+                if (State.Done && !_completed) Completed();
+            }
             if (State.Grade != _shownGrade || State.Done != _wasDone) Rebuild();
-            if (State.Done) State.Grow(Time.deltaTime);
+            else if (!State.Done) ShowProgress(Res.BuildingSize(State.Kind).ToUnity());
+        }
+
+        /// Достроена (у хоста): склад поднимает стороне потолок хранения — и
+        /// построенный игроком, и поставленный ИИ.
+        void Completed()
+        {
+            _completed = true;
+            if (State.Kind == BuildingKind.Storage) Treasury.Of(State.Side).RaiseCapacity(Res.StorageBonus);
         }
 
         public override void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)
@@ -83,10 +158,10 @@ namespace DjvaGoda.Game
                 armor = hitter.Kit.ArmorTier;
             }
             State.TakeDamage(amount, source != null ? source.Side : -1, gear, armor);
-            if (!Alive)
-            {
-                Destroy(gameObject);
-            }
+            if (Alive) return;
+            var net = GetComponent<NetworkObject>();
+            if (net != null && net.IsSpawned) net.Despawn(true);
+            else Destroy(gameObject);
         }
     }
 }

@@ -106,7 +106,7 @@ namespace DjvaGoda.Game
             float delta = Time.deltaTime;
             // Таймеры заклинаний и ману считает хост (PlayerSpells).
             var input = Scripted ?? ReadInput();
-            if (Scripted == null && LocalControl && Cursor.lockState == CursorLockMode.Locked)
+            if (Scripted == null && LocalControl && !GameMode.Strategy && Cursor.lockState == CursorLockMode.Locked)
             {
                 var look = GameInput.Look();
                 // Мышь вправо — поворот вправо: рост yaw (угла Y в Unity).
@@ -155,7 +155,7 @@ namespace DjvaGoda.Game
 
         MotorInput ReadInput()
         {
-            if (!LocalControl || Cursor.lockState != CursorLockMode.Locked) return new MotorInput();
+            if (!LocalControl || GameMode.Strategy || Cursor.lockState != CursorLockMode.Locked) return new MotorInput();
             var move = GameInput.Move();
             return new MotorInput
             {

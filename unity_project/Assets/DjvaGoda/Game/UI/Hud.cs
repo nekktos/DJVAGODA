@@ -31,6 +31,7 @@ namespace DjvaGoda.Game
             }
 
             Resources(me.Faction);
+            BuildPanel(me);
 
             // Слепота: заклятие злодея и выбитые глаза — экран темнеет.
             float blind = Mathf.Max(me.Spells.Blind > 0f ? 0.85f : 0f, me.Body.Blindness() * 0.6f);
@@ -109,6 +110,47 @@ namespace DjvaGoda.Game
             if (!string.IsNullOrEmpty(combat.Refusal))
                 GUI.Label(new Rect(cx - 300, cy + 40, 600, 30), combat.Refusal,
                     new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
+        }
+
+        /// Клавиша действия по умолчанию — для подсказок («1», «U»).
+        static string KeyOf(string action)
+        {
+            foreach (var key in KeyActions.All)
+                if (key.Name == action && key.Defaults.Length > 0)
+                {
+                    var path = key.Defaults[0];
+                    return path.Substring(path.LastIndexOf('/') + 1).ToUpperInvariant();
+                }
+            return "?";
+        }
+
+        /// Вид сверху: что можно строить, клавиши и цены; при постановке — подсказка.
+        void BuildPanel(PlayerCharacter me)
+        {
+            var builder = me.GetComponent<Builder>();
+            if (builder != null && builder.Placing)
+                GUI.Label(new Rect(Screen.width * 0.5f - 300, Screen.height - 200, 600, 26),
+                    "Ставим: " + Res.BuildingNames[(int)builder.Kind] + " — " + Res.FormatCost(Res.BuildingCost(builder.Kind))
+                    + ".  ЛКМ — поставить, ПКМ — отмена", new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
+            if (!GameMode.Strategy)
+            {
+                if (me.Faction == Faction.Elves && (builder == null || !builder.Placing))
+                    GUI.Label(new Rect(16, 140, 500, 24), KeyOf("build_elf_house") + " — поставить дом эльфов", _label);
+                return;
+            }
+            float y = 140;
+            GUI.Label(new Rect(16, y, 500, 24), "Вид сверху.  " + KeyOf("toggle_camera") + " — в бой", _label);
+            y += 26;
+            foreach (var item in Builder.Menu)
+            {
+                if (!Factions.MayBuild(me.Faction, item.Value, me.Kit.IsLeader)) continue;
+                var cost = Res.BuildingCost(item.Value);
+                bool can = Treasury.Of(me.Faction).CanAfford(cost);
+                GUI.color = can ? Color.white : new Color(1f, 1f, 1f, 0.5f);
+                GUI.Label(new Rect(16, y, 700, 24), KeyOf(item.Key) + "  " + Res.BuildingNames[(int)item.Value] + " — " + Res.FormatCost(cost), _label);
+                GUI.color = Color.white;
+                y += 24;
+            }
         }
 
         /// Ресурсы стороны: при себе (под риском) и на складе.

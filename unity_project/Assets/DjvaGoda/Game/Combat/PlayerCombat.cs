@@ -66,6 +66,11 @@ namespace DjvaGoda.Game
             HitAge += delta;
             if (_refusalLeft <= 0f) Refusal = null;
             if (!_character.LocalControl || !_character.Alive) return;
+            // Сверху цифры — постройки, а ЛКМ — постановка.
+            if (GameMode.Strategy && !ScriptedAttack) return;
+            // Пока в руке план дома (эльф), ЛКМ ставит его, а не бьёт.
+            var builder = GetComponent<Builder>();
+            if (builder != null && builder.Placing && !ScriptedAttack) return;
 
             var set = Factions.WeaponsOf(_character.Faction);
             for (int slot = 0; slot < 4; slot++)
