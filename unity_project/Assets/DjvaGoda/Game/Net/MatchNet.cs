@@ -70,6 +70,7 @@ namespace DjvaGoda.Game
         NetworkList<int> _gone;
 
         float _depositT;
+        float _hungerT;
 
         void Awake()
         {
@@ -123,6 +124,12 @@ namespace DjvaGoda.Game
             if (IsSpawned)
                 for (int side = 0; side < Factions.Count; side++) WalletVar(side).Value = WalletSync.Of(Treasury.Of(side));
             Mines.Tick(Time.deltaTime);
+            _hungerT += Time.deltaTime;
+            if (_hungerT >= Res.FeedInterval)
+            {
+                _hungerT = 0f;
+                Feed();
+            }
             _depositT += Time.deltaTime;
             if (_depositT >= Res.DepositInterval)
             {
@@ -148,6 +155,36 @@ namespace DjvaGoda.Game
                     if (building.At.FlatDistance(player.Feet) > Res.DepositRange) continue;
                     wallet.Deposit();
                     break;
+                }
+            }
+        }
+
+        /// Кормёжка артелей (у хоста): каждая сторона кормит своих батраков из
+        /// казны; не хватило на всех — не ест никто, голодные работают медленнее,
+        /// с третьего пропуска умирают. Стороне — одна строка о беде.
+        public static void Feed()
+        {
+            for (int side = 0; side < Factions.Count; side++)
+            {
+                var crew = Builder.Crew((Faction)side);
+                if (crew.Count == 0) continue;
+                var hunger = new int[crew.Count];
+                for (int i = 0; i < crew.Count; i++) hunger[i] = crew[i].MissedMeals;
+                var result = Hunger.Feed((Faction)side, Treasury.Of(side), hunger);
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    crew[i].MissedMeals = hunger[i];
+                    crew[i].Hungry = hunger[i] > 0;
+                    if (hunger[i] >= Res.HungerFatal) Agents.Remove(crew[i].gameObject);
+                }
+                if (string.IsNullOrEmpty(result.Message)) continue;
+                Debug.Log("[голод] " + result.Message);
+                foreach (var actor in Actor.All)
+                {
+                    var player = actor as PlayerCharacter;
+                    if (player == null || (int)player.Faction != side) continue;
+                    var combat = player.GetComponent<PlayerCombat>();
+                    if (combat != null) combat.Tell(result.Message);
                 }
             }
         }

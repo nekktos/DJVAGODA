@@ -4,6 +4,7 @@
     "references": [
         "DjvaGoda.Core",
         "DjvaGoda.Game",
+        "Unity.Netcode.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

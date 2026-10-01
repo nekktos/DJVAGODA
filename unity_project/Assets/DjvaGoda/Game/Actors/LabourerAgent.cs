@@ -17,6 +17,8 @@ namespace DjvaGoda.Game
         public World World;
         public Wallet Treasury;
         public bool Hungry;
+        /// Пропущенные кормёжки (Hunger ядра); с HungerFatal — умирает.
+        public int MissedMeals;
 
         readonly PathFollower _follower = new PathFollower();
         CharacterController _controller;
