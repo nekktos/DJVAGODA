@@ -257,7 +257,20 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             var shop = GetComponent<Shop>();
-            if (shop != null && deal >= 0 && deal <= (int)DealKind.Potion) shop.ServerDeal((DealKind)deal, arg);
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Horse) shop.ServerDeal((DealKind)deal, arg);
+        }
+
+        /// Маршрут обоза: точки игрока. Склад и шахту дорисовывает хост.
+        [Rpc(SendTo.Server)]
+        public void CaravanRpc(Vector3[] points, RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId || points == null) return;
+            if (points.Length > Builder.MaxRoutePoints) return;
+            var builder = GetComponent<Builder>();
+            if (builder == null) return;
+            var route = new V3[points.Length];
+            for (int i = 0; i < points.Length; i++) route[i] = points[i].ToCore();
+            builder.ServerSendCaravan(route);
         }
 
         /// Хозяйство из вида сверху: −1 — нанять батрака, иначе — роль. Решает хост.

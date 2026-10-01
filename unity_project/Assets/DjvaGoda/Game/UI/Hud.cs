@@ -151,6 +151,14 @@ namespace DjvaGoda.Game
                 GUI.color = Color.white;
                 y += 24;
             }
+            var wallet = Treasury.Of(me.Faction);
+            if (builder != null && builder.Routing)
+                GUI.Label(new Rect(Screen.width * 0.5f - 300, Screen.height - 200, 600, 26),
+                    "Маршрут обоза: точек " + builder.RoutePoints + " из " + Builder.MaxRoutePoints
+                    + ".  ЛКМ — точка, Enter — отправить, ПКМ — отмена", new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
+            y += 8;
+            GUI.Label(new Rect(16, y, 700, 24), KeyOf("route") + "  маршрут обоза (лошадей свободно " + wallet.HorsesFree + " из " + wallet.Horses + ")", _label);
+            y += 24;
             if (!Factions.CanBuild(me.Faction) && !me.Kit.IsLeader) return;
             // Хозяйство: найм и роли батраков (счёт — по видимым батракам стороны).
             var counts = new int[LabourerStats.RoleNames.Length];

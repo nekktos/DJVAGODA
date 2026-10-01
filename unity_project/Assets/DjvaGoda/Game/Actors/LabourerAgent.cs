@@ -53,11 +53,13 @@ namespace DjvaGoda.Game
                 if (building != null && building.Side == Side) view.Sites.Add(SiteOf(building));
             }
             AddHarvestables(view);
+            if (Brain.Role == LabourerRole.Miner) view.SideMine = Mines.SiteFor(Home);
             var order = Brain.Tick(delta, view);
             Walk(delta, order.Goal);
             switch (order.Action)
             {
                 case LabourAction.Harvest: Harvest(order.Site); break;
+                case LabourAction.Dig: if (order.Site != null) Mines.Dig(order.Site.Id, Id); break;
                 case LabourAction.Deliver: if (Treasury != null) Brain.Unload(Treasury); break;
             }
         }

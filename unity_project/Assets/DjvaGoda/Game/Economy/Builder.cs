@@ -40,6 +40,13 @@ namespace DjvaGoda.Game
         public static IEnumerable<KeyValuePair<string, LabourerRole>> Roles { get { return RoleKeys; } }
 
         public bool Placing { get; private set; }
+        /// Прокладка маршрута обоза (C): точки кликами, Enter — отправить.
+        public bool Routing { get; private set; }
+        public const int MaxRoutePoints = 12;
+        public const int HarnessSize = 2;
+        readonly List<V3> _route = new List<V3>();
+        readonly List<GameObject> _marks = new List<GameObject>();
+        public int RoutePoints { get { return _route.Count; } }
         public BuildingKind Kind { get; private set; }
 
         PlayerCharacter _character;
@@ -73,6 +80,15 @@ namespace DjvaGoda.Game
                     if (GameInput.Pressed(key.Key) && Factions.MayBuild(_character.Faction, key.Value, _character.Kit.IsLeader))
                         Begin(key.Value);
                 if (GameInput.Pressed("hire_labourer")) Labour(-1);
+                if (GameInput.Pressed("route"))
+                {
+                    if (Routing) StopRoute();
+                    else
+                    {
+                        Stop();
+                        Routing = true;
+                    }
+                }
                 foreach (var key in RoleKeys)
                     if (GameInput.Pressed(key.Key)) Labour((int)key.Value);
             }
@@ -82,6 +98,8 @@ namespace DjvaGoda.Game
                 else Begin(BuildingKind.ElfHouse);
             }
             else if (Placing && !Res.IsElfHouse(Kind)) Stop();
+            if (!GameMode.Strategy) StopRoute();
+            if (Routing) Route();
             if (!Placing) return;
 
             var mouse = UnityEngine.InputSystem.Mouse.current;
@@ -100,6 +118,97 @@ namespace DjvaGoda.Game
                 if (Hosting) ServerBuild(kind, point);
                 else _net.BuildRpc((int)kind, point.ToUnity());
             }
+        }
+
+        /// Маршрут обоза: ЛКМ — точка, Enter — отправить, ПКМ/Esc — отменить.
+        void Route()
+        {
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            var keyboard = UnityEngine.InputSystem.Keyboard.current;
+            if ((mouse != null && mouse.rightButton.wasPressedThisFrame) || (keyboard != null && keyboard.escapeKey.wasPressedThisFrame))
+            {
+                StopRoute();
+                return;
+            }
+            if (keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+            {
+                var points = _route.ToArray();
+                StopRoute();
+                if (Hosting) ServerSendCaravan(points);
+                else
+                {
+                    var sent = new Vector3[points.Length];
+                    for (int i = 0; i < points.Length; i++) sent[i] = points[i].ToUnity();
+                    _net.CaravanRpc(sent);
+                }
+                return;
+            }
+            if (mouse == null || !mouse.leftButton.wasPressedThisFrame || _route.Count >= MaxRoutePoints) return;
+            var rig = Object.FindAnyObjectByType<CameraRig>();
+            if (rig == null || rig.Camera == null) return;
+            RaycastHit hit;
+            if (!Physics.Raycast(rig.Camera.ScreenPointToRay(mouse.position.ReadValue()), out hit, 1200f, HitZone.WorldMask, QueryTriggerInteraction.Ignore))
+                return;
+            _route.Add(hit.point.ToCore());
+            var mark = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            mark.name = "Точка маршрута " + _route.Count;
+            Destroy(mark.GetComponent<Collider>());
+            mark.transform.position = hit.point + Vector3.up * 2f;
+            mark.transform.localScale = new Vector3(1.2f, 2f, 1.2f);
+            mark.GetComponent<MeshRenderer>().sharedMaterial = Palette.Side(_character.Faction);
+            _marks.Add(mark);
+        }
+
+        void StopRoute()
+        {
+            Routing = false;
+            _route.Clear();
+            foreach (var mark in _marks) if (mark != null) Destroy(mark);
+            _marks.Clear();
+        }
+
+        /// Свой достроенный склад (у хоста).
+        static BuildingActor StorageOf(Faction side)
+        {
+            foreach (var actor in Actor.All)
+            {
+                var building = actor as BuildingActor;
+                if (building != null && building.Alive && building.State.Done && building.State.Kind == BuildingKind.Storage
+                    && building.Side == (int)side) return building;
+            }
+            return null;
+        }
+
+        int OwnerId { get { return _net != null && _net.IsSpawned ? (int)_net.OwnerClientId : 0; } }
+
+        /// Отправка обоза у хоста (перенос request_send_caravan): обоз выходит
+        /// от склада, едет по точкам игрока и в конце — к шахте у последней точки
+        /// (без точек — к ближайшей к складу). Запрягают сколько есть свободных.
+        public void ServerSendCaravan(V3[] points)
+        {
+            if (!_character.Alive) return;
+            var side = _character.Faction;
+            var wallet = Treasury.Of(side);
+            var storage = StorageOf(side);
+            int carts = 0;
+            foreach (var actor in Actor.All)
+            {
+                var cart = actor as CaravanActor;
+                if (cart != null && cart.Alive && cart.Trip.Owner == OwnerId) carts++;
+            }
+            var deal = Deals.SendCaravan(wallet, storage != null, carts, points);
+            if (!deal.Ok)
+            {
+                if (_combat != null && !string.IsNullOrEmpty(deal.Refusal)) _combat.Tell(deal.Refusal);
+                return;
+            }
+            var route = new List<V3> { storage.At };
+            route.AddRange(points);
+            route.Add(Mines.Dock(Mines.Nearest(route[route.Count - 1])));
+            int team = Mathf.Min(HarnessSize, wallet.HorsesFree);
+            wallet.HorsesOut += team;
+            if (team < HarnessSize && _combat != null) _combat.Tell("свободных лошадей " + team + " — запрягли столько");
+            CaravanActor.Spawn(side, OwnerId, route, team, Object.FindAnyObjectByType<World>(), wallet, Mines.Load);
         }
 
         /// Хозяйство: −1 — нанять батрака, иначе — перевести одного на дело.
@@ -198,7 +307,11 @@ namespace DjvaGoda.Game
             _ghost = null;
         }
 
-        void OnDestroy() { Stop(); }
+        void OnDestroy()
+        {
+            Stop();
+            StopRoute();
+        }
 
         /// Куда смотрит игрок: сверху — под курсор, из боя — под прицел.
         void Aim()

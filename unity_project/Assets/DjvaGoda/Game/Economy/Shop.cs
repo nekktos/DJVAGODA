@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
-    public enum DealKind { Trade, Forge, Fortify, Potion }
+    public enum DealKind { Trade, Forge, Fortify, Potion, Horse }
 
     [RequireComponent(typeof(PlayerCharacter))]
     public class Shop : MonoBehaviour
@@ -57,6 +57,17 @@ namespace DjvaGoda.Game
         }
 
         bool AnyPlace { get { return AtTrader || BuildingAtHand(null) != null; } }
+
+        bool HasOwn(BuildingKind kind)
+        {
+            foreach (var actor in Actor.All)
+            {
+                var building = actor as BuildingActor;
+                if (building != null && building.Alive && building.State.Done && building.State.Kind == kind
+                    && building.Side == (int)_character.Faction) return true;
+            }
+            return false;
+        }
 
         void Update()
         {
@@ -107,6 +118,9 @@ namespace DjvaGoda.Game
                     var building = BuildingAtHand(null);
                     result = Deals.Fortify(_character.Kit, wallet, building != null ? building.State : null);
                     break;
+                case DealKind.Horse:
+                    result = Deals.HireHorse(wallet, BuildingAtHand(BuildingKind.Stable) != null, HasOwn(BuildingKind.Stable));
+                    break;
                 default:
                     Deals.UsePotion(_character.Kit, _character.Vitals, arg != 0);
                     return;
@@ -149,6 +163,13 @@ namespace DjvaGoda.Game
                 GUI.enabled = cost.Length > 0 && wallet.CanAfford(cost);
                 if (GUILayout.Button(cost.Length > 0 ? "закалить оружие: " + kit.GearTitle(kit.GearTier + 1) + " — " + Res.FormatCost(cost)
                     : "оружие закалено до предела", _style, GUILayout.Height(32))) Ask(DealKind.Forge, 0);
+                GUI.enabled = true;
+            }
+            if (BuildingAtHand(BuildingKind.Stable) != null)
+            {
+                GUILayout.Label("Конюшня: лошадей " + wallet.Horses + " (в упряжке " + wallet.HorsesOut + ")");
+                GUI.enabled = wallet.CanAfford(Res.HorseCost) && wallet.Horses < Res.HorseLimit;
+                if (GUILayout.Button("взять лошадь — " + Res.FormatCost(Res.HorseCost), _style, GUILayout.Height(32))) Ask(DealKind.Horse, 0);
                 GUI.enabled = true;
             }
             var here = BuildingAtHand(null);

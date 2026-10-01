@@ -78,6 +78,7 @@ namespace DjvaGoda.Game
             // Новая сцена — новая партия: стартовый запас у всех; дальше
             // клиентам его перезапишет хост.
             Treasury.Reset();
+            Mines.Reset();
         }
 
         NetworkVariable<WalletSync> WalletVar(int side)
@@ -121,6 +122,7 @@ namespace DjvaGoda.Game
             if (!Hosting) return;
             if (IsSpawned)
                 for (int side = 0; side < Factions.Count; side++) WalletVar(side).Value = WalletSync.Of(Treasury.Of(side));
+            Mines.Tick(Time.deltaTime);
             _depositT += Time.deltaTime;
             if (_depositT >= Res.DepositInterval)
             {
