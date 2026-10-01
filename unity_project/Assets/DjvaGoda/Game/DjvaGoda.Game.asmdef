@@ -5,7 +5,8 @@
         "DjvaGoda.Core",
         "Unity.InputSystem",
         "Unity.Netcode.Runtime",
-        "Unity.Networking.Transport"
+        "Unity.Networking.Transport",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

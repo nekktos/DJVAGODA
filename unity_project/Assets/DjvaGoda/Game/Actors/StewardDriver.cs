@@ -20,7 +20,7 @@ namespace DjvaGoda.Game
         public Faction Side = Faction.Villain;
         public Wallet Treasury;
         public NavWorld Nav;
-        public WorldBuilder World;
+        public World World;
         public WarbandDriver Warband;
         public readonly List<LabourerAgent> Crew = new List<LabourerAgent>();
         float _think;

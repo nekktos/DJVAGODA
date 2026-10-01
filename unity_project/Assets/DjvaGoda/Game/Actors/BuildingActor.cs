@@ -1,8 +1,10 @@
 // Постройка в мире (перенос economy/building.gd): состояние — BuildingState
 // ядра (стройка, ступени, урон с правилом стражи), вид — серая коробка
-// размером с постройку. Встала или снесена — сетка навигации перепекается.
+// размером с постройку. Твёрдая постройка вырезает себя из запечённой сетки
+// навигации (NavMeshObstacle), снесённая — возвращает место.
 using DjvaGoda.Core;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace DjvaGoda.Game
 {
@@ -26,7 +28,6 @@ namespace DjvaGoda.Game
             actor.Side = (int)side;
             actor.Nav = nav;
             actor.Rebuild();
-            if (nav != null) nav.MarkDirty();
             return actor;
         }
 
@@ -45,9 +46,23 @@ namespace DjvaGoda.Game
             box.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of(grade);
             // Поле проходимо: без коллизии.
             if (Res.Walkable(State.Kind)) Destroy(box.GetComponent<Collider>());
+            else Carve(size);
             _view = box.transform;
             _shownGrade = State.Grade;
             _wasDone = State.Done;
+        }
+
+        /// Вырез в сетке во всю постройку (а не по недостроенной высоте):
+        /// стройку тоже обходят. Вырез только у стоящего — постройки не ездят.
+        void Carve(Vector3 size)
+        {
+            var obstacle = GetComponent<NavMeshObstacle>();
+            if (obstacle == null) obstacle = gameObject.AddComponent<NavMeshObstacle>();
+            obstacle.shape = NavMeshObstacleShape.Box;
+            obstacle.size = size;
+            obstacle.center = new Vector3(0f, size.y * 0.5f, 0f);
+            obstacle.carving = true;
+            obstacle.carveOnlyStationary = true;
         }
 
         void Update()
@@ -70,7 +85,6 @@ namespace DjvaGoda.Game
             State.TakeDamage(amount, source != null ? source.Side : -1, gear, armor);
             if (!Alive)
             {
-                if (Nav != null) Nav.MarkDirty();
                 Destroy(gameObject);
             }
         }

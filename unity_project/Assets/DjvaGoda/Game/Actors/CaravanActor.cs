@@ -11,13 +11,13 @@ namespace DjvaGoda.Game
         public const float ClimbRate = 3f;
 
         public CaravanTrip Trip;
-        public WorldBuilder World;
+        public World World;
         public Wallet Treasury;
         public System.Func<V3, int[]> Load;
 
         public override bool Alive { get { return Trip != null && Trip.Health > 0f && Trip.State != CaravanState.Finished; } }
 
-        public static CaravanActor Spawn(Faction side, int owner, List<V3> route, int horses, WorldBuilder world, Wallet treasury,
+        public static CaravanActor Spawn(Faction side, int owner, List<V3> route, int horses, World world, Wallet treasury,
             System.Func<V3, int[]> load)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);

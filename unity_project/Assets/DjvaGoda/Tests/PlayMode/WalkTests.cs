@@ -1,4 +1,4 @@
-// Проверки шагов 3 и 5 в живом Unity: мир строится, персонаж стоит на земле,
+// Проверки шагов 3 и 5 в живом Unity: мир в сцене совпадает с планом, персонаж стоит на земле,
 // ходит, поднимается по пандусу на плато. Повторяют наборы ходьбы
 // Godot-версии; правила — в core_tests, здесь — что Unity-слой их не ломает.
 using System.Collections;
@@ -6,6 +6,7 @@ using DjvaGoda.Core;
 using DjvaGoda.Game;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
 namespace DjvaGoda.Tests
@@ -14,17 +15,33 @@ namespace DjvaGoda.Tests
     {
         Bootstrap _boot;
 
+        /// Настоящая сцена игры: мир в ней собран в редакторе, а не строится
+        /// заново. Она сетевая — персонажа ставим сами, без хоста.
         [UnitySetUp]
         public IEnumerator Build()
         {
-            var go = new GameObject("Загрузчик");
-            go.SetActive(false);
-            _boot = go.AddComponent<Bootstrap>();
-            _boot.Side = Faction.Guard;
-            go.SetActive(true);
-            // Кадр на Awake/Start и физику.
+            SceneManager.LoadScene("Main");
+            // Кадр на загрузку сцены и Awake.
+            yield return null;
+            _boot = Object.FindAnyObjectByType<Bootstrap>();
+            Assert.That(_boot, Is.Not.Null, "в сцене Main нет загрузчика");
+            _boot.SpawnLocal(Faction.Guard);
+            // Кадр на Start персонажа и физику.
             yield return null;
             yield return new WaitForFixedUpdate();
+        }
+
+        [UnityTest]
+        public IEnumerator WorldMatchesPlan()
+        {
+            var world = _boot.World;
+            Assert.That(world, Is.Not.Null, "в сцене нет мира");
+            Assert.That(world.PlanPrint, Is.EqualTo(World.Print(world.Plan, world.Forest)),
+                "мир в сцене собран по старому плану: ДжваГода → Собрать мир");
+            Assert.That(world.Trees.Length, Is.EqualTo(world.Forest.Count), "деревьев в сцене не столько, сколько в лесу плана");
+            foreach (var tree in world.Trees) Assert.That(tree, Is.Not.Null, "дерево леса потеряно в сцене");
+            Assert.That(_boot.Nav.Ready, Is.True, "сетка навигации не запечена");
+            yield return null;
         }
 
         [UnityTearDown]

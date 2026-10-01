@@ -16,6 +16,9 @@ namespace DjvaGoda.Game
             { "road", new Color(0.46f, 0.42f, 0.35f) },
             { "foliage", new Color(0.24f, 0.44f, 0.24f) },
             { "trunk", new Color(0.33f, 0.25f, 0.17f) },
+            // Процедурные деревья (TreeShapes): кора, хвоя елей; листва — foliage.
+            { "bark", new Color(0.36f, 0.27f, 0.19f) },
+            { "needles", new Color(0.15f, 0.33f, 0.22f) },
             { "accent", new Color(0.72f, 0.24f, 0.22f) },
             { "stone", new Color(0.58f, 0.57f, 0.54f) },
             { "dark_stone", new Color(0.27f, 0.26f, 0.28f) },

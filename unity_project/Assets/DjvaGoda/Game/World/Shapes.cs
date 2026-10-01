@@ -58,7 +58,7 @@ namespace DjvaGoda.Game
         public static Mesh Cone()
         {
             Mesh cached;
-            if (Cache.TryGetValue(-1, out cached)) return cached;
+            if (Cache.TryGetValue(-1, out cached) && cached != null) return cached;
             const int n = 8;
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
@@ -87,7 +87,7 @@ namespace DjvaGoda.Game
         {
             int key = seed % 12;
             Mesh cached;
-            if (Cache.TryGetValue(key, out cached)) return cached;
+            if (Cache.TryGetValue(key, out cached) && cached != null) return cached;
             var noise = new SimplexNoise(7000 + key * 131);
             var grid = new Vector3[Rings + 1, Segments + 1];
             for (int ring = 0; ring <= Rings; ring++)
@@ -113,7 +113,7 @@ namespace DjvaGoda.Game
         {
             int key = 1000 + seed % 12;
             Mesh cached;
-            if (Cache.TryGetValue(key, out cached)) return cached;
+            if (Cache.TryGetValue(key, out cached) && cached != null) return cached;
             var noise = new SimplexNoise(4400 + key * 97);
             var grid = new Vector3[Rings + 1, Segments + 1];
             for (int ring = 0; ring <= Rings; ring++)

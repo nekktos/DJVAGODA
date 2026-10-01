@@ -1,8 +1,9 @@
-// Загрузчик сцены: мир из ядра, персонаж на точке своей стороны, камера.
+// Загрузчик сцены: находит мир (собран в редакторе и лежит в сцене), ставит
+// камеру и — в одиночном режиме — персонажа на точке своей стороны.
 //
-// Одиночно (Networked = false) персонаж ставится сразу — так его гоняют
-// проверки ходьбы. В сетевой сцене персонажей спавнит хост (NetSession), а
-// загрузчик строит только мир и камеру без цели.
+// В сетевой сцене (Networked) персонажей спавнит хост (NetSession), камера
+// ждёт своего. Проверки ходьбы берут сетевую сцену и ставят персонажа сами
+// (SpawnLocal).
 using DjvaGoda.Core;
 using UnityEngine;
 
@@ -13,29 +14,33 @@ namespace DjvaGoda.Game
         public Faction Side = Faction.Guard;
         public bool Networked;
 
-        public WorldBuilder World { get; private set; }
+        public World World { get; private set; }
         public NavWorld Nav { get; private set; }
         public PlayerCharacter Player { get; private set; }
         public CameraRig Rig { get; private set; }
 
         void Awake()
         {
-            World = new GameObject("Мир").AddComponent<WorldBuilder>();
-            // Сетка печётся в Start — после того, как мир построился в Awake.
-            Nav = World.gameObject.AddComponent<NavWorld>();
-            Light();
+            World = Object.FindAnyObjectByType<World>();
+            if (World == null) Debug.LogError("В сцене нет мира: ДжваГода → Собрать мир.");
+            else Nav = World.GetComponent<NavWorld>();
 
             var eye = new GameObject("Камера");
             eye.tag = "MainCamera";
             Rig = eye.AddComponent<CameraRig>();
-            if (Networked) return;
+            if (!Networked) SpawnLocal(Side);
+        }
 
+        /// Персонаж без сети — на точке стороны, под камерой.
+        public PlayerCharacter SpawnLocal(Faction side)
+        {
             var root = new GameObject("Игрок");
-            root.transform.position = (Factions.Spawn[(int)Side] + new V3(0f, 1f, 0f)).ToUnity();
-            AddBody(root.transform, Side);
+            root.transform.position = (Factions.Spawn[(int)side] + new V3(0f, 1f, 0f)).ToUnity();
+            AddBody(root.transform, side);
             Player = root.AddComponent<PlayerCharacter>();
-            Player.Faction = Side;
+            Player.Faction = side;
             Rig.Target = Player;
+            return Player;
         }
 
         /// Капсула-заглушка цвета стороны — отдельным телом: у примитива центр
@@ -51,16 +56,6 @@ namespace DjvaGoda.Game
             body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
             var view = body.GetComponent<MeshRenderer>();
             if (view != null) view.sharedMaterial = Palette.Side(side);
-        }
-
-        static void Light()
-        {
-            if (Object.FindAnyObjectByType<Light>() != null) return;
-            var sun = new GameObject("Солнце").AddComponent<Light>();
-            sun.type = LightType.Directional;
-            sun.intensity = 1.1f;
-            sun.shadows = LightShadows.Soft;
-            sun.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
         }
     }
 }

@@ -14,7 +14,7 @@ namespace DjvaGoda.Game
         public float Health = UnitStats.Health(UnitKind.Swordsman);
         public V3 Home;
         public NavWorld Nav;
-        public WorldBuilder World;
+        public World World;
         public Wallet Treasury;
         public bool Hungry;
 
