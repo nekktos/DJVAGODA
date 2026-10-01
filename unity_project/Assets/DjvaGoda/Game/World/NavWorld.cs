@@ -47,14 +47,32 @@ namespace DjvaGoda.Game
         }
 
         /// Путь по сетке, точками ядра; пусто — пути нет.
+        ///
+        /// Длинный путь (поселение эльфов — дворец) у CalculatePath упирается в
+        /// предел узлов поиска и приходит ЧАСТИЧНЫМ, хотя каждый его отрезок
+        /// проходим: поймано проверкой «до каждой метки обучения можно дойти».
+        /// Поэтому частичный путь досчитывается от своего конца, кусками.
+        public const int MaxStitches = 6;
+
         public List<V3> PathBetween(V3 from, V3 to)
         {
             var result = new List<V3>();
+            var start = ClosestPoint(from).ToUnity();
+            var goal = ClosestPoint(to).ToUnity();
             var path = new NavMeshPath();
-            if (!NavMesh.CalculatePath(ClosestPoint(from).ToUnity(), ClosestPoint(to).ToUnity(), NavMesh.AllAreas, path))
-                return result;
-            if (path.status == NavMeshPathStatus.PathInvalid) return result;
-            foreach (var corner in path.corners) result.Add(corner.ToCore());
+            for (int piece = 0; piece <= MaxStitches; piece++)
+            {
+                if (!NavMesh.CalculatePath(start, goal, NavMesh.AllAreas, path) || path.status == NavMeshPathStatus.PathInvalid)
+                    break;
+                var corners = path.corners;
+                // Стык: первая точка куска — конец предыдущего.
+                for (int i = result.Count > 0 ? 1 : 0; i < corners.Length; i++) result.Add(corners[i].ToCore());
+                if (path.status == NavMeshPathStatus.PathComplete || corners.Length == 0) break;
+                var end = corners[corners.Length - 1];
+                // Ни на шаг не продвинулись — дальше и правда не пройти.
+                if ((end - start).sqrMagnitude < 1f) break;
+                start = end;
+            }
             return result;
         }
 

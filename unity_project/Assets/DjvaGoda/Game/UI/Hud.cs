@@ -242,7 +242,8 @@ namespace DjvaGoda.Game
             GUI.Label(new Rect(Screen.width * 0.5f - w * 0.5f + 8, 82, w, 24),
                 "при себе (до " + wallet.Carried.Capacity + "): " + carried, _label);
             GUI.Label(new Rect(Screen.width * 0.5f - w * 0.5f + 8, 104, w, 24),
-                wallet.Stored.Capacity > 0 ? "склад (до " + wallet.Stored.Capacity + "): " + stored : "склада нет — постройте", _label);
+                wallet.Stored.Capacity > 0 ? "склад (до " + wallet.Stored.Capacity + "): " + stored
+                    : side == Faction.Elves ? "склада у эльфов нет: всё при себе, тратится в лавке" : "склада нет — постройте", _label);
         }
 
         static void Bar(Rect rect, float fill, Color color)
