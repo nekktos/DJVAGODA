@@ -119,15 +119,15 @@ namespace DjvaGoda.Game
             _serverCooldown = CooldownOf(kind) * 0.9f;
             if (Weapons.IsMelee(kind))
             {
-                Swing(kind, here, aim);
+                // Тем же ударом рубят дерево и бьют камень: отдельной кнопки добычи нет.
+                if (!Harvest(kind, here, aim)) Swing(kind, here, aim);
                 return;
             }
             if (Weapons.UsesArrows(kind))
             {
                 if (_character.Kit.Arrows <= 0)
                 {
-                    if (_net != null && _net.IsSpawned) _net.RefuseRpc("стрелы кончились — возьмись за меч или докупи в лавке");
-                    else Refuse("стрелы кончились — возьмись за меч или докупи в лавке");
+                    Tell("стрелы кончились — возьмись за меч или докупи в лавке");
                     return;
                 }
                 _character.Kit.Arrows--;
@@ -139,6 +139,41 @@ namespace DjvaGoda.Game
                 net.ShotRpc(shot.Id, (int)kind, here.ToUnity(), aim.ToUnity());
                 shot.Ended = (id, at) => { if (net != null && net.IsSpawned) net.ShotEndRpc(id, at); };
             }
+        }
+
+        /// Сказать владельцу (у хоста): по сети — заявкой ему, без сети — сразу.
+        public void Tell(string why)
+        {
+            if (_net != null && _net.IsSpawned && !_net.IsOwner) _net.RefuseRpc(why);
+            else Refuse(why);
+        }
+
+        /// Добыча: луч перед глазами упёрся в дерево или камень — ресурс в
+        /// ношу стороны, источнику удар. Инструмент — то же оружие: топор лучше
+        /// рубит лес, молот — камень (Weapons.HarvestBonus).
+        bool Harvest(WeaponKind kind, V3 origin, V3 aim)
+        {
+            RaycastHit hit;
+            if (!Physics.Raycast(origin.ToUnity(), aim.ToUnity(), out hit, Res.HarvestRange, HitZone.WorldMask, QueryTriggerInteraction.Ignore))
+                return false;
+            var source = hit.collider.GetComponentInParent<Harvestable>();
+            if (source == null) return false;
+            int amount = MeleeRules.HarvestYield(kind, source.Resource);
+            int taken = Treasury.Of(_character.Faction).Add((int)source.Resource, amount);
+            if (taken < amount) Tell("ноша полна — неси на склад");
+            bool gone;
+            if (source.TreeIndex >= 0)
+            {
+                var world = Object.FindAnyObjectByType<World>();
+                gone = world == null || world.Forest.Hit(source.TreeIndex) <= 0;
+            }
+            else
+            {
+                source.HitsLeft--;
+                gone = source.HitsLeft <= 0;
+            }
+            if (gone) MatchNet.Deplete(source.Key);
+            return true;
         }
 
         /// Ближний бой: зоны в сфере удара, в дуге перед глазами; по цели — одна, самая ценная.

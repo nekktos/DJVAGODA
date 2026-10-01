@@ -46,6 +46,9 @@ namespace DjvaGoda.Core
         public const int MicroGoldHitsEach = 4;
         public const int SourceHits = 6;
         public const float HarvestRange = 3.2f;
+        /// Сдача ноши: у своего склада, ближе 14 м, раз в секунду (world.gd).
+        public const float DepositRange = 14f;
+        public const float DepositInterval = 1f;
 
         // --- постройки --------------------------------------------------------
 

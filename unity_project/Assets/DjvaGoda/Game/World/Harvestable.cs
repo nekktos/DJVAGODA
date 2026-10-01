@@ -18,12 +18,30 @@ namespace DjvaGoda.Game
         public int HitsLeft;
         /// Номер дерева леса эльфов; −1 — не из леса.
         public int TreeIndex = -1;
+        /// Номер источника, одинаковый на всех машинах: дерево леса — его номер,
+        /// прочее — PlanBase + номер части плана. По нему хост сообщает «исчерпан».
+        public int Key = -1;
+        public const int PlanBase = 100000;
+
+        static readonly Dictionary<int, Harvestable> ByKey = new Dictionary<int, Harvestable>();
+
+        public static Harvestable Find(int key)
+        {
+            Harvestable found;
+            return ByKey.TryGetValue(key, out found) && found != null ? found : null;
+        }
 
         void OnEnable()
         {
             if (Id == 0) Id = _nextId++;
             All.Add(this);
+            if (Key >= 0) ByKey[Key] = this;
         }
-        void OnDisable() { All.Remove(this); }
+        void OnDisable()
+        {
+            All.Remove(this);
+            Harvestable mine;
+            if (Key >= 0 && ByKey.TryGetValue(Key, out mine) && mine == this) ByKey.Remove(Key);
+        }
     }
 }

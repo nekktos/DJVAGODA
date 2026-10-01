@@ -74,22 +74,24 @@ namespace DjvaGoda.Game
             {
                 var p = Forest.Positions[i];
                 var foot = new V3(p.X, Relief.Height(p.X, p.Z), p.Z);
-                var tree = MakeTree("Дерево " + i, i, foot, Forest.Scales[i], Res.SourceHits);
+                var tree = MakeTree("Дерево " + i, i, foot, Forest.Scales[i], Res.SourceHits, i);
                 tree.GetComponent<Harvestable>().TreeIndex = i;
                 Trees[i] = tree;
             }
             // Рощи плана (у дворца, у кольца) — те же деревья, номера после леса.
             int grove = 0;
-            foreach (var piece in Plan.Pieces)
+            for (int p = 0; p < Plan.Pieces.Count; p++)
             {
+                var piece = Plan.Pieces[p];
                 if (piece.Shape != PieceShape.Tree) continue;
-                MakeTree("Роща " + grove, Forest.Count + grove, piece.Center, piece.Size.Y / Forest.CrownTop, piece.Hits);
+                MakeTree("Роща " + grove, Forest.Count + grove, piece.Center, piece.Size.Y / Forest.CrownTop, piece.Hits,
+                    Harvestable.PlanBase + p);
                 grove++;
             }
             if (editing) Hide(_holder);
         }
 
-        GameObject MakeTree(string name, int index, V3 foot, float scale, int hits)
+        GameObject MakeTree(string name, int index, V3 foot, float scale, int hits, int key)
         {
             TreeKind kind;
             int variant;
@@ -111,9 +113,13 @@ namespace DjvaGoda.Game
             body.radius = Forest.TrunkRadius;
             body.height = Forest.CrownTop;
             body.center = new Vector3(0f, Forest.CrownTop * 0.5f, 0f);
+            // Номер — до AddComponent: OnEnable регистрирует источник по номеру.
+            tree.SetActive(false);
             var harvest = tree.AddComponent<Harvestable>();
             harvest.Resource = ResourceKind.Wood;
             harvest.HitsLeft = hits;
+            harvest.Key = key;
+            tree.SetActive(true);
             return tree;
         }
 

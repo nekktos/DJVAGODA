@@ -183,8 +183,9 @@ namespace DjvaGoda.EditorTools
             var root = world.transform;
             BuildRelief(root, relief);
             var groups = new Dictionary<string, Transform>();
-            foreach (var piece in plan.Pieces)
+            for (int index = 0; index < plan.Pieces.Count; index++)
             {
+                var piece = plan.Pieces[index];
                 Transform parent;
                 if (!groups.TryGetValue(piece.Group, out parent))
                 {
@@ -192,7 +193,7 @@ namespace DjvaGoda.EditorTools
                     parent.SetParent(root, false);
                     groups[piece.Group] = parent;
                 }
-                Place(piece, parent);
+                Place(piece, parent, index);
             }
             world.PlanPrint = World.Print(plan, forest);
         }
@@ -211,7 +212,7 @@ namespace DjvaGoda.EditorTools
             go.isStatic = true;
         }
 
-        static GameObject Place(Piece piece, Transform parent)
+        static GameObject Place(Piece piece, Transform parent, int index)
         {
             GameObject go;
             var at = piece.Center.ToUnity();
@@ -261,6 +262,7 @@ namespace DjvaGoda.EditorTools
                 if (harvest == null) harvest = go.AddComponent<Harvestable>();
                 harvest.Resource = piece.Harvest.Value;
                 harvest.HitsLeft = piece.Hits;
+                harvest.Key = Harvestable.PlanBase + index;
             }
             SetStatic(go, !piece.Harvest.HasValue);
             return go;

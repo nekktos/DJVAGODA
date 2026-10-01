@@ -30,6 +30,8 @@ namespace DjvaGoda.Game
                 return;
             }
 
+            Resources(me.Faction);
+
             // Слепота: заклятие злодея и выбитые глаза — экран темнеет.
             float blind = Mathf.Max(me.Spells.Blind > 0f ? 0.85f : 0f, me.Body.Blindness() * 0.6f);
             if (blind > 0f)
@@ -107,6 +109,24 @@ namespace DjvaGoda.Game
             if (!string.IsNullOrEmpty(combat.Refusal))
                 GUI.Label(new Rect(cx - 300, cy + 40, 600, 30), combat.Refusal,
                     new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
+        }
+
+        /// Ресурсы стороны: при себе (под риском) и на складе.
+        void Resources(Faction side)
+        {
+            var wallet = Treasury.Of(side);
+            string carried = "", stored = "";
+            for (int i = 0; i < Res.Count; i++)
+            {
+                carried += Res.Short[i] + " " + wallet.Carried.Amounts[i] + "   ";
+                stored += Res.Short[i] + " " + wallet.Stored.Amounts[i] + "   ";
+            }
+            float w = 620;
+            GUI.Box(new Rect(Screen.width * 0.5f - w * 0.5f, 80, w, 52), GUIContent.none);
+            GUI.Label(new Rect(Screen.width * 0.5f - w * 0.5f + 8, 82, w, 24),
+                "при себе (до " + wallet.Carried.Capacity + "): " + carried, _label);
+            GUI.Label(new Rect(Screen.width * 0.5f - w * 0.5f + 8, 104, w, 24),
+                wallet.Stored.Capacity > 0 ? "склад (до " + wallet.Stored.Capacity + "): " + stored : "склада нет — постройте", _label);
         }
 
         static void Bar(Rect rect, float fill, Color color)

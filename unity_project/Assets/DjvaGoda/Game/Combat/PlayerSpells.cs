@@ -67,8 +67,7 @@ namespace DjvaGoda.Game
         void Refuse(string why)
         {
             if (string.IsNullOrEmpty(why)) return;
-            if (_net != null && _net.IsSpawned && !_net.IsOwner) _net.RefuseRpc(why);
-            else if (_combat != null) _combat.Refuse(why);
+            if (_combat != null) _combat.Tell(why);
         }
 
         /// Заявка у хоста.
