@@ -35,6 +35,10 @@ namespace DjvaGoda.Game
             _controller.radius = 0.4f;
             _controller.center = new Vector3(0f, 0.9f, 0f);
             _controller.slopeLimit = 45f;
+            // Перемещения короче minMoveDistance CharacterController молча
+            // выбрасывает. При тысячах кадров в секунду (фоновый прогон, мощная
+            // машина) шаг за кадр меньше миллиметра — персонаж проходил 6% пути.
+            _controller.minMoveDistance = 0f;
         }
 
         void Update()

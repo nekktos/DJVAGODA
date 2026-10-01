@@ -89,9 +89,16 @@ namespace DjvaGoda.Tests
             player.Yaw = 0f;
             player.Scripted = new MotorInput { MoveY = -1f };
             float t = 0f;
+            float logged = 0f;
             while (t < 15f && player.Feet.Y < MapLayout.PlateauHeight - 0.5f)
             {
                 t += Time.deltaTime;
+                if (t - logged > 1f)
+                {
+                    logged = t;
+                    Debug.Log("[пандус] t=" + t.ToString("0.0") + " ноги " + player.Feet + " на земле " + controller.isGrounded
+                        + " скорость " + player.Velocity + " dt " + Time.deltaTime);
+                }
                 yield return null;
             }
             player.Scripted = null;

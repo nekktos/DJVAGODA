@@ -49,6 +49,10 @@ namespace DjvaGoda.Game
             _controller.stepOffset = 0.4f;
             // Потолок навигации — 45°; круче ходить не должно и персонажу.
             _controller.slopeLimit = 45f;
+            // Перемещения короче minMoveDistance CharacterController молча
+            // выбрасывает. При тысячах кадров в секунду (фоновый прогон, мощная
+            // машина) шаг за кадр меньше миллиметра — персонаж проходил 6% пути.
+            _controller.minMoveDistance = 0f;
         }
 
         /// Сторону назначают после AddComponent (Awake уже прошёл) — снаряжение узнаёт её здесь.
