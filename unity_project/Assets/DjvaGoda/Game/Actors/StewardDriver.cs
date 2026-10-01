@@ -88,16 +88,14 @@ namespace DjvaGoda.Game
         {
             if (!StewardRules.ShouldHire(view) || !Treasury.Spend(Res.LabourerCost)) return;
             var at = StewardRules.HireSpot(Home, Crew.Count);
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            go.name = "Батрак";
-            Destroy(go.GetComponent<CapsuleCollider>());
-            go.transform.position = at.ToUnity();
+            var go = Agents.Make(AgentRole.Labourer, Side, at, "Батрак");
             var worker = go.AddComponent<LabourerAgent>();
             worker.Brain = new LabourerBrain(Side, LabourerRole.Lumberjack);
             worker.Home = Home;
             worker.Nav = Nav;
             worker.World = World;
             worker.Treasury = Treasury;
+            Agents.Show(go);
             Crew.Add(worker);
         }
 
@@ -144,13 +142,12 @@ namespace DjvaGoda.Game
             if (!kind.HasValue) return;
             if (!Treasury.Spend(kind.Value == UnitKind.Archer ? Res.ArcherCost : Res.UnitCost)) return;
             int slot = Warband.Band.Count;
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            go.name = kind.Value == UnitKind.Archer ? "Лучник" : "Мечник";
-            Destroy(go.GetComponent<CapsuleCollider>());
-            go.transform.position = StewardRules.TrainSpot(Home, slot).ToUnity();
+            var go = Agents.Make(Agents.RoleOf(kind.Value), Side, StewardRules.TrainSpot(Home, slot),
+                kind.Value == UnitKind.Archer ? "Лучник" : "Мечник");
             var unit = go.AddComponent<UnitAgent>();
             unit.Setup(kind.Value, (int)Side, slot, Home, AiStats.GarrisonLeash);
             unit.Nav = Nav;
+            Agents.Show(go);
             Warband.Band.Add(unit);
         }
 

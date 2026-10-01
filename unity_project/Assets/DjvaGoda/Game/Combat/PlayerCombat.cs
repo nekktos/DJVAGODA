@@ -166,18 +166,7 @@ namespace DjvaGoda.Game
             int amount = MeleeRules.HarvestYield(kind, source.Resource);
             int taken = Treasury.Of(_character.Faction).Add((int)source.Resource, amount);
             if (taken < amount) Tell("ноша полна — неси на склад");
-            bool gone;
-            if (source.TreeIndex >= 0)
-            {
-                var world = Object.FindAnyObjectByType<World>();
-                gone = world == null || world.Forest.Hit(source.TreeIndex) <= 0;
-            }
-            else
-            {
-                source.HitsLeft--;
-                gone = source.HitsLeft <= 0;
-            }
-            if (gone) MatchNet.Deplete(source.Key);
+            source.TakeHit();
             return true;
         }
 

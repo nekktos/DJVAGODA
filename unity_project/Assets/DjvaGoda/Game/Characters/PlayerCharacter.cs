@@ -123,7 +123,7 @@ namespace DjvaGoda.Game
             transform.rotation = CoreSpace.YawToRotation(Yaw);
 
             float flat = new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
-            if (_bandaging.Tick(delta, Body.Bleeding, Scripted == null && LocalControl && GameInput.Held("bandage"), flat))
+            if (_bandaging.Tick(delta, Body.Bleeding, Scripted == null && LocalControl && !GameMode.Strategy && GameInput.Held("bandage"), flat))
             {
                 if (Bandaged != null) Bandaged();
                 else Body.ApplyBandage();

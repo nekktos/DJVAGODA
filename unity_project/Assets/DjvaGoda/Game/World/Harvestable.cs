@@ -31,6 +31,26 @@ namespace DjvaGoda.Game
             return ByKey.TryGetValue(key, out found) && found != null ? found : null;
         }
 
+        /// Удар по источнику (у хоста) — игроком или батраком, счётчик один:
+        /// у дерева леса — в лесу ядра, у прочих — здесь. true — исчерпан и
+        /// убран у всех (MatchNet).
+        public bool TakeHit()
+        {
+            bool gone;
+            if (TreeIndex >= 0)
+            {
+                var world = Object.FindAnyObjectByType<World>();
+                gone = world == null || world.Forest.Hit(TreeIndex) <= 0;
+            }
+            else
+            {
+                HitsLeft--;
+                gone = HitsLeft <= 0;
+            }
+            if (gone) MatchNet.Deplete(Key);
+            return gone;
+        }
+
         void OnEnable()
         {
             if (Id == 0) Id = _nextId++;

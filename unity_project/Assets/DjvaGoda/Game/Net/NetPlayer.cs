@@ -260,6 +260,15 @@ namespace DjvaGoda.Game
             if (shop != null && deal >= 0 && deal <= (int)DealKind.Potion) shop.ServerDeal((DealKind)deal, arg);
         }
 
+        /// Хозяйство из вида сверху: −1 — нанять батрака, иначе — роль. Решает хост.
+        [Rpc(SendTo.Server)]
+        public void LabourRpc(int role, RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            var builder = GetComponent<Builder>();
+            if (builder != null) builder.ServerLabour(role);
+        }
+
         /// Заявка на перевязку: бинт и кровь — у хоста.
         [Rpc(SendTo.Server)]
         void BandageRpc(RpcParams rpcParams = default(RpcParams))

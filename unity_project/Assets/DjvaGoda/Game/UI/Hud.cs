@@ -151,6 +151,19 @@ namespace DjvaGoda.Game
                 GUI.color = Color.white;
                 y += 24;
             }
+            if (!Factions.CanBuild(me.Faction) && !me.Kit.IsLeader) return;
+            // Хозяйство: найм и роли батраков (счёт — по видимым батракам стороны).
+            var counts = new int[LabourerStats.RoleNames.Length];
+            int crew = Agents.CountCrew(me.Faction, counts);
+            y += 8;
+            GUI.Label(new Rect(16, y, 700, 24), KeyOf("hire_labourer") + "  нанять батрака — " + Res.FormatCost(Res.LabourerCost)
+                + "   (батраков " + crew + " из " + Res.LabourerLimit + ")", _label);
+            y += 24;
+            foreach (var role in Builder.Roles)
+            {
+                GUI.Label(new Rect(16, y, 700, 24), KeyOf(role.Key) + "  в " + LabourerStats.RoleNames[(int)role.Value] + "ы — сейчас " + counts[(int)role.Value], _label);
+                y += 22;
+            }
         }
 
         /// Ресурсы стороны: при себе (под риском) и на складе.

@@ -97,11 +97,7 @@ namespace DjvaGoda.Game
             {
                 if (harvest.Id != site.Id) continue;
                 Brain.Harvested(harvest.Resource);
-                harvest.HitsLeft--;
-                if (harvest.HitsLeft > 0) return;
-                Brain.SiteGone();
-                if (harvest.TreeIndex >= 0 && World != null) World.Fell(harvest.TreeIndex);
-                else Destroy(harvest.gameObject);
+                if (harvest.TakeHit()) Brain.SiteGone();
                 return;
             }
         }
@@ -132,7 +128,7 @@ namespace DjvaGoda.Game
             if (Alive) return;
             // Ноша падает на землю кучей — подобрать может любой.
             Brain.DropOnDeath();
-            Destroy(gameObject);
+            Agents.Remove(gameObject);
         }
     }
 }

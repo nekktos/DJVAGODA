@@ -28,6 +28,17 @@ namespace DjvaGoda.Game
             new KeyValuePair<string, BuildingKind>("build_forge", BuildingKind.Forge),
         };
 
+        static readonly KeyValuePair<string, LabourerRole>[] RoleKeys =
+        {
+            new KeyValuePair<string, LabourerRole>("role_lumberjack", LabourerRole.Lumberjack),
+            new KeyValuePair<string, LabourerRole>("role_miner", LabourerRole.Miner),
+            new KeyValuePair<string, LabourerRole>("role_militia", LabourerRole.Militia),
+            new KeyValuePair<string, LabourerRole>("role_builder", LabourerRole.Builder),
+            new KeyValuePair<string, LabourerRole>("role_farmer", LabourerRole.Farmer),
+        };
+
+        public static IEnumerable<KeyValuePair<string, LabourerRole>> Roles { get { return RoleKeys; } }
+
         public bool Placing { get; private set; }
         public BuildingKind Kind { get; private set; }
 
@@ -61,6 +72,9 @@ namespace DjvaGoda.Game
                 foreach (var key in Keys)
                     if (GameInput.Pressed(key.Key) && Factions.MayBuild(_character.Faction, key.Value, _character.Kit.IsLeader))
                         Begin(key.Value);
+                if (GameInput.Pressed("hire_labourer")) Labour(-1);
+                foreach (var key in RoleKeys)
+                    if (GameInput.Pressed(key.Key)) Labour((int)key.Value);
             }
             else if (_character.Faction == Faction.Elves && GameInput.Pressed("build_elf_house"))
             {
@@ -86,6 +100,82 @@ namespace DjvaGoda.Game
                 if (Hosting) ServerBuild(kind, point);
                 else _net.BuildRpc((int)kind, point.ToUnity());
             }
+        }
+
+        /// Хозяйство: −1 — нанять батрака, иначе — перевести одного на дело.
+        void Labour(int role)
+        {
+            if (Hosting) ServerLabour(role);
+            else _net.LabourRpc(role);
+        }
+
+        /// Батраки стороны (у хоста).
+        public static List<LabourerAgent> Crew(Faction side)
+        {
+            var crew = new List<LabourerAgent>();
+            foreach (var actor in Actor.All)
+            {
+                var worker = actor as LabourerAgent;
+                if (worker != null && worker.Alive && worker.Brain != null && worker.Brain.Side == side) crew.Add(worker);
+            }
+            return crew;
+        }
+
+        /// Найм и перевод батраков — у хоста (перенос request_hire_labourer и
+        /// request_set_labourer_role). Новый батрак — лесоруб у точки стороны;
+        /// перевод берёт одного с самого многолюдного дела: без выбора мышью
+        /// это единственный порядок, который не требует помнить, кого уже переводил.
+        public void ServerLabour(int role)
+        {
+            if (!_character.Alive) return;
+            var side = _character.Faction;
+            var crew = Crew(side);
+            if (role < 0)
+            {
+                var deal = Deals.HireLabourer(_character.Kit, Treasury.Of(side), crew.Count);
+                if (!deal.Ok)
+                {
+                    if (_combat != null && !string.IsNullOrEmpty(deal.Refusal)) _combat.Tell(deal.Refusal);
+                    return;
+                }
+                var home = Factions.Spawn[(int)side];
+                var spot = StewardRules.HireSpot(home, crew.Count);
+                var go = Agents.Make(AgentRole.Labourer, side, spot + new V3(0f, 0.5f, 0f), "Батрак");
+                var worker = go.AddComponent<LabourerAgent>();
+                worker.Brain = new LabourerBrain(side, LabourerRole.Lumberjack);
+                worker.Home = home;
+                worker.Nav = Object.FindAnyObjectByType<NavWorld>();
+                worker.World = Object.FindAnyObjectByType<World>();
+                worker.Treasury = Treasury.Of(side);
+                Agents.Show(go);
+                return;
+            }
+            if (crew.Count == 0)
+            {
+                if (_combat != null) _combat.Tell("батраков нет — сначала найми");
+                return;
+            }
+            var wanted = (LabourerRole)Mathf.Clamp(role, 0, LabourerStats.RoleNames.Length - 1);
+            var counts = new int[LabourerStats.RoleNames.Length];
+            foreach (var worker in crew) counts[(int)worker.Brain.Role]++;
+            int busiest = -1, most = 0;
+            for (int r = 0; r < counts.Length; r++)
+                if (r != (int)wanted && counts[r] > most)
+                {
+                    most = counts[r];
+                    busiest = r;
+                }
+            if (busiest < 0)
+            {
+                if (_combat != null) _combat.Tell("все батраки уже " + LabourerStats.RoleNames[(int)wanted]);
+                return;
+            }
+            foreach (var worker in crew)
+                if ((int)worker.Brain.Role == busiest)
+                {
+                    worker.Brain.SetRole(wanted);
+                    return;
+                }
         }
 
         void Begin(BuildingKind kind)

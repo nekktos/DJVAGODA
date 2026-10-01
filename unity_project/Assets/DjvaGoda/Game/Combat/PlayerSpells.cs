@@ -164,12 +164,7 @@ namespace DjvaGoda.Game
                 return false;
             }
             var at = SpellEffects.SummonPoint(_character.Feet, _character.Yaw);
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            go.name = "Волк";
-            Destroy(go.GetComponent<CapsuleCollider>());
-            go.transform.position = (at + new V3(0f, 1f, 0f)).ToUnity();
-            go.transform.localScale = new Vector3(0.8f, 0.6f, 0.8f);
-            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Side(_character.Faction);
+            var go = Agents.Make(AgentRole.Beast, _character.Faction, at + new V3(0f, 0.5f, 0f), "Волк");
             var wolf = go.AddComponent<UnitAgent>();
             wolf.Setup(UnitKind.Beast, (int)_character.Faction, _wolves.Count, at, 40f);
             wolf.Commander = _character;
@@ -177,6 +172,7 @@ namespace DjvaGoda.Game
             var nav = Object.FindAnyObjectByType<NavWorld>();
             wolf.Nav = nav;
             wolf.Lifetime = Abilities.SummonLifetime;
+            Agents.Show(go);
             _wolves.Add(wolf);
             return true;
         }

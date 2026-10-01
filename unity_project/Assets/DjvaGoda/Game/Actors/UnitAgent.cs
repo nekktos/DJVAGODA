@@ -53,7 +53,7 @@ namespace DjvaGoda.Game
                 Lifetime -= delta;
                 if (Lifetime <= 0f)
                 {
-                    Destroy(gameObject);
+                    Agents.Remove(gameObject);
                     return;
                 }
             }
@@ -122,7 +122,7 @@ namespace DjvaGoda.Game
             if (!Alive) return;
             var formation = Brain.Formation(Commander != null ? CommanderFormation : (FormationKind?)null);
             Health = Mathf.Max(0f, Health - DamageRules.ToUnit(amount, formation, aoe, weapon));
-            if (!Alive) Destroy(gameObject);
+            if (!Alive) Agents.Remove(gameObject);
         }
     }
 }
