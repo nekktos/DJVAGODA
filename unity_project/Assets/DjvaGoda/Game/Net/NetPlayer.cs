@@ -93,6 +93,10 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> Arrows = new NetworkVariable<int>();
         public readonly NetworkVariable<int> PotionsHeal = new NetworkVariable<int>();
         public readonly NetworkVariable<int> PotionsMana = new NetworkVariable<int>();
+        /// Протезы по 3 бита на конечность, глаза и коляска — хост; трофеи — хост.
+        public readonly NetworkVariable<int> Prosthetics = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> Eyes = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> Trophies = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
         /// Оружие в руке — выбирает владелец, видят все (WeaponView).
@@ -177,6 +181,11 @@ namespace DjvaGoda.Game
                 Arrows.Value = _character.Kit.Arrows;
                 PotionsHeal.Value = _character.Kit.PotionsHeal;
                 PotionsMana.Value = _character.Kit.PotionsMana;
+                var body = _character.Body;
+                Prosthetics.Value = body.Prosthetics[0] | body.Prosthetics[1] << 3 | body.Prosthetics[2] << 6 | body.Prosthetics[3] << 9;
+                Eyes.Value = body.EyesLost | body.EyeImplants << 4 | (body.InWheelchair ? 1 << 8 : 0);
+                var t = _character.Trophies;
+                Trophies.Value = t[0] | t[1] << 10 | t[2] << 20;
                 if (_combat != null) Stagger.Value = _combat.Stagger;
                 Spells.Value = SpellSync.Of(_character.Vitals, _character.Spells);
             }
@@ -193,6 +202,12 @@ namespace DjvaGoda.Game
                 _character.Kit.Arrows = Arrows.Value;
                 _character.Kit.PotionsHeal = PotionsHeal.Value;
                 _character.Kit.PotionsMana = PotionsMana.Value;
+                var body = _character.Body;
+                for (int i = 0; i < 4; i++) body.Prosthetics[i] = (Prosthetics.Value >> (3 * i)) & 7;
+                body.EyesLost = Eyes.Value & 15;
+                body.EyeImplants = (Eyes.Value >> 4) & 15;
+                body.InWheelchair = (Eyes.Value & (1 << 8)) != 0;
+                for (int i = 0; i < 3; i++) _character.Trophies[i] = (Trophies.Value >> (10 * i)) & 1023;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
                 Spells.Value.Apply(_character.Vitals, _character.Spells);
             }
@@ -263,7 +278,7 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             var shop = GetComponent<Shop>();
-            if (shop != null && deal >= 0 && deal <= (int)DealKind.Horse) shop.ServerDeal((DealKind)deal, arg);
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Workbench) shop.ServerDeal((DealKind)deal, arg);
         }
 
         /// Маршрут обоза: точки игрока. Склад и шахту дорисовывает хост.

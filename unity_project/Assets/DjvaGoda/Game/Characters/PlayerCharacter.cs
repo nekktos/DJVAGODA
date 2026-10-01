@@ -21,6 +21,9 @@ namespace DjvaGoda.Game
         public readonly BodyState Body = new BodyState();
         public readonly SpellState Spells = new SpellState();
         public readonly Kit Kit = new Kit();
+        /// Трофеи — чужие руки, ноги, глаза (TrophyKind): плата за некротические протезы.
+        public readonly int[] Trophies = new int[3];
+        bool _wasAlive = true;
         readonly CharacterMotor _motor = new CharacterMotor();
         readonly Bandaging _bandaging = new Bandaging();
         CharacterController _controller;
@@ -94,13 +97,24 @@ namespace DjvaGoda.Game
             }
             float taken = DamageRules.ToCharacter(amount, Kit, source != null ? source.Side : -1, gear, armor);
             Vitals.ApplyDamage(taken);
+            int severedBefore = Body.SeveredMask;
+            int eyesBefore = Body.EyesLost;
             Body.RegisterHit(zone, taken, weapon);
             Spells.OnDamaged();
+            // Оторванное падает на землю: трофей — тому, кто дойдёт и поднимет.
+            int fresh = Body.SeveredMask & ~severedBefore;
+            for (int i = 0; i < 4; i++)
+                if ((fresh & (1 << i)) != 0) Pickup.DropLimb(Feet + new V3(0.6f * (i - 1.5f), 0.2f, 0f), (Limb)i);
+            // Глаз падать нечем — засчитывается сразу тому, кто выбил.
+            if (hitter != null && Body.EyesLost > eyesBefore) hitter.Trophies[(int)TrophyKind.Eyes] += Body.EyesLost - eyesBefore;
         }
 
         void Update()
         {
             ShowFallen(!Alive);
+            // Пал (от удара или от крови) — у хоста всё с тела падает кучей.
+            if (_wasAlive && !Alive && MatchNet.Hosting) DropBelongings();
+            _wasAlive = Alive;
             // Павший не ходит: встанет по правилам возрождения (Respawn).
             if (!Alive || !Simulate) return;
             float delta = Time.deltaTime;
@@ -128,6 +142,20 @@ namespace DjvaGoda.Game
                 if (Bandaged != null) Bandaged();
                 else Body.ApplyBandage();
             }
+        }
+
+        /// Всё с тела — кучей на месте смерти (ответ автора от 29.09): ноша
+        /// стороны при себе, оружие и доспех, бинты, зелья, стрелы.
+        void DropBelongings()
+        {
+            var pile = LootPile.FromBody(Treasury.Of(Faction).DropCarried(), Kit, Body);
+            Kit.GearTier = 0;
+            Kit.ArmorTier = 0;
+            Kit.PotionsHeal = 0;
+            Kit.PotionsMana = 0;
+            Kit.Arrows = 0;
+            Body.Bandages = 0;
+            Pickup.Drop(Feet + new V3(0f, 0.6f, 0f), pile);
         }
 
         bool _shownFallen;

@@ -70,6 +70,11 @@ namespace DjvaGoda.Game
             if (me.Spells.Wither > 0f) notes += "увядание   ";
             if (me.Spells.Rally > 0f) notes += "клич леса   ";
             if (notes.Length > 0) GUI.Label(new Rect(x, y - 30, 900, 24), notes, _label);
+            var t = me.Trophies;
+            string wounds = me.Body.Summary();
+            if (wounds != "цел" || t[0] + t[1] + t[2] > 0)
+                GUI.Label(new Rect(x, y - 54, 900, 24), "тело: " + wounds
+                    + (t[0] + t[1] + t[2] > 0 ? "   трофеи: рук " + t[0] + ", ног " + t[1] + ", глаз " + t[2] : ""), _label);
 
             // Каст — полоса над прицелом.
             if (me.Spells.Casting && me.Spells.CastKind.HasValue)
