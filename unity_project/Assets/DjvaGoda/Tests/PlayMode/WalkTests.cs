@@ -47,7 +47,7 @@ namespace DjvaGoda.Tests
         [UnityTearDown]
         public IEnumerator Clear()
         {
-            foreach (var root in Object.FindObjectsByType<Transform>())
+            foreach (var root in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
                 if (root != null && root.parent == null) Object.Destroy(root.gameObject);
             yield return null;
         }

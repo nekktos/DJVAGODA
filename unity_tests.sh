@@ -10,7 +10,7 @@
 # через MCP: run_tests (EditMode / PlayMode).
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-UNITY="${UNITY:-/c/Program Files/Unity/Hub/Editor/6000.6.3f1/Editor/Unity.exe}"
+UNITY="${UNITY:-/c/Program Files/Unity/Hub/Editor/6000.3.25f1/Editor/Unity.exe}"
 PLATFORM="${1:-PlayMode}"
 FILTER="${2:-}"
 OUT="${TMPDIR:-/c/Temp/claude}"

@@ -40,11 +40,19 @@ namespace DjvaGoda.EditorTools
             Bake();
         }
 
+        /// Из командной строки (редактор закрыт): открыть Main и собрать заново.
+        /// Unity.exe -batchmode -quit -projectPath … -executeMethod DjvaGoda.EditorTools.WorldBake.BakeMain
+        public static void BakeMain()
+        {
+            EditorSceneManager.OpenScene("Assets/DjvaGoda/Scenes/Main.unity");
+            Bake();
+        }
+
         [MenuItem("ДжваГода/Собрать мир заново")]
         public static void Bake()
         {
             var scene = EditorSceneManager.GetActiveScene();
-            foreach (var old in Object.FindObjectsByType<World>(FindObjectsInactive.Include))
+            foreach (var old in Object.FindObjectsByType<World>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 Object.DestroyImmediate(old.gameObject);
             if (!AssetDatabase.IsValidFolder(GeneratedDir))
             {
