@@ -39,6 +39,7 @@ namespace DjvaGoda.Game
             // выбрасывает. При тысячах кадров в секунду (фоновый прогон, мощная
             // машина) шаг за кадр меньше миллиметра — персонаж проходил 6% пути.
             _controller.minMoveDistance = 0f;
+            HitZone.Humanoid(transform, this);
         }
 
         void Update()

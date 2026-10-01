@@ -7,6 +7,8 @@
 //   -side 0|1|2             сторона (Злодей, Лесные эльфы, Охрана дворца)
 //   -walk                   свой персонаж идёт вперёд без ввода (проверка
 //                           движения по сети)
+//   -attack N               взять оружие из слота N (1..4) и держать удар
+//                           (проверка боя по сети)
 using System;
 using DjvaGoda.Core;
 using Unity.Netcode;
@@ -37,6 +39,8 @@ namespace DjvaGoda.Game
                 }
             }
             _walk = Array.IndexOf(args, "-walk") >= 0;
+            int attack = Array.IndexOf(args, "-attack");
+            if (attack >= 0 && attack + 1 < args.Length) int.TryParse(args[attack + 1], out _attackSlot);
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-host") _session.Host(PortAt(args, i + 1));
@@ -45,14 +49,23 @@ namespace DjvaGoda.Game
         }
 
         bool _walk;
+        int _attackSlot;
 
         void Update()
         {
-            if (!_walk) return;
+            if (!_walk && _attackSlot <= 0) return;
             var net = NetworkManager.Singleton;
             if (net == null || net.LocalClient == null || net.LocalClient.PlayerObject == null) return;
             var me = net.LocalClient.PlayerObject.GetComponent<PlayerCharacter>();
-            if (me != null && me.Scripted == null) me.Scripted = new MotorInput { MoveY = -1f };
+            if (me == null) return;
+            if (_walk && me.Scripted == null) me.Scripted = new MotorInput { MoveY = -1f };
+            var combat = me.GetComponent<PlayerCombat>();
+            var set = Factions.WeaponsOf(me.Faction);
+            if (combat != null && _attackSlot > 0 && _attackSlot <= set.Length)
+            {
+                combat.Weapon = set[_attackSlot - 1];
+                combat.ScriptedAttack = true;
+            }
         }
 
         static ushort PortAt(string[] args, int i)

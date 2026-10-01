@@ -35,6 +35,9 @@ namespace DjvaGoda.Game
         /// Считать ли движение здесь. Чужого персонажа ведёт присланное положение
         /// (NetPlayer), иначе мотор тянул бы его гравитацией и нулевым вводом.
         public bool Simulate = true;
+        /// Перевязка закончена. По сети — заявка хосту (он решает, сколько
+        /// бинтов и встала ли кровь); без обработчика — сразу у себя.
+        public System.Action Bandaged;
 
         public V3 Feet { get { return At; } }
         public V3 Velocity { get { return _motor.Velocity; } }
@@ -53,6 +56,7 @@ namespace DjvaGoda.Game
             // выбрасывает. При тысячах кадров в секунду (фоновый прогон, мощная
             // машина) шаг за кадр меньше миллиметра — персонаж проходил 6% пути.
             _controller.minMoveDistance = 0f;
+            HitZone.Humanoid(transform, this);
         }
 
         /// Сторону назначают после AddComponent (Awake уже прошёл) — снаряжение узнаёт её здесь.
@@ -84,6 +88,7 @@ namespace DjvaGoda.Game
 
         void Update()
         {
+            ShowFallen(!Alive);
             // Павший не ходит: встанет по правилам возрождения (Respawn).
             if (!Alive || !Simulate) return;
             float delta = Time.deltaTime;
@@ -107,8 +112,34 @@ namespace DjvaGoda.Game
             transform.rotation = CoreSpace.YawToRotation(Yaw);
 
             float flat = new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
-            if (_bandaging.Tick(delta, Body.Bleeding, Scripted == null && GameInput.Held("bandage"), flat))
-                Body.ApplyBandage();
+            if (_bandaging.Tick(delta, Body.Bleeding, Scripted == null && LocalControl && GameInput.Held("bandage"), flat))
+            {
+                if (Bandaged != null) Bandaged();
+                else Body.ApplyBandage();
+            }
+        }
+
+        bool _shownFallen;
+
+        /// Павший лежит: капсула-заглушка — на боку.
+        void ShowFallen(bool fallen)
+        {
+            if (fallen == _shownFallen) return;
+            _shownFallen = fallen;
+            var body = transform.Find("Тело");
+            if (body == null) return;
+            body.localRotation = fallen ? Quaternion.Euler(0f, 0f, 90f) : Quaternion.identity;
+            body.localPosition = new Vector3(0f, fallen ? 0.35f : 0.9f, 0f);
+        }
+
+        /// Поставить на точку (возрождение): CharacterController помнит своё
+        /// положение, без выключения первый Move вернул бы назад.
+        public void Teleport(Vector3 at)
+        {
+            _controller.enabled = false;
+            transform.position = at;
+            _controller.enabled = true;
+            _motor.Velocity = new V3(0f, 0f, 0f);
         }
 
         MotorInput ReadInput()

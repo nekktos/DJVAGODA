@@ -1,8 +1,9 @@
 // Сетевая половина персонажа. Владелец ведёт движение сам; положение и
 // поворот везёт NetworkTransform с правом записи у владельца (AuthorityMode
 // Owner) — со сглаживанием по тикам, остальные видят плавное движение.
-// Здоровье, раны, снаряжение пишет только хост; заявки (удар, сделка, стройка)
-// идут хосту Rpc с проверкой отправителя.
+// Здоровье, раны, снаряжение, смерть пишет только хост; заявки (удар,
+// перевязка, сделка, стройка) идут хосту Rpc с проверкой отправителя.
+using System.Collections.Generic;
 using DjvaGoda.Core;
 using Unity.Netcode;
 using UnityEngine;
@@ -22,10 +23,17 @@ namespace DjvaGoda.Game
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
         /// Считает хост.
         public readonly NetworkVariable<float> Health = new NetworkVariable<float>(Vitals.BaseHealth);
+        public readonly NetworkVariable<bool> Dead = new NetworkVariable<bool>();
+        /// Сколько осталось до возрождения; меньше нуля — не встанет (вожак).
+        public readonly NetworkVariable<float> RespawnIn = new NetworkVariable<float>();
         public readonly NetworkVariable<int> Severed = new NetworkVariable<int>();
         public readonly NetworkVariable<int> Crippled = new NetworkVariable<int>();
+        public readonly NetworkVariable<bool> Bleeding = new NetworkVariable<bool>();
+        public readonly NetworkVariable<int> Bandages = new NetworkVariable<int>();
         public readonly NetworkVariable<int> GearTier = new NetworkVariable<int>();
         public readonly NetworkVariable<int> ArmorTier = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> Arrows = new NetworkVariable<int>();
+        public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
 
         /// Сторона и место, назначенные хостом до спавна: в сетевые переменные
         /// их пишет OnNetworkSpawn — до спавна переменная ещё не привязана.
@@ -34,8 +42,15 @@ namespace DjvaGoda.Game
         [System.NonSerialized] public Vector3 AssignedSpawn;
 
         PlayerCharacter _character;
+        PlayerCombat _combat;
+        float _deadFor;
+        bool _wasAlive = true;
 
-        void Awake() { _character = GetComponent<PlayerCharacter>(); }
+        void Awake()
+        {
+            _character = GetComponent<PlayerCharacter>();
+            _combat = GetComponent<PlayerCombat>();
+        }
 
         public override void OnNetworkSpawn()
         {
@@ -46,18 +61,16 @@ namespace DjvaGoda.Game
                 SpawnAt.Value = AssignedSpawn;
             }
             _character.Faction = (Faction)Side.Value;
+            // Вожак злодея — его единственный персонаж: его смерть окончательна.
+            _character.Kit.IsLeader = _character.Faction == Faction.Villain;
             Bootstrap.AddBody(transform, (Faction)Side.Value);
             name = "Игрок " + OwnerClientId + " (" + Factions.Names[Side.Value] + ")";
             _character.LocalControl = IsOwner;
             _character.Simulate = IsOwner;
             if (IsOwner)
             {
-                // CharacterController помнит своё положение: без выключения
-                // первый Move вернул бы персонажа туда, где его создали (в ноль).
-                var controller = GetComponent<CharacterController>();
-                controller.enabled = false;
-                transform.position = SpawnAt.Value;
-                controller.enabled = true;
+                _character.Teleport(SpawnAt.Value);
+                if (!IsServer) _character.Bandaged = () => BandageRpc();
                 var rig = Object.FindAnyObjectByType<CameraRig>();
                 if (rig != null) rig.Target = _character;
             }
@@ -78,21 +91,103 @@ namespace DjvaGoda.Game
             }
             if (IsServer)
             {
+                ServerTick(Time.deltaTime);
                 Health.Value = _character.Vitals.Health;
+                Dead.Value = !_character.Vitals.Alive;
                 Severed.Value = _character.Body.SeveredMask;
                 Crippled.Value = _character.Body.CrippledMask;
+                Bleeding.Value = _character.Body.Bleeding;
+                Bandages.Value = _character.Body.Bandages;
                 GearTier.Value = _character.Kit.GearTier;
                 ArmorTier.Value = _character.Kit.ArmorTier;
+                Arrows.Value = _character.Kit.Arrows;
+                if (_combat != null) Stagger.Value = _combat.Stagger;
             }
             else
             {
                 _character.Vitals.Health = Health.Value;
+                _character.Vitals.Alive = !Dead.Value;
                 _character.Body.SeveredMask = Severed.Value;
                 _character.Body.CrippledMask = Crippled.Value;
+                _character.Body.Bleeding = Bleeding.Value;
+                _character.Body.Bandages = Bandages.Value;
                 _character.Kit.GearTier = GearTier.Value;
                 _character.Kit.ArmorTier = ArmorTier.Value;
+                _character.Kit.Arrows = Arrows.Value;
+                if (_combat != null) _combat.Stagger = Stagger.Value;
             }
         }
+
+        /// Хост: раны точат здоровье, павший встаёт по правилам возрождения.
+        void ServerTick(float delta)
+        {
+            if (_character.Vitals.Alive)
+            {
+                // Кровотечение и натёртые протезы — урон у хоста.
+                float wound = _character.Body.Tick(delta);
+                if (wound > 0f) _character.Vitals.ApplyDamage(wound);
+            }
+            bool alive = _character.Vitals.Alive;
+            // Отсчёт — с мгновения смерти, чем бы ни убило (удар, снаряд, кровь).
+            if (!alive && _wasAlive) _deadFor = 0f;
+            _wasAlive = alive;
+            if (alive) return;
+            var verdict = Respawn.Verdict(_character.Faction, _character.Kit.IsLeader,
+                Respawn.ElfHousesStart.Length, false);
+            if (verdict == RespawnVerdict.Never)
+            {
+                RespawnIn.Value = -1f;
+                return;
+            }
+            _deadFor += delta;
+            RespawnIn.Value = Mathf.Max(0f, Respawn.Delay - _deadFor);
+            if (_deadFor < Respawn.Delay) return;
+            var at = Respawn.SpawnPoint(_character.Faction, Slot.Value, true, _character.Feet,
+                new List<V3>(Respawn.ElfHousesStart)) + new V3(0f, 1f, 0f);
+            _character.Vitals.Revive();
+            _character.Body.Reset();
+            _character.Spells.OnDamaged();
+            if (IsOwner) _character.Teleport(at.ToUnity());
+            else RespawnRpc(at.ToUnity());
+        }
+
+        /// Владельцу: встать на точку возрождения (положением правит он).
+        [Rpc(SendTo.Owner)]
+        void RespawnRpc(Vector3 at) { _character.Teleport(at); }
+
+        /// Заявка на удар: оружие, откуда и куда. Решает хост (PlayerCombat.ServerAttack).
+        [Rpc(SendTo.Server)]
+        public void AttackRpc(int kind, Vector3 origin, Vector3 dir, RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            if (kind < 0 || kind >= Weapons.Names.Length || _combat == null) return;
+            _combat.ServerAttack((WeaponKind)kind, origin.ToCore(), dir.ToCore());
+        }
+
+        /// Заявка на перевязку: бинт и кровь — у хоста.
+        [Rpc(SendTo.Server)]
+        void BandageRpc(RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            if (_character.Vitals.Alive) _character.Body.ApplyBandage();
+        }
+
+        /// Отказ хоста — владельцу на экран.
+        [Rpc(SendTo.Owner)]
+        public void RefuseRpc(string why)
+        {
+            if (_combat != null) _combat.Refuse(why);
+        }
+
+        /// Выстрел: клиенты рисуют тот же полёт.
+        [Rpc(SendTo.NotServer)]
+        public void ShotRpc(int id, int kind, Vector3 origin, Vector3 dir)
+        {
+            Shot.Show(id, (WeaponKind)kind, origin.ToCore(), dir.ToCore());
+        }
+
+        [Rpc(SendTo.NotServer)]
+        public void ShotEndRpc(int id, Vector3 at) { Shot.End(id, at); }
 
         /// Заявка на постройку. Хост проверяет отправителя, дальше — сделка по правилам ядра.
         [Rpc(SendTo.Server)]

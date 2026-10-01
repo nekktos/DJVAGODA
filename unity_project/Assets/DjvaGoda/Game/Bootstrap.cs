@@ -33,6 +33,7 @@ namespace DjvaGoda.Game
                 eye.tag = "MainCamera";
                 Rig = eye.AddComponent<CameraRig>();
             }
+            if (Rig.GetComponent<Hud>() == null) Rig.gameObject.AddComponent<Hud>();
             if (!Networked) SpawnLocal(Side);
         }
 
@@ -44,6 +45,7 @@ namespace DjvaGoda.Game
             AddBody(root.transform, side);
             Player = root.AddComponent<PlayerCharacter>();
             Player.Faction = side;
+            root.AddComponent<PlayerCombat>();
             Rig.Target = Player;
             return Player;
         }
