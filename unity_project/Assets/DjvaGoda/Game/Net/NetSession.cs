@@ -30,8 +30,20 @@ namespace DjvaGoda.Game
 
         void Awake() { Instance = this; }
 
-        // Подписка одна на сессию: Host/Join зовутся снова после выхода.
-        void Start() { Net.OnClientDisconnectCallback += Left; }
+        bool _prepared;
+
+        // Зовётся из Host и Join, а не из Start: меню с ключом -join стартует
+        // в своём Start, и порядок Start двух компонентов не задан.
+        void Prepare()
+        {
+            if (_prepared) return;
+            _prepared = true;
+            // Подписка одна на сессию: Host/Join зовутся снова после выхода.
+            Net.OnClientDisconnectCallback += Left;
+            // Одобрение входит в сверяемый NetworkConfig: включено только у хоста —
+            // клиент шлёт неполный запрос и хост его сбрасывает («NetworkConfig mismatch»).
+            Net.NetworkConfig.ConnectionApproval = true;
+        }
 
         void OnDestroy()
         {
@@ -44,8 +56,8 @@ namespace DjvaGoda.Game
 
         public bool Host(ushort port)
         {
+            Prepare();
             Net.GetComponent<UnityTransport>().SetConnectionData("0.0.0.0", port);
-            Net.NetworkConfig.ConnectionApproval = true;
             Net.ConnectionApprovalCallback = Approve;
             // Сам хост тоже проходит одобрение: его запрос — его сторона.
             Net.NetworkConfig.ConnectionData = Request();
@@ -66,6 +78,7 @@ namespace DjvaGoda.Game
                 Status = "Пустой адрес хоста.";
                 return false;
             }
+            Prepare();
             Net.GetComponent<UnityTransport>().SetConnectionData(address, port);
             Net.NetworkConfig.ConnectionData = Request();
             if (!Net.StartClient())

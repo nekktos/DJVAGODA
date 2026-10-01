@@ -30,21 +30,23 @@ namespace DjvaGoda.Game
         };
 
         static readonly Dictionary<string, Material> Cache = new Dictionary<string, Material>();
-        static Shader _shader;
+        static Material _template;
 
         public static Material Of(string key)
         {
             Material material;
             if (Cache.TryGetValue(key, out material) && material != null) return material;
-            if (_shader == null)
+            if (_template == null)
             {
-                // Проект на URP; без него — встроенный конвейер.
-                _shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (_shader == null) _shader = Shader.Find("Standard");
+                // Образец из Resources держит шейдер URP/Lit в сборке: шейдер, на
+                // который не ссылается ни один материал, из сборки вырезается, и
+                // Shader.Find там возвращает null (в редакторе — находит).
+                _template = Resources.Load<Material>("Stub");
+                if (_template == null) _template = new Material(Shader.Find("Standard"));
             }
             Color color;
             if (!Colors.TryGetValue(key, out color)) color = SideColor(key);
-            material = new Material(_shader) { name = "Заглушка " + key, color = color, enableInstancing = true };
+            material = new Material(_template) { name = "Заглушка " + key, color = color, enableInstancing = true };
             if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.1f);
             if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.1f);
             Cache[key] = material;
