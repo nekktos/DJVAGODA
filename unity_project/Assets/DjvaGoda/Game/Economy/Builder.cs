@@ -168,7 +168,9 @@ namespace DjvaGoda.Game
         }
 
         /// Свой достроенный склад (у хоста).
-        static BuildingActor StorageOf(Faction side)
+        public static bool HasStorage(Faction side) { return StorageOf(side) != null; }
+
+        public static BuildingActor StorageOf(Faction side)
         {
             foreach (var actor in Actor.All)
             {

@@ -25,12 +25,14 @@ namespace DjvaGoda.Game
             Instance = this;
             Actor.Killed += OnKilled;
             CaravanActor.Home += OnCaravanHome;
+            CaravanActor.Lost += OnCaravanLost;
         }
 
         void OnDestroy()
         {
             Actor.Killed -= OnKilled;
             CaravanActor.Home -= OnCaravanHome;
+            CaravanActor.Lost -= OnCaravanLost;
             if (Instance == this) Instance = null;
         }
 
@@ -152,19 +154,31 @@ namespace DjvaGoda.Game
             return count;
         }
 
+        /// Обоз стражи разбит или ограблен: все враги рядом — грабители, на них погоня.
+        void Robbed(V3 at)
+        {
+            var hostiles = new List<KeyValuePair<int, V3>>();
+            foreach (var actor in Actor.All)
+                if (actor != null && actor.Alive && !(actor is BuildingActor) && Factions.Hostile((int)Faction.Guard, actor.Side))
+                    hostiles.Add(new KeyValuePair<int, V3>(actor.Id, actor.At));
+            Post.OnCaravanLost(at, hostiles);
+        }
+
+        /// Обоз остановлен игроком: увёл лошадей, перехватил, разграбил.
+        void OnCaravanLost(CaravanActor cart, Faction owner, PlayerCharacter by)
+        {
+            if (owner == Faction.Guard) Robbed(cart.At);
+            // Перехват и разграбление стражем засчитываются как «перехватить
+            // караван»; уведённые лошади — нет: обоз ещё стоит.
+            if (by != null && by.Faction == Faction.Guard && (!cart.Alive || cart.Side == (int)Faction.Guard))
+                by.Service.OnCaravanDestroyed(owner);
+        }
+
         void OnKilled(Actor victim, Actor source)
         {
             if (victim == null) return;
             var cart = victim as CaravanActor;
-            if (cart != null && cart.Side == (int)Faction.Guard)
-            {
-                // Обоз стражи разбит: все враги рядом — грабители, на них погоня.
-                var hostiles = new List<KeyValuePair<int, V3>>();
-                foreach (var actor in Actor.All)
-                    if (actor != null && actor.Alive && !(actor is BuildingActor) && Factions.Hostile((int)Faction.Guard, actor.Side))
-                        hostiles.Add(new KeyValuePair<int, V3>(actor.Id, actor.At));
-                Post.OnCaravanLost(cart.At, hostiles);
-            }
+            if (cart != null && cart.Side == (int)Faction.Guard) Robbed(cart.At);
             var guard = source as PlayerCharacter;
             if (guard == null || guard.Faction != Faction.Guard) return;
             var record = guard.Service;

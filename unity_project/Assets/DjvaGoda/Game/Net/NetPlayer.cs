@@ -100,6 +100,8 @@ namespace DjvaGoda.Game
         /// Книжка стража и задания эльфа: вид+1 | ход << 4 | сдано << 16 | командир << 24.
         public readonly NetworkVariable<int> Service = new NetworkVariable<int>();
         public readonly NetworkVariable<int> Tasks = new NetworkVariable<int>();
+        /// Верхом ли: решает хост, ехать быстрее — владельцу (он считает движение).
+        public readonly NetworkVariable<bool> Mounted = new NetworkVariable<bool>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
         /// Оружие в руке — выбирает владелец, видят все (WeaponView).
@@ -204,6 +206,7 @@ namespace DjvaGoda.Game
                 var tasks = _character.Tasks;
                 Tasks.Value = (tasks.Task.HasValue ? (int)tasks.Task.Value + 1 : 0) | Mathf.Min(tasks.Progress, 4095) << 4
                     | Mathf.Min(tasks.TasksDone, 255) << 16;
+                Mounted.Value = _character.Mounted;
                 if (_combat != null) Stagger.Value = _combat.Stagger;
                 Spells.Value = SpellSync.Of(_character.Vitals, _character.Spells);
             }
@@ -235,6 +238,7 @@ namespace DjvaGoda.Game
                 _character.Tasks.Task = (k & 15) > 0 ? (ElfTaskKind)((k & 15) - 1) : (ElfTaskKind?)null;
                 _character.Tasks.Progress = (k >> 4) & 4095;
                 _character.Tasks.TasksDone = (k >> 16) & 255;
+                _character.Mounted = Mounted.Value;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
                 Spells.Value.Apply(_character.Vitals, _character.Spells);
             }
@@ -324,7 +328,7 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             var shop = GetComponent<Shop>();
-            if (shop != null && deal >= 0 && deal <= (int)DealKind.Promote) shop.ServerDeal((DealKind)deal, arg);
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Caravan) shop.ServerDeal((DealKind)deal, arg);
         }
 
         /// Маршрут обоза: точки игрока. Склад и шахту дорисовывает хост.

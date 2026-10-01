@@ -2,7 +2,7 @@
 // живой сцене (без сети). Приказ берут у живого распорядителя, засчитывают
 // делом (убитые злодеи), сдают за награду; пятерых сданных хватает на
 // командование; павший распорядитель уходит с поста. Старейшина даёт задание
-// держать хутор, секунды капают на месте, сдача — золотом; коня не просит.
+// держать хутор, секунды капают на месте, сдача — золотом; коня засчитывают верхом.
 // Правила службы — ядро (CoreTests); здесь — события мира и доклад.
 using System.Collections;
 using DjvaGoda.Core;
@@ -93,9 +93,13 @@ namespace DjvaGoda.Tests
             var elf = TestArena.Fighter(Faction.Elves, (Elder.Instance.BodyAt.Value + new V3(2f, 0f, 0f)).ToUnity(), 0f);
             yield return TestArena.Settle();
             var shop = elf.GetComponent<Shop>();
-            elf.Tasks.TasksDone = 4; // «пригнать коня» — ездить не на ком: пропустить
+            elf.Tasks.TasksDone = 4; // «пригнать коня»: засчитывается верхом в поселении
             shop.ServerDeal(DealKind.Report, 0);
-            Assert.That(elf.Tasks.Task, Is.Not.EqualTo(ElfTaskKind.Horse), "старейшина просит коня, которого нет");
+            Assert.That(elf.Tasks.Task, Is.EqualTo(ElfTaskKind.Horse), "старейшина не просит коня");
+            elf.Mounted = true;
+            yield return null;
+            Assert.That(elf.Tasks.Done, Is.True, "конь в поселении не засчитан");
+            elf.Mounted = false;
 
             elf.Tasks.Task = null;
             elf.Tasks.TasksDone = 3; // «вернуть землю»

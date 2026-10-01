@@ -20,11 +20,13 @@ namespace DjvaGoda.Game
         {
             Instance = this;
             Actor.Killed += OnKilled;
+            CaravanActor.Lost += OnCaravanLost;
         }
 
         void OnDestroy()
         {
             Actor.Killed -= OnKilled;
+            CaravanActor.Lost -= OnCaravanLost;
             if (Instance == this) Instance = null;
         }
 
@@ -117,6 +119,12 @@ namespace DjvaGoda.Game
             record.TickHorse(elf.Mounted && at.FlatDistance(Factions.Spawn[(int)Faction.Elves]) <= ElfTasks.VillageRadius);
         }
 
+        /// Засада: эльф увёл лошадей, разграбил или перехватил чужой обоз.
+        static void OnCaravanLost(CaravanActor cart, Faction owner, PlayerCharacter by)
+        {
+            if (by != null && by.Faction == Faction.Elves) by.Tasks.OnCaravanHit(owner);
+        }
+
         static void OnKilled(Actor victim, Actor source)
         {
             var elf = source as PlayerCharacter;
@@ -145,8 +153,7 @@ namespace DjvaGoda.Game
                 var player = actor as PlayerCharacter;
                 if (player != null && player.Kit.IsLeader && Factions.Hostile((int)Faction.Elves, player.Side)) heads = true;
             }
-            // Коня не пригнать, пока ездить верхом в этой версии не на ком.
-            Tell(elf, elf.Tasks.Report(Treasury.Of(Faction.Elves), labourers, heads, kind => kind != ElfTaskKind.Horse));
+            Tell(elf, elf.Tasks.Report(Treasury.Of(Faction.Elves), labourers, heads));
         }
     }
 }

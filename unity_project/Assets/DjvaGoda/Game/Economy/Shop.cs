@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
-    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote }
+    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan }
 
     /// Дела у верстака: arg = дело * 10 + ступень (протез) или 1/0 (коляска).
     public enum BenchOp { Prosthetic, Eye, Splint, Wheelchair }
@@ -21,6 +21,26 @@ namespace DjvaGoda.Game
         public const float TraderRange = 7f;
         public const float BuildingReach = 4f;
         public const float BenchRange = 7f;
+        /// Дальше этого лошадей у обоза не выпрягают.
+        public const float RobRange = 6f;
+
+        /// Чужой стоящий обоз рядом, с которым есть что сделать.
+        public CaravanActor CartAtHand(out CaravanAction action)
+        {
+            action = CaravanAction.None;
+            foreach (var actor in Actor.All)
+            {
+                var cart = actor as CaravanActor;
+                if (cart == null || cart.At.FlatDistance(_character.Feet) > RobRange) continue;
+                var can = cart.ActionFor(_character.Faction);
+                if (can == CaravanAction.None) continue;
+                action = can;
+                return cart;
+            }
+            return null;
+        }
+
+        static readonly string[] CartVerbs = { "", "перехватить обоз", "увести лошадей", "разграбить обоз" };
 
         PlayerCharacter _character;
         PlayerCombat _combat;
@@ -108,11 +128,25 @@ namespace DjvaGoda.Game
             if (GameInput.Pressed("potion_heal")) Ask(DealKind.Potion, 1);
             if (GameInput.Pressed("potion_mana")) Ask(DealKind.Potion, 0);
             if (_open && !AnyPlace) Close();
-            // Что лежит под ногами — поднять раньше любых окон.
-            if (GameInput.Pressed("interact") && !_open && Pickup.Near(_character.Feet) != null)
+            // Порядок — по близости к руке: обоз, лошадь, груз под ногами, потом окна.
+            if (GameInput.Pressed("interact") && !_open)
             {
-                Ask(DealKind.Pickup, 0);
-                return;
+                CaravanAction can = CaravanAction.None;
+                if (!_character.Mounted && CartAtHand(out can) != null)
+                {
+                    Ask(DealKind.Caravan, 0);
+                    return;
+                }
+                if (_character.Mounted || HorseActor.Near(_character.Feet) != null)
+                {
+                    Ask(DealKind.Mount, 0);
+                    return;
+                }
+                if (Pickup.Near(_character.Feet) != null)
+                {
+                    Ask(DealKind.Pickup, 0);
+                    return;
+                }
             }
             if (GameInput.Pressed("interact") && AnyPlace)
             {
@@ -159,6 +193,12 @@ namespace DjvaGoda.Game
                 case DealKind.Pickup:
                     TakePickup();
                     return;
+                case DealKind.Mount:
+                    ToggleMount();
+                    return;
+                case DealKind.Caravan:
+                    CaravanDeal();
+                    return;
                 case DealKind.Report:
                     if (_character.Faction == Faction.Guard && Commander.Instance != null) Commander.Instance.Report(_character);
                     if (_character.Faction == Faction.Elves && Elder.Instance != null) Elder.Instance.Report(_character);
@@ -192,6 +232,63 @@ namespace DjvaGoda.Game
             else _character.Trophies[(int)(found.Kind == PickupKind.Arm ? TrophyKind.Arms : TrophyKind.Legs)]++;
             found.Remove();
         }
+
+        /// Сесть или спешиться — одной клавишей (у хоста).
+        void ToggleMount()
+        {
+            if (_character.Horse != null)
+            {
+                _character.Horse.Dismount(_character.Feet + new V3(1.5f, 0f, 0f));
+                _character.Horse = null;
+                _character.Mounted = false;
+                return;
+            }
+            var horse = HorseActor.Near(_character.Feet);
+            if (horse == null || !horse.Mount(_character))
+            {
+                if (_combat != null) _combat.Tell("рядом нет свободной лошади");
+                return;
+            }
+            _character.Horse = horse;
+            _character.Mounted = true;
+        }
+
+        /// Увести лошадей, перехватить или разграбить стоящий чужой обоз (у хоста).
+        void CaravanDeal()
+        {
+            CaravanAction can;
+            var cart = CartAtHand(out can);
+            if (cart == null || _character.Mounted)
+            {
+                if (_combat != null) _combat.Tell("с обозом ничего не сделать: он должен стоять и быть чужим");
+                return;
+            }
+            var owner = (Faction)cart.Side;
+            switch (can)
+            {
+                case CaravanAction.Intercept:
+                    var storage = Builder.StorageOf(_character.Faction);
+                    var nav = Object.FindAnyObjectByType<NavWorld>();
+                    var walked = nav != null && nav.Ready ? nav.PathBetween(storage.At, cart.At) : null;
+                    if (walked == null || walked.Count < 2) walked = new System.Collections.Generic.List<V3> { storage.At, cart.At };
+                    if (!cart.Intercept(_character.Faction, OwnerId, walked)) return;
+                    if (_combat != null) _combat.Tell("обоз перехвачен: едет на твой склад");
+                    if (MatchGoals.Instance != null)
+                        MatchGoals.Instance.Announce("Обоз «" + Factions.Names[(int)owner] + "» перехвачен стороной «" + Factions.Names[(int)_character.Faction] + "»");
+                    break;
+                case CaravanAction.Plunder:
+                    cart.Plunder();
+                    break;
+                case CaravanAction.Rob:
+                    if (cart.CaptureHorses() <= 0) return;
+                    break;
+                default:
+                    return;
+            }
+            CaravanActor.NoteLost(cart, owner, _character);
+        }
+
+        int OwnerId { get { return _net != null && _net.IsSpawned ? (int)_net.OwnerClientId : 0; } }
 
         Deal Bench(BenchOp op, int param)
         {
@@ -268,7 +365,11 @@ namespace DjvaGoda.Game
             if (!_open)
             {
                 var lying = Pickup.Near(_character.Feet);
-                string where = lying != null ? "поднять: " + lying.name : AtChief ? (_character.Faction == Faction.Guard ? "распорядитель стражи" : "старейшина")
+                CaravanAction can = CaravanAction.None;
+                var cartHere = _character.Mounted ? null : CartAtHand(out can);
+                string where = cartHere != null ? CartVerbs[(int)can]
+                    : _character.Mounted ? "спешиться" : HorseActor.Near(_character.Feet) != null ? "сесть на лошадь"
+                    : lying != null ? "поднять: " + lying.name : AtChief ? (_character.Faction == Faction.Guard ? "распорядитель стражи" : "старейшина")
                     : AtTrader ? "лавка" : AtBench ? "верстак" : (BuildingAtHand(BuildingKind.Forge) != null && _character.Faction != Faction.Elves ? "кузня"
                     : (BuildingAtHand(null) != null ? "постройка" : NeedsWood ? "деревянный протез" : null));
                 if (where != null)

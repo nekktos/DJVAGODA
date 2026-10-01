@@ -37,6 +37,8 @@ namespace DjvaGoda.Game
         public float Yaw;
         public float Pitch;
         public bool Mounted;
+        /// На какой лошади едет (у хоста); владельцу едет только Mounted (NetPlayer).
+        public HorseActor Horse;
         /// Ввод героя ИИ; пусто — ввод игрока.
         public MotorInput? Scripted;
         public bool LocalControl = true;
@@ -118,7 +120,14 @@ namespace DjvaGoda.Game
         {
             ShowFallen(!Alive);
             // Пал (от удара или от крови) — у хоста всё с тела падает кучей.
-            if (_wasAlive && !Alive && MatchNet.Hosting) DropBelongings();
+            if (_wasAlive && !Alive && MatchNet.Hosting)
+            {
+                DropBelongings();
+                // Павший всадник падает с седла: лошадь остаётся рядом с телом.
+                if (Horse != null) Horse.Dismount(Feet + new V3(1.5f, 0f, 0f));
+                Horse = null;
+                Mounted = false;
+            }
             _wasAlive = Alive;
             // Павший не ходит: встанет по правилам возрождения (Respawn).
             if (!Alive || !Simulate) return;

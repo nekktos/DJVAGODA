@@ -25,6 +25,77 @@ namespace DjvaGoda.Game
 
         public override bool Alive { get { return Trip != null && Trip.Health > 0f && Trip.State != CaravanState.Finished; } }
 
+        /// У клиента рейса нет — упряжку, стоянку и груз везёт CaravanNet.
+        [System.NonSerialized] public int ShownHorses;
+        [System.NonSerialized] public bool ShownHalted;
+        [System.NonSerialized] public int ShownCargo;
+        public int HorsesNow { get { return Trip != null ? Trip.Horses : ShownHorses; } }
+        public bool HaltedNow { get { return Trip != null ? Trip.Halted : ShownHalted; } }
+        public int CargoNow { get { return Trip != null ? Trip.CargoTotal : ShownCargo; } }
+        /// Стоит в мире (у клиента — заспавнен, у хоста — жив).
+        public bool Present { get { return Trip != null ? Alive : GetComponent<NetworkObject>() != null && GetComponent<NetworkObject>().IsSpawned; } }
+
+        /// Что сторона может сделать с этим обозом, подойдя вплотную (правило ядра).
+        public CaravanAction ActionFor(Faction actor)
+        {
+            if (!Present) return CaravanAction.None;
+            return CaravanRules.ActionFor(actor, (Faction)Side, HorsesNow, HaltedNow, CargoNow, Builder.HasStorage(actor));
+        }
+
+        /// Увести лошадей (у хоста): из конюшни прежнего хозяина они ушли
+        /// насовсем и встают рядом живыми — до дома их ещё надо довести.
+        public int CaptureHorses()
+        {
+            int taken = Trip.CaptureHorses();
+            if (taken <= 0) return 0;
+            _team = Mathf.Max(0, _team - taken);
+            if (Treasury != null)
+            {
+                Treasury.Horses = Mathf.Max(0, Treasury.Horses - taken);
+                Treasury.HorsesOut = Mathf.Max(0, Treasury.HorsesOut - taken);
+            }
+            for (int i = 0; i < taken; i++) HorseActor.Spawn(At + new V3(2f + 2f * i, 0f, 2f));
+            Debug.Log("[обоз] уведено лошадей: " + taken);
+            return taken;
+        }
+
+        /// Разграбить (у хоста): груз кучей на землю, повозка — лом.
+        public void Plunder()
+        {
+            if (!Alive) return;
+            Trip.Health = 0f;
+            Spill();
+            Leave(0);
+        }
+
+        /// Перехват (у хоста): обоз едет на склад перехватчика, лошади
+        /// упряжки переходят к нему вместе с обозом.
+        public bool Intercept(Faction side, int owner, List<V3> walked)
+        {
+            if (walked == null || walked.Count < 2) return false;
+            var from = Treasury;
+            var into = Game.Treasury.Of(side);
+            if (from != null)
+            {
+                from.Horses = Mathf.Max(0, from.Horses - _team);
+                from.HorsesOut = Mathf.Max(0, from.HorsesOut - _team);
+            }
+            into.Horses += _team;
+            into.HorsesOut += _team;
+            Treasury = into;
+            Side = (int)side;
+            Trip.Redirect(side, owner, walked);
+            return true;
+        }
+
+        /// Груз разбитой или разграбленной телеги — кучей на землю.
+        void Spill()
+        {
+            if (Trip.CargoTotal <= 0) return;
+            Pickup.Drop(At + new V3(0f, 0.6f, 0f), new LootPile { Contents = Res.Fit(Trip.Cargo) });
+            Trip.Cargo = Res.Empty();
+        }
+
         static GameObject _prefab;
 
         static bool Networked
@@ -134,6 +205,16 @@ namespace DjvaGoda.Game
         /// Обоз доехал до склада и рейс кончен (у хоста) — для приказа «сопроводить».
         public static event System.Action<CaravanActor> Home;
 
+        /// Обоз остановлен игроком — увёл лошадей, перехватил, разграбил (у
+        /// хоста): для засады эльфов, погони и перехвата стражи. Разбитый ударом
+        /// идёт через Actor.Killed.
+        public static event System.Action<CaravanActor, Faction, PlayerCharacter> Lost;
+
+        public static void NoteLost(CaravanActor cart, Faction owner, PlayerCharacter by)
+        {
+            if (Lost != null) Lost(cart, owner, by);
+        }
+
         /// Рейс кончен или телега разбита: живые лошади — в конюшню, прочие — потеря.
         void Leave(int horsesBack)
         {
@@ -155,7 +236,9 @@ namespace DjvaGoda.Game
             // Удар по упряжке — лошадям; по повозке — повозке.
             if (zone == "harness") Trip.HurtHarness(amount);
             else Trip.Health = Mathf.Max(0f, Trip.Health - amount);
-            if (Trip.Health <= 0f) Leave(0);
+            if (Trip.Health > 0f) return;
+            Spill();
+            Leave(0);
         }
     }
 }
