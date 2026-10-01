@@ -224,7 +224,7 @@ namespace DjvaGoda.Game
             {
                 if (player != null) player.Spells.ApplyWither(Abilities.WitherDuration, player.Body);
                 // У бойца ран нет: увядание для него — чистый урон.
-                else target.TakeDamage(SpellEffects.WitherUnitDamage, "torso", WeaponKind.Spell, false, _character);
+                else Actor.Strike(target, SpellEffects.WitherUnitDamage, "torso", WeaponKind.Spell, false, _character);
                 return true;
             }
             if (player != null)

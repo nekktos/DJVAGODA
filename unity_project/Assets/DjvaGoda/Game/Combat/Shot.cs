@@ -118,7 +118,7 @@ namespace DjvaGoda.Game
             {
                 // Пробой строя арбалетом считает сам боец (DamageRules.ToUnit) — здесь без строя.
                 float damage = ProjectileFlight.HitDamage(Kind, zone.Zone, _gear, 1f);
-                zone.Owner.TakeDamage(damage, zone.Zone, Kind, false, _shooter);
+                Actor.Strike(zone.Owner, damage, zone.Zone, Kind, false, _shooter);
             }
             Finish(point);
             return true;
@@ -140,7 +140,7 @@ namespace DjvaGoda.Game
             {
                 Actor target;
                 if (owners.TryGetValue(pair.Key, out target))
-                    target.TakeDamage(pair.Value.Value, pair.Value.Key.Zone, WeaponKind.Spell, true, _shooter);
+                    Actor.Strike(target, pair.Value.Value, pair.Value.Key.Zone, WeaponKind.Spell, true, _shooter);
             }
         }
 

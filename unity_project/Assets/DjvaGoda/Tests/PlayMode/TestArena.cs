@@ -46,6 +46,7 @@ namespace DjvaGoda.Tests
             root.transform.rotation = CoreSpace.YawToRotation(yaw);
             root.AddComponent<PlayerCombat>();
             root.AddComponent<PlayerSpells>();
+            root.AddComponent<WeaponView>();
             return character;
         }
 

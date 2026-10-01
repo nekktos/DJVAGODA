@@ -42,6 +42,15 @@ namespace DjvaGoda.Game
             // Прицел; откат — полоской под ним.
             float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
             GUI.Label(new Rect(cx - 6, cy - 14, 20, 30), "+", _label);
+            if (combat != null && combat.HitAge < 0.35f)
+            {
+                // Попал: крест вокруг прицела; в голову — жёлтый, добил — красный и крупнее.
+                GUI.color = combat.HitKill ? new Color(1f, 0.2f, 0.2f) : (combat.HitHead ? new Color(1f, 0.85f, 0.2f) : Color.white);
+                int size = combat.HitKill ? 30 : 22;
+                GUI.Label(new Rect(cx - size * 0.35f, cy - size * 0.75f, 40, 40), "×",
+                    new GUIStyle(_label) { fontSize = size });
+                GUI.color = Color.white;
+            }
             if (combat != null && combat.Cooldown > 0f && combat.CooldownFull > 0f)
                 Bar(new Rect(cx - 20, cy + 16, 40, 4), combat.Cooldown / combat.CooldownFull, new Color(1f, 1f, 1f, 0.8f));
 
@@ -76,7 +85,7 @@ namespace DjvaGoda.Game
                 string title = (4 + i) + " " + Abilities.NameOf(kind) + (cd > 0f ? " " + Mathf.CeilToInt(cd) : "");
                 bool can = cd <= 0f && me.Vitals.Mana >= Abilities.ManaCost[(int)kind];
                 GUI.color = can ? Color.white : new Color(1f, 1f, 1f, 0.5f);
-                GUI.Box(new Rect(16 + i * 150, Screen.height - 160, 144, 30), title, new GUIStyle(GUI.skin.box) { fontSize = 14 });
+                GUI.Box(new Rect(16 + i * 214, Screen.height - 160, 208, 30), title, new GUIStyle(GUI.skin.box) { fontSize = 14 });
                 GUI.color = Color.white;
             }
 

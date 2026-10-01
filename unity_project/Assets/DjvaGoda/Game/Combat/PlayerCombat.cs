@@ -63,6 +63,7 @@ namespace DjvaGoda.Game
             _serverCooldown = Mathf.Max(0f, _serverCooldown - delta);
             if (Hosting) Stagger = Mathf.Max(0f, Stagger - delta);
             _refusalLeft -= delta;
+            HitAge += delta;
             if (_refusalLeft <= 0f) Refusal = null;
             if (!_character.LocalControl || !_character.Alive) return;
 
@@ -80,6 +81,18 @@ namespace DjvaGoda.Game
             var dir = _character.AimDirection(rig != null ? rig.Camera : null);
             if (Hosting) ServerAttack(Weapon, origin, dir);
             else _net.AttackRpc((int)Weapon, origin.ToUnity(), dir.ToUnity());
+        }
+
+        /// Отметка попадания: когда, в голову ли, добил ли.
+        public float HitAge { get; private set; } = 99f;
+        public bool HitHead { get; private set; }
+        public bool HitKill { get; private set; }
+
+        public void ShowHit(bool head, bool killed)
+        {
+            HitAge = 0f;
+            HitHead = head;
+            HitKill = killed;
         }
 
         public void Refuse(string why)
@@ -148,7 +161,7 @@ namespace DjvaGoda.Game
                 var target = Actor.ById(pair.Key);
                 if (target == null) continue;
                 float damage = DamageRules.Outgoing(kind, pair.Value.Zone, _character.Kit.GearTier, _character.Spells.Wither > 0f);
-                target.TakeDamage(damage, pair.Value.Zone, kind, false, _character);
+                Actor.Strike(target, damage, pair.Value.Zone, kind, false, _character);
                 Effect(kind, target);
             }
         }

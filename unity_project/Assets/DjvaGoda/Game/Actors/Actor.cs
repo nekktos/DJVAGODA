@@ -34,6 +34,17 @@ namespace DjvaGoda.Game
         /// Удар по участнику. Хост решает, сколько снять (строй, доспех, правило стражи).
         public abstract void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source);
 
+        /// Удар по цели одним входом: урон и — если бил персонаж — отметка
+        /// попадания у него на прицеле (голова, добил ли).
+        public static void Strike(Actor target, float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)
+        {
+            if (target == null) return;
+            bool wasAlive = target.Alive;
+            target.TakeDamage(amount, zone, weapon, aoe, source);
+            var hitter = source as PlayerCharacter;
+            if (hitter != null && hitter != target) hitter.NoteHit(zone == "head", wasAlive && !target.Alive);
+        }
+
         public Sighting Sighting() { return new Sighting(Id, At, Side, Building); }
 
         /// Живые в радиусе от точки — для мозгов ядра.

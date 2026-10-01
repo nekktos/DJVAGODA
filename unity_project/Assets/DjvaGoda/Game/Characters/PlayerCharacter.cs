@@ -68,6 +68,18 @@ namespace DjvaGoda.Game
 
         public override bool Alive { get { return Vitals.Alive; } }
 
+        /// Попал (у хоста): отметка на прицеле — владельцу.
+        public void NoteHit(bool head, bool killed)
+        {
+            var net = GetComponent<NetPlayer>();
+            if (net != null && net.IsSpawned && !net.IsOwner) net.HitRpc(head, killed);
+            else
+            {
+                var combat = GetComponent<PlayerCombat>();
+                if (combat != null) combat.ShowHit(head, killed);
+            }
+        }
+
         /// Урон по персонажу: доспех, правило стражи для злодея (снаряжённость
         /// источника), ранение по зоне; любой удар срывает каст и паралич.
         public override void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)

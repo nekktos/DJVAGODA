@@ -42,6 +42,7 @@ namespace DjvaGoda.Tests
             yield return null;
             Assert.That(front.Vitals.Health, Is.LessThan(Vitals.BaseHealth), "меч не задел цель перед собой");
             Assert.That(back.Vitals.Health, Is.EqualTo(Vitals.BaseHealth), "меч задел того, кто за спиной");
+            Assert.That(combat.HitAge, Is.LessThan(0.35f), "попадание не отмечено на прицеле бьющего");
             // Одна зона на цель: урон — одного удара (без доспеха ×1, зона ≤ ×2).
             Assert.That(Vitals.BaseHealth - front.Vitals.Health, Is.LessThanOrEqualTo(Weapons.Damage[(int)WeaponKind.Sword] * 2f + 0.01f));
         }

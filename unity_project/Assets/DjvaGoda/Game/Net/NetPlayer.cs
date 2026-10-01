@@ -93,6 +93,9 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> Arrows = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
+        /// Оружие в руке — выбирает владелец, видят все (WeaponView).
+        public readonly NetworkVariable<int> WeaponHeld = new NetworkVariable<int>(0,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
         /// Сторона и место, назначенные хостом до спавна: в сетевые переменные
         /// их пишет OnNetworkSpawn — до спавна переменная ещё не привязана.
@@ -143,12 +146,14 @@ namespace DjvaGoda.Game
             if (IsOwner)
             {
                 if (Mathf.Abs(Pitch.Value - _character.Pitch) > 0.001f) Pitch.Value = _character.Pitch;
+                if (_combat != null && WeaponHeld.Value != (int)_combat.Weapon) WeaponHeld.Value = (int)_combat.Weapon;
             }
             else
             {
                 // Поворот тела пришёл в transform — yaw ядра из него.
                 _character.Yaw = CoreSpace.RotationToYaw(transform);
                 _character.Pitch = Pitch.Value;
+                if (_combat != null) _combat.Weapon = (WeaponKind)WeaponHeld.Value;
             }
             if (IsServer)
             {
@@ -246,6 +251,13 @@ namespace DjvaGoda.Game
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (_character.Vitals.Alive) _character.Body.ApplyBandage();
+        }
+
+        /// Попадание — владельцу на прицел.
+        [Rpc(SendTo.Owner)]
+        public void HitRpc(bool head, bool killed)
+        {
+            if (_combat != null) _combat.ShowHit(head, killed);
         }
 
         /// Отказ хоста — владельцу на экран.
