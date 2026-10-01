@@ -110,7 +110,7 @@ namespace DjvaGoda.Core
             return Root(a) != Root(b);
         }
 
-        static int Root(int side)
+        public static int Root(int side)
         {
             if (side < 0 || side >= Overlord.Length) return side;
             int top = Overlord[side];

@@ -18,6 +18,9 @@ namespace DjvaGoda.Game
         public int Id { get; private set; }
         public int Side = -1;
         public abstract bool Alive { get; }
+
+        /// Участник пал от удара (у хоста): кто и от чьей руки — для целей партии.
+        public static event System.Action<Actor, Actor> Killed;
         /// Постройка — её вид (для досягаемости удара); прочие — null.
         public virtual BuildingKind? Building { get { return null; } }
 
@@ -41,6 +44,7 @@ namespace DjvaGoda.Game
             if (target == null) return;
             bool wasAlive = target.Alive;
             target.TakeDamage(amount, zone, weapon, aoe, source);
+            if (wasAlive && !target.Alive && Killed != null) Killed(target, source);
             var hitter = source as PlayerCharacter;
             if (hitter != null && hitter != target) hitter.NoteHit(zone == "head", wasAlive && !target.Alive);
         }

@@ -42,6 +42,7 @@ namespace DjvaGoda.Game
 
         void Write()
         {
+            Side.Value = (int)_actor.State.Side;
             Progress.Value = _actor.State.Progress;
             Grade.Value = _actor.State.Grade;
             Health.Value = _actor.State.Health;
@@ -49,6 +50,9 @@ namespace DjvaGoda.Game
 
         void Read()
         {
+            // Сторона меняется однажды — стража уходит к злодею со взятием дворца.
+            _actor.State.Side = (Faction)Side.Value;
+            _actor.Side = Side.Value;
             _actor.State.Progress = Progress.Value;
             _actor.State.Grade = Grade.Value;
             _actor.State.Health = Health.Value;

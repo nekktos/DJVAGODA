@@ -13,6 +13,32 @@ namespace DjvaGoda.Game
 
         void Awake() { _rig = GetComponent<CameraRig>(); }
 
+        /// Исход партии: объявления сверху, у дворца — чей он и ход захвата.
+        void Goals(PlayerCharacter me)
+        {
+            var goals = MatchGoals.Instance;
+            if (goals == null) return;
+            var center = new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter };
+            float y = 120f;
+            foreach (var entry in goals.Feed)
+            {
+                if (Time.time - entry.Value > MatchGoals.AnnounceSeconds && !entry.Key.StartsWith("ПОБЕДА")) continue;
+                bool win = entry.Key.StartsWith("ПОБЕДА");
+                GUI.Label(new Rect(Screen.width * 0.5f - 400, y, 800, win ? 40 : 28), entry.Key,
+                    win ? new GUIStyle(center) { fontSize = 30 } : center);
+                y += win ? 40 : 28;
+            }
+            var state = goals.State;
+            bool near = me.Feet.FlatDistance(MatchState.Palace) <= MatchState.CaptureRadius * 2f;
+            if (!near && state.CaptureProgress <= 0f) return;
+            string text = "Дворец: " + Factions.NameOf(state.PalaceOwner);
+            if (state.Contested) text += " — оспаривают";
+            else if (state.Claimant >= 0) text += " — берёт " + Factions.Names[state.Claimant];
+            GUI.Label(new Rect(Screen.width * 0.5f - 200, 40, 400, 24), text, center);
+            if (state.CaptureProgress > 0f)
+                Bar(new Rect(Screen.width * 0.5f - 120, 66, 240, 8), state.CaptureProgress, new Color(0.9f, 0.7f, 0.2f));
+        }
+
         void OnGUI()
         {
             var me = _rig != null ? _rig.Target : null;
@@ -20,6 +46,7 @@ namespace DjvaGoda.Game
             if (_label == null) _label = new GUIStyle(GUI.skin.label) { fontSize = 18 };
             var combat = me.GetComponent<PlayerCombat>();
             var net = me.GetComponent<NetPlayer>();
+            Goals(me);
 
             if (!me.Alive)
             {

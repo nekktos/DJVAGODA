@@ -84,7 +84,7 @@ namespace DjvaGoda.Game
         }
 
         /// Люди за сторону: по сети — одобренные подключения, без сети — свой игрок.
-        static bool Occupied(Faction side)
+        public static bool Occupied(Faction side)
         {
             var session = NetSession.Instance;
             var net = NetworkManager.Singleton;
@@ -101,6 +101,8 @@ namespace DjvaGoda.Game
         {
             int index = (int)side;
             _garrisons[index].RemoveAll(unit => unit == null || !unit.Alive);
+            // Выбывшая сторона больше не пополняется: партия ушла дальше.
+            if (MatchGoals.IsOut(side)) return;
             if (Occupied(side))
             {
                 Disband(side);
