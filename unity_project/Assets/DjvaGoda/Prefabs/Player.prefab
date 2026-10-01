@@ -18,6 +18,7 @@ GameObject:
   - component: {fileID: 3504257752918218951}
   - component: {fileID: 559658377489482899}
   - component: {fileID: 4876694613087592009}
+  - component: {fileID: 7397338999405324368}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -222,3 +223,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 577cc65142974f44a93f13c00839b0ec, type: 3}
   m_Name: 
   m_EditorClassIdentifier: DjvaGoda.Game::DjvaGoda.Game.Builder
+--- !u!114 &7397338999405324368
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7508444897467127875}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6898b06114f8c454ebd94a4dcd63e395, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DjvaGoda.Game::DjvaGoda.Game.Shop

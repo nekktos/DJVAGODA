@@ -91,6 +91,8 @@ namespace DjvaGoda.Game
         public readonly NetworkVariable<int> GearTier = new NetworkVariable<int>();
         public readonly NetworkVariable<int> ArmorTier = new NetworkVariable<int>();
         public readonly NetworkVariable<int> Arrows = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> PotionsHeal = new NetworkVariable<int>();
+        public readonly NetworkVariable<int> PotionsMana = new NetworkVariable<int>();
         public readonly NetworkVariable<float> Stagger = new NetworkVariable<float>();
         public readonly NetworkVariable<SpellSync> Spells = new NetworkVariable<SpellSync>();
         /// Оружие в руке — выбирает владелец, видят все (WeaponView).
@@ -167,6 +169,8 @@ namespace DjvaGoda.Game
                 GearTier.Value = _character.Kit.GearTier;
                 ArmorTier.Value = _character.Kit.ArmorTier;
                 Arrows.Value = _character.Kit.Arrows;
+                PotionsHeal.Value = _character.Kit.PotionsHeal;
+                PotionsMana.Value = _character.Kit.PotionsMana;
                 if (_combat != null) Stagger.Value = _combat.Stagger;
                 Spells.Value = SpellSync.Of(_character.Vitals, _character.Spells);
             }
@@ -181,6 +185,8 @@ namespace DjvaGoda.Game
                 _character.Kit.GearTier = GearTier.Value;
                 _character.Kit.ArmorTier = ArmorTier.Value;
                 _character.Kit.Arrows = Arrows.Value;
+                _character.Kit.PotionsHeal = PotionsHeal.Value;
+                _character.Kit.PotionsMana = PotionsMana.Value;
                 if (_combat != null) _combat.Stagger = Stagger.Value;
                 Spells.Value.Apply(_character.Vitals, _character.Spells);
             }
@@ -244,6 +250,15 @@ namespace DjvaGoda.Game
         /// Вспышка заклинания — всем, и хосту тоже.
         [Rpc(SendTo.Everyone)]
         public void SpellFxRpc(int kind, Vector3 at) { SpellFx.Show((AbilityKind)kind, at); }
+
+        /// Заявка на сделку у места (лавка, кузня, постройка) или зелье. Решает хост (Shop.ServerDeal).
+        [Rpc(SendTo.Server)]
+        public void DealRpc(int deal, int arg, RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            var shop = GetComponent<Shop>();
+            if (shop != null && deal >= 0 && deal <= (int)DealKind.Potion) shop.ServerDeal((DealKind)deal, arg);
+        }
 
         /// Заявка на перевязку: бинт и кровь — у хоста.
         [Rpc(SendTo.Server)]
