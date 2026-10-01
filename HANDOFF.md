@@ -18,12 +18,13 @@ Unity ведётся **через MCP** (мост MCP for Unity). План, по
 соглашение об осях и отличия от Godot-версии — **`PORT_PLAN.md`**.
 
 - **Ядро правил** — чистый C# без Unity: `unity_project/Assets/DjvaGoda/Core`.
-  Проверки — `./core_tests/run.sh` (системный csc, без редактора); правила те
-  же: объявленное число проверок и «урони проверку».
-- **Unity-слой** — `unity_project/Assets/DjvaGoda/Game` (мир из плана ядра,
-  персонаж, камера, ввод). Написан до установки редактора: собирается против
-  заглушки UnityEngine, в Unity ещё не проверен. Проверки PlayMode —
-  `Assets/DjvaGoda/Tests/PlayMode`.
+  Проверки — EditMode-набор `Assets/DjvaGoda/Tests/EditMode/CoreTests.cs`
+  (через MCP `run_tests EditMode` или `./unity_tests.sh EditMode` при закрытом
+  редакторе); правила те же: объявленное число проверок и «урони проверку».
+- **Unity-слой** — `unity_project/Assets/DjvaGoda/Game`: сцена `Scenes/Main`
+  (мир собран в редакторе: «ДжваГода → Собрать мир»; деревья процедурные,
+  сажаются при загрузке), сеть на Netcode (хост/IP, меню сессии), персонаж,
+  камера, ввод. Проверки PlayMode — `Assets/DjvaGoda/Tests/PlayMode`.
 - **Godot-версия остаётся эталоном** и сборкой для тестеров, пока Unity её не
   догонит. Находки переноса чинятся и в ней: 30.09 — некротический протез
   больше не уводит трофеи в минус; обоз, упёршийся в дом поперёк пути,

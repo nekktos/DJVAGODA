@@ -6,7 +6,8 @@
 #   ./unity_tests.sh PlayMode Walk   — фильтр по имени
 #
 # Редактор с этим проектом должен быть ЗАКРЫТ: Unity не открывает проект дважды.
-# Ядро правил проверяется отдельно и без Unity: ./core_tests/run.sh
+# Ядро правил — EditMode (./unity_tests.sh EditMode). При открытом редакторе —
+# через MCP: run_tests (EditMode / PlayMode).
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 UNITY="${UNITY:-/c/Program Files/Unity/Hub/Editor/6000.6.3f1/Editor/Unity.exe}"

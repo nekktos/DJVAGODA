@@ -1,6 +1,6 @@
 // Проверки шагов 3 и 5 в живом Unity: мир в сцене совпадает с планом, персонаж стоит на земле,
 // ходит, поднимается по пандусу на плато. Повторяют наборы ходьбы
-// Godot-версии; правила — в core_tests, здесь — что Unity-слой их не ломает.
+// Godot-версии; правила — в EditMode CoreTests, здесь — что Unity-слой их не ломает.
 using System.Collections;
 using DjvaGoda.Core;
 using DjvaGoda.Game;
