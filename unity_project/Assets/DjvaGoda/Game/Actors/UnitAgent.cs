@@ -16,6 +16,8 @@ namespace DjvaGoda.Game
         public FormationKind CommanderFormation = FormationKind.Line;
         /// Сколько ещё живёт (волк призыва — минуту); ноль и меньше — без срока.
         public float Lifetime;
+        /// Охраняемая повозка (приказ «с обозом»): строй — вокруг неё.
+        public CaravanActor Escort;
         /// Распорядитель стражи или старейшина эльфов: встаёт сам и в счёт живых стороны не идёт.
         public bool Champion;
 
@@ -61,6 +63,9 @@ namespace DjvaGoda.Game
             }
             Brain.Tick(delta);
             Side = Brain.Side;
+            // Поводок за командиром — от его якоря, а не от места найма или призыва.
+            if (Commander != null)
+                Brain.Home = Escort != null && Escort.Alive ? Escort.At : Squads.Anchor(Commander);
             var here = At;
             var target = Brain.Engage(here, Actor.Around(here, UnitStats.EngageRange(Brain.Kind) + 1f, this));
             V3 destination;
@@ -76,8 +81,16 @@ namespace DjvaGoda.Game
                 float yaw = 0f;
                 if (Commander != null)
                 {
-                    anchor = Commander.Feet;
-                    yaw = Commander.Yaw;
+                    if (Escort != null && Escort.Alive)
+                    {
+                        anchor = Escort.At;
+                        yaw = Escort.Trip != null ? Escort.Trip.Yaw : 0f;
+                    }
+                    else
+                    {
+                        anchor = Squads.Anchor(Commander);
+                        yaw = Squads.Facing(Commander);
+                    }
                 }
                 destination = Brain.IdleDestination(here, anchor, yaw, Commander != null ? CommanderFormation : (FormationKind?)null);
             }
@@ -116,7 +129,8 @@ namespace DjvaGoda.Game
             if (victim == null) return;
             // Лучник стреляет стрелой (полёт — ProjectileFlight); пока — удар без полёта.
             var weapon = Brain.IsArcher ? WeaponKind.Bow : WeaponKind.Sword;
-            victim.TakeDamage(UnitStats.StrikeDamage(Brain.Kind), "torso", weapon, false, this);
+            // Через общий вход: убитый бойцом тоже попадает в цели партии (чья рука).
+            Actor.Strike(victim, UnitStats.StrikeDamage(Brain.Kind), "torso", weapon, false, this);
         }
 
         public override void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)

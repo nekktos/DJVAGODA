@@ -67,21 +67,38 @@ namespace DjvaGoda.Game
             return Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
         }
 
-        /// Текущая раскладка: действие -> клавиши (свои или по умолчанию).
-        public static Dictionary<string, string[]> Current()
+        static Dictionary<string, string[]> _current;
+
+        /// Раскладка в памяти: подсказки HUD спрашивают её каждый кадр.
+        static Dictionary<string, string[]> Map
         {
-            var map = KeyActions.Defaults();
-            foreach (var key in KeyActions.All)
+            get
             {
-                string saved = PlayerPrefs.GetString(OverridePrefix + key.Name, "");
-                if (saved.Length > 0) map[key.Name] = saved.Split('|');
+                if (_current != null) return _current;
+                _current = KeyActions.Defaults();
+                foreach (var key in KeyActions.All)
+                {
+                    string saved = PlayerPrefs.GetString(OverridePrefix + key.Name, "");
+                    if (saved.Length > 0) _current[key.Name] = saved.Split('|');
+                }
+                return _current;
             }
-            return map;
+        }
+
+        /// Текущая раскладка (копия): действие -> клавиши, свои или по умолчанию.
+        public static Dictionary<string, string[]> Current() { return new Dictionary<string, string[]>(Map); }
+
+        /// Первая клавиша действия (путь Input System); null — не назначена.
+        public static string Binding(string name)
+        {
+            string[] paths;
+            return Map.TryGetValue(name, out paths) && paths.Length > 0 ? paths[0] : null;
         }
 
         /// Вернуть раскладку по умолчанию.
         public static void ResetAll()
         {
+            _current = null;
             foreach (var key in KeyActions.All)
             {
                 PlayerPrefs.DeleteKey(OverridePrefix + key.Name);
@@ -98,6 +115,7 @@ namespace DjvaGoda.Game
         /// Переназначить клавиши действия (пути Input System) и запомнить.
         public static void Rebind(string name, string[] paths)
         {
+            Map[name] = (string[])paths.Clone();
             PlayerPrefs.SetString(OverridePrefix + name, string.Join("|", paths));
             PlayerPrefs.Save();
             var action = Of(name);

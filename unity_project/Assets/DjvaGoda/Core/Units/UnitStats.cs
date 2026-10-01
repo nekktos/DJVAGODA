@@ -82,6 +82,9 @@ namespace DjvaGoda.Core
         public const float StrikeRange = 2.4f;
         public const float ArcherRange = 24f;
         public const float ArcherRear = 7f;
+        /// Отряд игрока и звери призыва: в бой не дальше этого от своего якоря
+        /// (командир, точка приказа, повозка) — иначе строй растаскивает по карте.
+        public const float SquadLeash = 30f;
         public const float SlotTolerance = 1.2f;
         public const float SeparationRadius = 1.7f;
         public const float SeparationForce = 5f;

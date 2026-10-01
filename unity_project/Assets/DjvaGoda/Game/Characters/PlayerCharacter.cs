@@ -39,6 +39,11 @@ namespace DjvaGoda.Game
         public bool Mounted;
         /// На какой лошади едет (у хоста); владельцу едет только Mounted (NetPlayer).
         public HorseActor Horse;
+        /// Приказы отряду (у хоста; Squads): строй, стоять на точке или идти за мной.
+        public FormationKind SquadFormation = FormationKind.Line;
+        public bool SquadHold;
+        public V3 SquadRally;
+        public float SquadRallyYaw;
         /// Ввод героя ИИ; пусто — ввод игрока.
         public MotorInput? Scripted;
         public bool LocalControl = true;

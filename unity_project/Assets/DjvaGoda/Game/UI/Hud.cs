@@ -151,16 +151,11 @@ namespace DjvaGoda.Game
                     new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
         }
 
-        /// Клавиша действия по умолчанию — для подсказок («1», «U»).
-        static string KeyOf(string action)
+        /// Клавиша действия в текущей раскладке (с переназначениями) — для подсказок.
+        public static string KeyOf(string action)
         {
-            foreach (var key in KeyActions.All)
-                if (key.Name == action && key.Defaults.Length > 0)
-                {
-                    var path = key.Defaults[0];
-                    return path.Substring(path.LastIndexOf('/') + 1).ToUpperInvariant();
-                }
-            return "?";
+            var path = GameInput.Binding(action);
+            return path == null ? "?" : GameMenu.Human(path).ToUpperInvariant();
         }
 
         /// Вид сверху: что можно строить, клавиши и цены; при постановке — подсказка.
@@ -195,6 +190,7 @@ namespace DjvaGoda.Game
                 GUI.Label(new Rect(Screen.width * 0.5f - 300, Screen.height - 200, 600, 26),
                     "Маршрут обоза: точек " + builder.RoutePoints + " из " + Builder.MaxRoutePoints
                     + ".  ЛКМ — точка, Enter — отправить, ПКМ — отмена", new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
+            y = SquadPanel(me, y + 8);
             y += 8;
             GUI.Label(new Rect(16, y, 700, 24), KeyOf("route") + "  маршрут обоза (лошадей свободно " + wallet.HorsesFree + " из " + wallet.Horses + ")", _label);
             y += 24;
@@ -211,6 +207,24 @@ namespace DjvaGoda.Game
                 GUI.Label(new Rect(16, y, 700, 24), KeyOf(role.Key) + "  в " + LabourerStats.RoleNames[(int)role.Value] + "ы — сейчас " + counts[(int)role.Value], _label);
                 y += 22;
             }
+        }
+
+        /// Отряд сверху: состав, строй, приказы (как command_bar Godot-версии).
+        float SquadPanel(PlayerCharacter me, float y)
+        {
+            var net = me.GetComponent<NetPlayer>();
+            int count = net != null && net.IsSpawned && !net.IsServer ? net.Squad.Value & 255 : Squads.Of(me).Count;
+            if (count == 0) return y;
+            GUI.Label(new Rect(16, y, 900, 24), "Отряд: " + count + ", строй — " + Formations.Names[(int)me.SquadFormation]
+                + (me.SquadHold ? ", стоит на точке" : ", идёт за вами"), _label);
+            y += 24;
+            GUI.Label(new Rect(16, y, 900, 24), "ПКМ — идти туда   " + KeyOf("squad_follow") + " — ко мне   "
+                + KeyOf("squad_escort") + " — с обозом", _label);
+            y += 24;
+            var line = "";
+            for (int i = 0; i < Formations.Names.Length; i++) line += KeyOf("formation_" + (i + 1)) + " — " + Formations.Names[i] + "   ";
+            GUI.Label(new Rect(16, y, 900, 24), line, _label);
+            return y + 24;
         }
 
         /// Ресурсы стороны: при себе (под риском) и на складе.

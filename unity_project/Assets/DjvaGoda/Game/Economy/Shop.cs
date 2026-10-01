@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace DjvaGoda.Game
 {
-    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan, Upgrade }
+    public enum DealKind { Trade, Forge, Fortify, Potion, Horse, Pickup, Workbench, Report, Promote, Mount, Caravan, Upgrade, Train, Squad }
 
     /// Дела у верстака: arg = дело * 10 + ступень (протез) или 1/0 (коляска).
     public enum BenchOp { Prosthetic, Eye, Splint, Wheelchair }
@@ -19,7 +19,9 @@ namespace DjvaGoda.Game
     public class Shop : MonoBehaviour
     {
         public const float TraderRange = 7f;
-        public const float BuildingReach = 4f;
+        /// На сколько метров от СТЕНЫ постройки с ней можно иметь дело (Godot:
+        /// BUILDING_REACH): от центра «в шести метрах» значило бы «внутри дома».
+        public const float BuildingReach = 8f;
         public const float BenchRange = 7f;
         /// Дальше этого лошадей у обоза не выпрягают.
         public const float RobRange = 6f;
@@ -70,7 +72,7 @@ namespace DjvaGoda.Game
                 if (building == null || !building.Alive || !building.State.Done || building.Side != (int)_character.Faction) continue;
                 if (kind.HasValue && building.State.Kind != kind.Value) continue;
                 var size = Res.BuildingSize(building.State.Kind);
-                float gap = building.At.FlatDistance(_character.Feet) - Mathf.Max(size.X, size.Z) * 0.5f;
+                float gap = CaravanTrip.BoxGap(_character.Feet, building.At, size.X * 0.5f, size.Z * 0.5f);
                 if (gap <= BuildingReach && gap < bestGap)
                 {
                     bestGap = gap;
@@ -198,6 +200,22 @@ namespace DjvaGoda.Game
                     return;
                 case DealKind.Mount:
                     ToggleMount();
+                    return;
+                case DealKind.Train:
+                    {
+                        bool archer = arg != 0;
+                        var kind = archer ? BuildingKind.ArcherBarracks : BuildingKind.SwordBarracks;
+                        result = Squads.Train(_character, archer, BuildingAtHand(kind), HasOwn(kind));
+                        break;
+                    }
+                case DealKind.Squad:
+                    if (arg == 0) Squads.Follow(_character);
+                    else if (arg == 1)
+                    {
+                        var why = Squads.Escort(_character, OwnerId);
+                        if (why != null && _combat != null) _combat.Tell(why);
+                    }
+                    else if (arg >= 10 && arg < 10 + Formations.Names.Length) Squads.SetFormation(_character, (FormationKind)(arg - 10));
                     return;
                 case DealKind.Upgrade:
                     if (arg < 0 || arg >= Progression.Names.Length) return;
@@ -418,6 +436,17 @@ namespace DjvaGoda.Game
                 if (GUILayout.Button("взять лошадь — " + Res.FormatCost(Res.HorseCost), _style, GUILayout.Height(32))) Ask(DealKind.Horse, 0);
                 GUI.enabled = true;
             }
+            foreach (var barracks in new[] { BuildingKind.SwordBarracks, BuildingKind.ArcherBarracks })
+            {
+                if (BuildingAtHand(barracks) == null) continue;
+                bool archer = barracks == BuildingKind.ArcherBarracks;
+                var cost = archer ? Res.ArcherCost : Res.UnitCost;
+                GUILayout.Label(Res.BuildingNames[(int)barracks] + ": в отряде " + _squadShown + " из " + Squads.Capacity(_character.Faction));
+                GUI.enabled = wallet.CanAfford(cost);
+                if (GUILayout.Button("нанять " + (archer ? "лучника" : "мечника") + " — " + Res.FormatCost(cost), _style, GUILayout.Height(32)))
+                    Ask(DealKind.Train, archer ? 1 : 0);
+                GUI.enabled = true;
+            }
             var here = BuildingAtHand(null);
             if (here != null && Factions.MayBuild(_character.Faction, here.State.Kind, kit.IsLeader))
             {
@@ -430,6 +459,9 @@ namespace DjvaGoda.Game
             }
             GUILayout.EndArea();
         }
+
+        /// Сколько в отряде — у хоста по бойцам, у клиента по сводке NetPlayer.
+        int _squadShown { get { return _net != null && _net.IsSpawned && !_net.IsServer ? _net.Squad.Value & 255 : Squads.Of(_character).Count; } }
 
         static int[] Price(TradeItem item, Kit kit)
         {

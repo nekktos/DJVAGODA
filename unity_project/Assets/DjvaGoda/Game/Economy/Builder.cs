@@ -91,6 +91,7 @@ namespace DjvaGoda.Game
                 }
                 foreach (var key in RoleKeys)
                     if (GameInput.Pressed(key.Key)) Labour((int)key.Value);
+                SquadOrders();
             }
             else if (_character.Faction == Faction.Elves && GameInput.Pressed("build_elf_house"))
             {
@@ -118,6 +119,27 @@ namespace DjvaGoda.Game
                 if (Hosting) ServerBuild(kind, point);
                 else _net.BuildRpc((int)kind, point.ToUnity());
             }
+        }
+
+        /// Приказы отряду сверху: G — ко мне, H — с обозом, F2–F5 — строй,
+        /// ПКМ по земле — идти туда (когда не ставим постройку и не ведём маршрут).
+        void SquadOrders()
+        {
+            var shop = GetComponent<Shop>();
+            if (shop == null) return;
+            if (GameInput.Pressed("squad_follow")) shop.Request(DealKind.Squad, 0);
+            if (GameInput.Pressed("squad_escort")) shop.Request(DealKind.Squad, 1);
+            for (int i = 0; i < Formations.Names.Length; i++)
+                if (GameInput.Pressed("formation_" + (i + 1))) shop.Request(DealKind.Squad, 10 + i);
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (Placing || Routing || mouse == null || !mouse.rightButton.wasPressedThisFrame) return;
+            var rig = Object.FindAnyObjectByType<CameraRig>();
+            if (rig == null || rig.Camera == null) return;
+            RaycastHit hit;
+            if (!Physics.Raycast(rig.Camera.ScreenPointToRay(mouse.position.ReadValue()), out hit, 1200f, HitZone.WorldMask, QueryTriggerInteraction.Ignore))
+                return;
+            if (Hosting) Squads.Move(_character, hit.point.ToCore());
+            else _net.SquadMoveRpc(hit.point);
         }
 
         /// Маршрут обоза: ЛКМ — точка, Enter — отправить, ПКМ/Esc — отменить.
