@@ -41,7 +41,7 @@ namespace DjvaGoda.Game
             _character.Simulate = IsOwner;
             if (IsOwner)
             {
-                var rig = Object.FindFirstObjectByType<CameraRig>();
+                var rig = Object.FindAnyObjectByType<CameraRig>();
                 if (rig != null) rig.Target = _character;
             }
         }

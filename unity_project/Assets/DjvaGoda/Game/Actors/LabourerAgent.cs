@@ -76,7 +76,7 @@ namespace DjvaGoda.Game
                 if (at.FlatDistance(At) > 200f) continue;
                 view.Sites.Add(new WorkSite
                 {
-                    Id = harvest.GetInstanceID(),
+                    Id = harvest.Id,
                     Kind = SiteKind.Harvestable,
                     At = at,
                     Resource = harvest.Resource,
@@ -90,7 +90,7 @@ namespace DjvaGoda.Game
             if (site == null) return;
             foreach (var harvest in Harvestable.All)
             {
-                if (harvest.GetInstanceID() != site.Id) continue;
+                if (harvest.Id != site.Id) continue;
                 Brain.Harvested(harvest.Resource);
                 harvest.HitsLeft--;
                 if (harvest.HitsLeft > 0) return;

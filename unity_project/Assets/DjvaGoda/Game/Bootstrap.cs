@@ -48,7 +48,7 @@ namespace DjvaGoda.Game
 
         static void Light()
         {
-            if (Object.FindFirstObjectByType<Light>() != null) return;
+            if (Object.FindAnyObjectByType<Light>() != null) return;
             var sun = new GameObject("Солнце").AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.intensity = 1.1f;

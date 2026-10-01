@@ -13,13 +13,20 @@ namespace DjvaGoda.Game
     {
         /// Все стоящие источники: батраки ищут по списку, а не по сцене каждый кадр.
         public static readonly List<Harvestable> All = new List<Harvestable>();
+        static int _nextId = 1;
+        /// Свой номер: GetInstanceID в Unity 6.6 устарел.
+        public int Id { get; private set; }
 
         public ResourceKind Resource;
         public int HitsLeft;
         /// Номер дерева леса эльфов; −1 — не из леса.
         public int TreeIndex = -1;
 
-        void OnEnable() { All.Add(this); }
+        void OnEnable()
+        {
+            if (Id == 0) Id = _nextId++;
+            All.Add(this);
+        }
         void OnDisable() { All.Remove(this); }
     }
 
