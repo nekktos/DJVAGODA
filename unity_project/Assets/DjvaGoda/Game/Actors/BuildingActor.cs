@@ -22,6 +22,26 @@ namespace DjvaGoda.Game
         int _shownGrade = -1;
         bool _wasDone;
         bool _completed;
+        /// Строители у стройки: номер батрака → сколько ещё помнить (как копатели шахты).
+        readonly System.Collections.Generic.Dictionary<int, float> _builders = new System.Collections.Generic.Dictionary<int, float>();
+        public const float BuilderMemory = 3f;
+
+        /// Сколько строителей сейчас у стройки.
+        public int BuildersNow { get { return _builders.Count; } }
+
+        /// Батрак-строитель ударил у стройки.
+        public void NoteBuilder(int workerId) { _builders[workerId] = BuilderMemory; }
+
+        int Builders(float delta)
+        {
+            var keys = new System.Collections.Generic.List<int>(_builders.Keys);
+            foreach (var id in keys)
+            {
+                _builders[id] -= delta;
+                if (_builders[id] <= 0f) _builders.Remove(id);
+            }
+            return _builders.Count;
+        }
 
         public override bool Alive { get { return State != null && !State.Destroyed; } }
         public override BuildingKind? Building { get { return State != null ? State.Kind : (BuildingKind?)null; } }
@@ -130,8 +150,8 @@ namespace DjvaGoda.Game
             if (State == null) return;
             if (Hosting)
             {
-                // Строители-батраки прибавят скорость в шаге «батраки»; пока — хозяин.
-                State.Build(Time.deltaTime, 0);
+                // Хозяин строит сам; каждый строитель-батрак у стройки прибавляет долю.
+                State.Build(Time.deltaTime, Builders(Time.deltaTime));
                 if (State.Done) State.Grow(Time.deltaTime);
                 if (State.Done && !_completed) Completed();
             }

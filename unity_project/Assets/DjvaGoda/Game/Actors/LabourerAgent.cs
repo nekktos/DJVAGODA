@@ -62,6 +62,18 @@ namespace DjvaGoda.Game
             {
                 case LabourAction.Harvest: Harvest(order.Site); break;
                 case LabourAction.Dig: if (order.Site != null) Mines.Dig(order.Site.Id, Id); break;
+                case LabourAction.Build:
+                {
+                    var building = order.Site != null ? Actor.ById(order.Site.Id) as BuildingActor : null;
+                    if (building != null) building.NoteBuilder(Id);
+                    break;
+                }
+                case LabourAction.Take:
+                {
+                    var farm = order.Site != null ? Actor.ById(order.Site.Id) as BuildingActor : null;
+                    if (farm != null && farm.State != null) Brain.Took(farm.State.TakeGrown(Brain.Room));
+                    break;
+                }
                 case LabourAction.Deliver: if (Treasury != null) Brain.Unload(Treasury); break;
             }
         }

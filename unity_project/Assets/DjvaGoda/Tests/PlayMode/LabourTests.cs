@@ -56,6 +56,56 @@ namespace DjvaGoda.Tests
             Assert.That(miners, Is.EqualTo(1), "перевод роли — не ровно один батрак");
         }
 
+        static LabourerAgent HireAs(PlayerCharacter villain, LabourerRole role)
+        {
+            var builder = villain.GetComponent<Builder>();
+            builder.ServerLabour(-1);
+            builder.ServerLabour((int)role);
+            return Builder.Crew(Faction.Villain)[0];
+        }
+
+        [UnityTest]
+        public IEnumerator BuilderJoinsConstruction()
+        {
+            var villain = Villain();
+            yield return TestArena.Settle();
+            Treasury.Of(Faction.Villain).Carried.Amounts = new[] { 2000, 2000, 2000, 2000, 0, 0 };
+            var fort = Factions.Spawn[(int)Faction.Villain];
+            villain.GetComponent<Builder>().ServerBuild(BuildingKind.Storage, fort + new V3(25f, 0f, 0f));
+            yield return null;
+            BuildingActor storage = null;
+            foreach (var b in Object.FindObjectsByType<BuildingActor>(FindObjectsSortMode.None)) storage = b;
+            Assert.That(storage, Is.Not.Null, "склад не поставлен");
+            var worker = HireAs(villain, LabourerRole.Builder);
+            Assert.That(worker.Brain.Role, Is.EqualTo(LabourerRole.Builder));
+            float t = 0f;
+            while (t < 40f && storage.BuildersNow == 0 && !storage.State.Done)
+            {
+                t += Time.deltaTime;
+                yield return null;
+            }
+            Assert.That(storage.BuildersNow, Is.GreaterThan(0), "строитель за 40 с не взялся за стройку; он в " + worker.At);
+        }
+
+        [UnityTest]
+        public IEnumerator FarmerCarriesFood()
+        {
+            var villain = Villain();
+            yield return TestArena.Settle();
+            var fort = Factions.Spawn[(int)Faction.Villain];
+            var farm = BuildingActor.Spawn(BuildingKind.Farm, Faction.Villain, fort + new V3(-25f, 0f, 0f), true, null);
+            farm.State.Grown[(int)ResourceKind.Food] = 40;
+            var worker = HireAs(villain, LabourerRole.Farmer);
+            float t = 0f;
+            while (t < 40f && worker.Brain.Carrying == 0 && Treasury.Of(Faction.Villain).GetAmount(ResourceKind.Food) == 0)
+            {
+                t += Time.deltaTime;
+                yield return null;
+            }
+            Assert.That(worker.Brain.Carrying > 0 || Treasury.Of(Faction.Villain).GetAmount(ResourceKind.Food) > 0, Is.True,
+                "фермер за 40 с не взял еды с поля; он в " + worker.At);
+        }
+
         [UnityTest]
         public IEnumerator LumberjackChopsGrove()
         {
