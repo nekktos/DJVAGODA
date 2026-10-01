@@ -26,6 +26,7 @@ namespace DjvaGoda.Game
 
         readonly Dictionary<ulong, int> _faction = new Dictionary<ulong, int>();
         readonly Dictionary<ulong, int> _slot = new Dictionary<ulong, int>();
+        readonly Dictionary<ulong, string> _profile = new Dictionary<ulong, string>();
         readonly List<ulong> _toSpawn = new List<ulong>();
 
         void Awake() { Instance = this; }
@@ -95,6 +96,7 @@ namespace DjvaGoda.Game
             if (Net != null) Net.Shutdown();
             _faction.Clear();
             _slot.Clear();
+            _profile.Clear();
             _toSpawn.Clear();
         }
 
@@ -118,6 +120,9 @@ namespace DjvaGoda.Game
                 return;
             }
             _faction[request.ClientNetworkId] = faction;
+            // Профиль — ключ сохранения: пустой у старого клиента — по номеру подключения.
+            _profile[request.ClientNetworkId] = parts.Length > 1 && parts[1].Trim().Length > 0
+                ? parts[1].Trim() : "игрок-" + request.ClientNetworkId;
             _slot[request.ClientNetworkId] = slot;
             if (faction != wanted) Status = Lobby.Redirected(wanted, faction);
             response.Approved = true;
@@ -143,6 +148,7 @@ namespace DjvaGoda.Game
                 player.AssignedSide = faction;
                 player.AssignedSlot = slot;
                 player.AssignedSpawn = at.ToUnity();
+                go.GetComponent<PlayerCharacter>().Profile = _profile[client];
                 go.GetComponent<NetworkObject>().SpawnAsPlayerObject(client);
             }
         }

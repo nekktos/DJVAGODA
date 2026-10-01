@@ -77,6 +77,9 @@ namespace DjvaGoda.Game
         /// Начало партии: то, что у сторон есть с первой минуты.
         void Begin()
         {
+            // Сохранённый мир поднимаем первым. Вернул постройки — стартовые
+            // не ставим: снесённую казарму восстанавливать значит отменять снос.
+            if (SaveGame.Instance != null && SaveGame.Instance.LoadWorld()) return;
             var nav = Nav;
             BuildingActor.Spawn(BuildingKind.SwordBarracks, Faction.Guard, GuardBarracks, true, nav);
             foreach (var entry in GuardEstate) BuildingActor.Spawn(entry.Key, Faction.Guard, entry.Value, true, nav);

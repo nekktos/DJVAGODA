@@ -140,6 +140,9 @@ namespace DjvaGoda.Game
             _character.Faction = (Faction)Side.Value;
             // Вожак злодея — его единственный персонаж: его смерть окончательна.
             _character.Kit.IsLeader = _character.Faction == Faction.Villain;
+            // Прогресс человека — из сохранения мира, после роли по стороне:
+            // сохранение знает и о командовании стражей.
+            if (IsServer && !AssignedAi && SaveGame.Instance != null) SaveGame.Instance.RestorePlayer(_character);
             Bootstrap.AddBody(transform, (Faction)Side.Value);
             name = (Ai.Value ? "ИИ" : "Игрок " + OwnerClientId) + " (" + Factions.Names[Side.Value] + ")";
             _character.LocalControl = IsOwner && !Ai.Value;
@@ -153,6 +156,12 @@ namespace DjvaGoda.Game
                 var rig = Object.FindAnyObjectByType<CameraRig>();
                 if (rig != null) rig.Target = _character;
             }
+        }
+
+        /// Уходит из сессии — его нажитое в сохранение, пока персонаж ещё здесь.
+        public override void OnNetworkDespawn()
+        {
+            if (IsServer && !Ai.Value && SaveGame.Instance != null) SaveGame.Instance.Remember(_character);
         }
 
         void Update()

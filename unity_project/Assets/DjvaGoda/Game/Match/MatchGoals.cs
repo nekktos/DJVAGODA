@@ -51,6 +51,7 @@ namespace DjvaGoda.Game
             Actor.Killed += NoteKill;
             gameObject.AddComponent<Commander>();
             gameObject.AddComponent<Elder>();
+            gameObject.AddComponent<SaveGame>();
         }
 
         public override void OnDestroy()
@@ -225,7 +226,11 @@ namespace DjvaGoda.Game
         }
 
         [Rpc(SendTo.NotServer)]
-        void AnnounceRpc(string text) { Show(text); }
+        void AnnounceRpc(string text)
+        {
+            Debug.Log("[цель] у себя: " + text);
+            Show(text);
+        }
 
         void Show(string text)
         {

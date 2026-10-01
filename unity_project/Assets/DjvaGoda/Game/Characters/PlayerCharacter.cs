@@ -26,6 +26,8 @@ namespace DjvaGoda.Game
         /// Служба стража у командира и задания эльфа у старейшины (у хоста; владельцу — NetPlayer).
         public readonly ServiceRecord Service = new ServiceRecord();
         public readonly ElfTaskRecord Tasks = new ElfTaskRecord();
+        /// Профиль человека (у хоста): ключ сохранения вместе со стороной. Пусто — ИИ.
+        public string Profile = "";
         bool _wasAlive = true;
         readonly CharacterMotor _motor = new CharacterMotor();
         readonly Bandaging _bandaging = new Bandaging();

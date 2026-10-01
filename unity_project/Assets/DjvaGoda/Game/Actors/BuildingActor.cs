@@ -159,6 +159,9 @@ namespace DjvaGoda.Game
             else if (!State.Done) ShowProgress(Res.BuildingSize(State.Kind).ToUnity());
         }
 
+        /// Поднята из сохранения: казна уже помнит её склад — не поднимать потолок ещё раз.
+        public void MarkCompleted() { _completed = State.Done; }
+
         /// Достроена (у хоста): склад поднимает стороне потолок хранения — и
         /// построенный игроком, и поставленный ИИ.
         void Completed()

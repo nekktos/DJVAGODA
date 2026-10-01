@@ -234,6 +234,22 @@ namespace DjvaGoda.Game
         /// request_set_labourer_role). Новый батрак — лесоруб у точки стороны;
         /// перевод берёт одного с самого многолюдного дела: без выбора мышью
         /// это единственный порядок, который не требует помнить, кого уже переводил.
+        /// Батрак стороны у её точки (у хоста): наём и восстановление из сохранения.
+        public static LabourerAgent SpawnLabourer(Faction side, LabourerRole role, int index)
+        {
+            var home = Factions.Spawn[(int)side];
+            var spot = StewardRules.HireSpot(home, index);
+            var go = Agents.Make(AgentRole.Labourer, side, spot + new V3(0f, 0.5f, 0f), "Батрак");
+            var worker = go.AddComponent<LabourerAgent>();
+            worker.Brain = new LabourerBrain(side, role);
+            worker.Home = home;
+            worker.Nav = Object.FindAnyObjectByType<NavWorld>();
+            worker.World = Object.FindAnyObjectByType<World>();
+            worker.Treasury = Treasury.Of(side);
+            Agents.Show(go);
+            return worker;
+        }
+
         public void ServerLabour(int role)
         {
             if (!_character.Alive) return;
@@ -247,16 +263,7 @@ namespace DjvaGoda.Game
                     if (_combat != null && !string.IsNullOrEmpty(deal.Refusal)) _combat.Tell(deal.Refusal);
                     return;
                 }
-                var home = Factions.Spawn[(int)side];
-                var spot = StewardRules.HireSpot(home, crew.Count);
-                var go = Agents.Make(AgentRole.Labourer, side, spot + new V3(0f, 0.5f, 0f), "Батрак");
-                var worker = go.AddComponent<LabourerAgent>();
-                worker.Brain = new LabourerBrain(side, LabourerRole.Lumberjack);
-                worker.Home = home;
-                worker.Nav = Object.FindAnyObjectByType<NavWorld>();
-                worker.World = Object.FindAnyObjectByType<World>();
-                worker.Treasury = Treasury.Of(side);
-                Agents.Show(go);
+                SpawnLabourer(side, LabourerRole.Lumberjack, crew.Count);
                 return;
             }
             if (crew.Count == 0)
