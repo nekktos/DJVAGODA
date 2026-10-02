@@ -36,6 +36,7 @@ namespace DjvaGoda.Game
             if (Rig.GetComponent<Hud>() == null) Rig.gameObject.AddComponent<Hud>();
             if (Rig.GetComponent<GameMenu>() == null) Rig.gameObject.AddComponent<GameMenu>();
             if (Rig.GetComponent<Onboarding>() == null) Rig.gameObject.AddComponent<Onboarding>();
+            if (Rig.GetComponent<GrassField>() == null) Rig.gameObject.AddComponent<GrassField>();
             if (!Networked) SpawnLocal(Side);
         }
 

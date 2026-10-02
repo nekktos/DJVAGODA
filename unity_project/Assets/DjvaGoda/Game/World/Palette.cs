@@ -38,6 +38,8 @@ namespace DjvaGoda.Game
         {
             { "ground", new Spec("grass", White, 0.25f) },
             { "road", new Spec("dirt", White, 0.25f) },
+            // Пучки травы (GrassField): та же трава, чуть светлее земли — видно стебли.
+            { "grass_blades", new Spec("grass", new Color(1.15f, 1.2f, 0.95f), 1.5f) },
             { "foliage", new Spec("foliage", White, 0.6f) },
             { "trunk", new Spec("bark", White, 1f) },
             { "bark", new Spec("bark", White, 1f) },
