@@ -1,6 +1,7 @@
 // Экран боя (временный, до шага «Интерфейс» с картинками): прицел, полосы
 // здоровья, выносливости и маны, оружие стороны, стрелы, откат удара, раны и
 // отсчёт до возрождения. Показывает персонажа, за которым смотрит камера.
+using System.Collections.Generic;
 using DjvaGoda.Core;
 using UnityEngine;
 
@@ -9,7 +10,7 @@ namespace DjvaGoda.Game
     public class Hud : MonoBehaviour
     {
         CameraRig _rig;
-        GUIStyle _label;
+        GUIStyle _label, _small;
 
         void Awake() { _rig = GetComponent<CameraRig>(); }
 
@@ -44,6 +45,7 @@ namespace DjvaGoda.Game
             var me = _rig != null ? _rig.Target : null;
             if (me == null) return;
             if (_label == null) _label = new GUIStyle(GUI.skin.label) { fontSize = 18 };
+            if (_small == null) _small = new GUIStyle(GUI.skin.label) { fontSize = 14 };
             var combat = me.GetComponent<PlayerCombat>();
             var net = me.GetComponent<NetPlayer>();
             Goals(me);
@@ -89,6 +91,7 @@ namespace DjvaGoda.Game
             GUI.Label(new Rect(x + 248, y - 4, 200, 24), Mathf.CeilToInt(me.Vitals.Health) + " / " + Mathf.CeilToInt(me.Vitals.MaxHealth), _label);
             Bar(new Rect(x, y + 22, 240, 10), me.Vitals.Stamina / me.Vitals.MaxStamina, new Color(0.85f, 0.75f, 0.2f));
             Bar(new Rect(x, y + 38, 240, 10), me.Vitals.Mana / me.Vitals.MaxMana, new Color(0.25f, 0.45f, 0.95f));
+            Supplies(me, x, y + 54);
 
             var notes = "";
             if (me.Body.Bleeding) notes += "кровотечение — держите B, чтобы перевязаться (бинтов " + me.Body.Bandages + ")   ";
@@ -124,26 +127,38 @@ namespace DjvaGoda.Game
             {
                 var kind = known[i];
                 float cd = me.Spells.Cooldowns[(int)kind];
-                string title = (4 + i) + " " + Abilities.NameOf(kind) + (cd > 0f ? " " + Mathf.CeilToInt(cd) : "");
+                string title = KeyOf("ability_" + (i + 1)) + "  " + Abilities.NameOf(kind) + (cd > 0f ? "  " + Mathf.CeilToInt(cd) : "");
                 bool can = cd <= 0f && me.Vitals.Mana >= Abilities.ManaCost[(int)kind];
                 GUI.color = can ? Color.white : new Color(1f, 1f, 1f, 0.5f);
-                GUI.Box(new Rect(16 + i * 214, Screen.height - 160, 208, 30), title, new GUIStyle(GUI.skin.box) { fontSize = 14 });
+                var slot = new Rect(16 + i * 214, Screen.height - 170, 208, 38);
+                GUI.Box(slot, GUIContent.none);
+                Icons.Draw(new Rect(slot.x + 4, slot.y + 3, 32, 32), "ab_" + (int)kind, !can);
+                GUI.Label(new Rect(slot.x + 40, slot.y + 8, 168, 24), title, new GUIStyle(_small) { fontSize = 14 });
+                // Откат — тень, сползающая с иконки.
+                if (cd > 0f)
+                {
+                    float frac = Mathf.Clamp01(cd / Mathf.Max(0.01f, Abilities.Cooldown[(int)kind]));
+                    GUI.color = new Color(0f, 0f, 0f, 0.55f);
+                    GUI.DrawTexture(new Rect(slot.x + 4, slot.y + 3 + 32 * (1f - frac), 32, 32 * frac), Texture2D.whiteTexture);
+                }
                 GUI.color = Color.white;
             }
 
             if (combat == null) return;
             var set = Factions.WeaponsOf(me.Faction);
             float wx = Screen.width - 16 - set.Length * 120;
-            string[] keys = { "1", "2", "3", "7" };
             for (int i = 0; i < set.Length; i++)
             {
                 bool chosen = set[i] == combat.Weapon;
                 bool can = combat.Allowed(set[i]);
-                string title = (i < keys.Length ? keys[i] + " " : "") + Weapons.Names[(int)set[i]];
-                if (Weapons.UsesArrows(set[i])) title += " (" + me.Kit.Arrows + ")";
-                var style = new GUIStyle(GUI.skin.box) { fontSize = 15 };
+                string title = KeyOf("weapon_" + (i + 1)) + " " + Weapons.Names[(int)set[i]];
+                if (Weapons.UsesArrows(set[i])) title += " " + me.Kit.Arrows;
+                var slot = new Rect(wx + i * 120, Screen.height - 64, 114, 48);
                 GUI.color = chosen ? Color.white : (can ? new Color(1f, 1f, 1f, 0.55f) : new Color(1f, 0.4f, 0.4f, 0.55f));
-                GUI.Box(new Rect(wx + i * 120, Screen.height - 50, 114, 34), title, style);
+                GUI.Box(slot, GUIContent.none);
+                if (chosen) GUI.Box(slot, GUIContent.none);
+                Icons.Draw(new Rect(slot.x + 3, slot.y + 4, 40, 40), "wpn_" + (int)set[i], !can);
+                GUI.Label(new Rect(slot.x + 44, slot.y + 4, 70, 40), title, new GUIStyle(_small) { fontSize = 13, wordWrap = true });
                 GUI.color = Color.white;
             }
             if (!string.IsNullOrEmpty(combat.Refusal))
@@ -227,23 +242,42 @@ namespace DjvaGoda.Game
             return y + 24;
         }
 
-        /// Ресурсы стороны: при себе (под риском) и на складе.
+        /// Ресурсы стороны: иконка и число — при себе (под риском) и на складе.
         void Resources(Faction side)
         {
             var wallet = Treasury.Of(side);
-            string carried = "", stored = "";
+            const float cell = 86f, icon = 22f;
+            float w = 150f + cell * Res.Count;
+            float x0 = Screen.width * 0.5f - w * 0.5f;
+            GUI.Box(new Rect(x0, 80, w, 56), GUIContent.none);
+            GUI.Label(new Rect(x0 + 8, 83, 150, 24), "при себе / " + wallet.Carried.Capacity, _small);
+            bool store = wallet.Stored.Capacity > 0;
+            GUI.Label(new Rect(x0 + 8, 107, 150, 24), store ? "склад / " + wallet.Stored.Capacity
+                : side == Faction.Elves ? "склада нет" : "склада нет", _small);
             for (int i = 0; i < Res.Count; i++)
             {
-                carried += Res.Short[i] + " " + wallet.Carried.Amounts[i] + "   ";
-                stored += Res.Short[i] + " " + wallet.Stored.Amounts[i] + "   ";
+                float x = x0 + 150f + i * cell;
+                Icons.Draw(new Rect(x, 82, icon, icon), "res_" + i);
+                GUI.Label(new Rect(x + icon + 4, 82, cell - icon, 24), wallet.Carried.Amounts[i].ToString(), _label);
+                if (!store) continue;
+                Icons.Draw(new Rect(x, 108, icon, icon), "res_" + i, true);
+                GUI.Label(new Rect(x + icon + 4, 108, cell - icon, 24), wallet.Stored.Amounts[i].ToString(), _label);
             }
-            float w = 620;
-            GUI.Box(new Rect(Screen.width * 0.5f - w * 0.5f, 80, w, 52), GUIContent.none);
-            GUI.Label(new Rect(Screen.width * 0.5f - w * 0.5f + 8, 82, w, 24),
-                "при себе (до " + wallet.Carried.Capacity + "): " + carried, _label);
-            GUI.Label(new Rect(Screen.width * 0.5f - w * 0.5f + 8, 104, w, 24),
-                wallet.Stored.Capacity > 0 ? "склад (до " + wallet.Stored.Capacity + "): " + stored
-                    : side == Faction.Elves ? "склада у эльфов нет: всё при себе, тратится в лавке" : "склада нет — постройте", _label);
+        }
+
+        /// Запасы при себе — иконками у полос: зелья, бинты, стрелы.
+        void Supplies(PlayerCharacter me, float x, float y)
+        {
+            var items = new[]
+            {
+                new KeyValuePair<string, int>("potion_heal", me.Kit.PotionsHeal), new KeyValuePair<string, int>("potion_mana", me.Kit.PotionsMana),
+                new KeyValuePair<string, int>("bandage", me.Body.Bandages), new KeyValuePair<string, int>("arrows", me.Kit.Arrows),
+            };
+            for (int i = 0; i < items.Length; i++)
+            {
+                Icons.Draw(new Rect(x + i * 64, y, 26, 26), items[i].Key, items[i].Value <= 0);
+                GUI.Label(new Rect(x + i * 64 + 28, y + 2, 40, 24), items[i].Value.ToString(), _label);
+            }
         }
 
         static void Bar(Rect rect, float fill, Color color)

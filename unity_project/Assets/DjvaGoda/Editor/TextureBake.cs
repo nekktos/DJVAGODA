@@ -49,6 +49,7 @@ namespace DjvaGoda.EditorTools
             AssetDatabase.Refresh();
             foreach (var path in Directory.GetFiles(Folder, "*.png")) Configure(path.Replace('\\', '/'));
             EnsureTemplate();
+            IconBake.BakeAll();
             AssetDatabase.SaveAssets();
             Debug.Log("[текстуры] собрано в " + Folder);
         }
