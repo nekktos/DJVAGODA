@@ -11,6 +11,8 @@
 //                           (проверка боя по сети)
 //   -cast N                 произносить заклинание из слота N (1..3), как
 //                           только оно готово
+//   -shot путь [секунды]    снимок экрана через N секунд после входа в
+//                           партию (по умолчанию 8) — проверка вида у клиента
 using System;
 using DjvaGoda.Core;
 using Unity.Netcode;
@@ -59,6 +61,14 @@ namespace DjvaGoda.Game
             if (attack >= 0 && attack + 1 < args.Length) int.TryParse(args[attack + 1], out _attackSlot);
             int cast = Array.IndexOf(args, "-cast");
             if (cast >= 0 && cast + 1 < args.Length) int.TryParse(args[cast + 1], out _castSlot);
+            int shot = Array.IndexOf(args, "-shot");
+            if (shot >= 0 && shot + 1 < args.Length)
+            {
+                _shotPath = args[shot + 1];
+                float delay;
+                if (shot + 2 < args.Length && float.TryParse(args[shot + 2], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out delay)) _shotDelay = delay;
+            }
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-host") _session.Host(PortAt(args, i + 1));
@@ -70,8 +80,22 @@ namespace DjvaGoda.Game
         int _attackSlot;
         int _castSlot;
 
+        string _shotPath;
+        float _shotDelay = 8f;
+
         void Update()
         {
+            if (_shotPath != null && InSession && NetworkManager.Singleton.LocalClient != null
+                && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+            {
+                _shotDelay -= Time.deltaTime;
+                if (_shotDelay <= 0f)
+                {
+                    ScreenCapture.CaptureScreenshot(_shotPath);
+                    Debug.Log("[снимок] " + _shotPath);
+                    _shotPath = null;
+                }
+            }
             if (!_walk && _attackSlot <= 0 && _castSlot <= 0) return;
             var net = NetworkManager.Singleton;
             if (net == null || net.LocalClient == null || net.LocalClient.PlayerObject == null) return;

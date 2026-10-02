@@ -41,6 +41,7 @@ namespace DjvaGoda.Game
             _prepared = true;
             // Подписка одна на сессию: Host/Join зовутся снова после выхода.
             Net.OnClientDisconnectCallback += Left;
+            Net.OnClientConnectedCallback += Joined;
             // Одобрение входит в сверяемый NetworkConfig: включено только у хоста —
             // клиент шлёт неполный запрос и хост его сбрасывает («NetworkConfig mismatch»).
             Net.NetworkConfig.ConnectionApproval = true;
@@ -48,7 +49,11 @@ namespace DjvaGoda.Game
 
         void OnDestroy()
         {
-            if (NetworkManager.Singleton != null) NetworkManager.Singleton.OnClientDisconnectCallback -= Left;
+            if (NetworkManager.Singleton != null)
+            {
+                NetworkManager.Singleton.OnClientDisconnectCallback -= Left;
+                NetworkManager.Singleton.OnClientConnectedCallback -= Joined;
+            }
         }
 
         static NetworkManager Net { get { return NetworkManager.Singleton; } }
@@ -177,6 +182,13 @@ namespace DjvaGoda.Game
             foreach (var pair in _faction)
                 if (pair.Value == (int)side && Net.ConnectedClients.ContainsKey(pair.Key)) count++;
             return count;
+        }
+
+        /// Клиент вошёл в партию: строка состояния больше не «подключаемся».
+        void Joined(ulong client)
+        {
+            if (Net.IsServer || client != Net.LocalClientId) return;
+            Status = "Подключено к партии.";
         }
 
         void Left(ulong client)
