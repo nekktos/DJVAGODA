@@ -31,11 +31,25 @@ namespace DjvaGoda.Game
             _shown = _combat.Weapon;
             if (_view != null) Destroy(_view.gameObject);
             _view = Build(_combat.Weapon);
-            _view.SetParent(transform, false);
-            _view.localPosition = Hand;
+            var figure = GetComponentInChildren<Figure>();
+            if (figure != null && figure.HandR != null) Hold(_view, figure.HandR, _combat.Weapon);
+            else
+            {
+                _view.SetParent(transform, false);
+                _view.localPosition = Hand;
+            }
         }
 
-        static Transform Build(WeaponKind kind)
+        /// В хвате кисти: клинок смотрит вперёд, пока рука опущена, и вверх при замахе.
+        public static void Hold(Transform weapon, Transform hand, WeaponKind kind)
+        {
+            weapon.SetParent(hand, false);
+            weapon.localPosition = Vector3.zero;
+            bool held = kind == WeaponKind.Bow || kind == WeaponKind.Spell;
+            weapon.localRotation = held ? Quaternion.identity : Quaternion.Euler(55f, 0f, 0f);
+        }
+
+        public static Transform Build(WeaponKind kind)
         {
             var root = new GameObject("Оружие: " + Weapons.Names[(int)kind]).transform;
             switch (kind)

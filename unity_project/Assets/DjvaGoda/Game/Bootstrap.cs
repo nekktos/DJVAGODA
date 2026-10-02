@@ -56,19 +56,11 @@ namespace DjvaGoda.Game
             return Player;
         }
 
-        /// Капсула-заглушка цвета стороны — отдельным телом: у примитива центр
-        /// посередине, а коллайдер персонажа (CharacterController) стоит от ног вверх.
+        /// Тело персонажа — фигура стороны (Figure): ноги в начале координат
+        /// корня, там же, где стоит CharacterController.
         public static void AddBody(Transform root, Faction side)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = "Тело";
-            var capsule = body.GetComponent<CapsuleCollider>();
-            if (capsule != null) Destroy(capsule);
-            body.transform.SetParent(root, false);
-            body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-            body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
-            var view = body.GetComponent<MeshRenderer>();
-            if (view != null) view.sharedMaterial = Palette.Side(side);
+            Figure.Build(root, FigureLook.Hero(side));
         }
     }
 }

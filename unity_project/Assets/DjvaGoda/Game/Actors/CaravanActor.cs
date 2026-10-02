@@ -158,26 +158,80 @@ namespace DjvaGoda.Game
             return actor;
         }
 
-        /// Вид и зоны попадания: телега и упряжка спереди.
+        /// Вид и зоны попадания: крытая повозка на четырёх колёсах, оглобли,
+        /// флаг стороны; упряжка спереди — сколько лошадей, столько и видно
+        /// (ShowHarness). Корень стоит в метре над землёй (Update).
         public static void Build(Transform root, Faction side, Actor owner)
         {
-            var cart = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cart.name = "Телега";
-            Destroy(cart.GetComponent<Collider>());
-            cart.transform.SetParent(root, false);
-            cart.transform.localPosition = new Vector3(0f, 0.2f, 0f);
-            cart.transform.localScale = new Vector3(2.6f, 2f, 4.4f);
-            cart.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("wood");
-            var flag = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            flag.name = "Флаг";
-            Destroy(flag.GetComponent<Collider>());
-            flag.transform.SetParent(root, false);
-            flag.transform.localPosition = new Vector3(0f, 1.6f, -1.6f);
-            flag.transform.localScale = new Vector3(0.1f, 1.2f, 0.8f);
-            flag.GetComponent<MeshRenderer>().sharedMaterial = Palette.Side(side);
+            var view = new GameObject("Телега").transform;
+            view.SetParent(root, false);
+            var e = BodyShapes.Ellipsoid();
+            const float ground = -1f;
+            // Кузов: днище и борта из досок.
+            BodyShapes.Part(view, "Днище", Box(), "wood", new Vector3(0f, -0.3f, 0f), new Vector3(2.2f, 0.12f, 4f));
+            for (int s = -1; s <= 1; s += 2)
+            {
+                BodyShapes.Part(view, "Борт", Box(), "wood", new Vector3(1.08f * s, 0f, 0f), new Vector3(0.08f, 0.5f, 4f));
+                BodyShapes.Part(view, "Торец", Box(), "wood", new Vector3(0f, 0f, 1.98f * s), new Vector3(2.2f, 0.5f, 0.08f));
+                // Колёса: обод, ступица; оси под кузовом.
+                for (int f = -1; f <= 1; f += 2)
+                {
+                    var wheel = BodyShapes.Joint(view, "Колесо", new Vector3(1.22f * s, ground + 0.55f, 1.3f * f));
+                    wheel.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                    BodyShapes.Part(wheel, "Обод", BodyShapes.Loft("колесо", new[]
+                    {
+                        new BodyShapes.Ring(-0.06f, 0.55f, 0.55f), new BodyShapes.Ring(0.06f, 0.55f, 0.55f),
+                    }, 16), "wood", Vector3.zero, Vector3.one);
+                    BodyShapes.Part(wheel, "Ступица", BodyShapes.Loft("ступица", new[]
+                    {
+                        new BodyShapes.Ring(-0.12f, 0.12f, 0.12f), new BodyShapes.Ring(0.12f, 0.12f, 0.12f),
+                    }, 8), "dark_metal", Vector3.zero, Vector3.one);
+                }
+                // Оглобли к упряжке.
+                BodyShapes.Part(view, "Оглобля", BodyShapes.Loft("оглобля", new[]
+                {
+                    new BodyShapes.Ring(0f, 0.05f, 0.05f), new BodyShapes.Ring(2.4f, 0.04f, 0.04f),
+                }, 6), "wood", new Vector3(0.55f * s, -0.35f, 2f), Vector3.one, Quaternion.Euler(84f, 0f, 0f));
+            }
+            // Полотняный верх на дугах.
+            BodyShapes.Part(view, "Верх", BodyShapes.Dome(16, 6), "linen", new Vector3(0f, 0.25f, 0f), new Vector3(2.25f, 1.7f, 3.9f));
+            BodyShapes.Part(view, "Древко", BodyShapes.Loft("древко", new[]
+            {
+                new BodyShapes.Ring(0f, 0.035f, 0.035f), new BodyShapes.Ring(1.6f, 0.03f, 0.03f),
+            }, 6), "wood", new Vector3(0.9f, 0f, -1.8f), Vector3.one);
+            BodyShapes.Part(view, "Флаг", Box(), "side_" + (int)side, new Vector3(0.9f, 1.35f, -2.15f), new Vector3(0.04f, 0.5f, 0.7f));
+            new GameObject("Упряжка").transform.SetParent(root, false);
             if (owner == null) return;
             Zone(root, owner, "torso", new Vector3(0f, 0.2f, 0f), new Vector3(2.6f, 2f, 4.4f));
             Zone(root, owner, "harness", new Vector3(0f, 0f, 3.4f), new Vector3(1.6f, 1.6f, 2.2f));
+        }
+
+        static Mesh _box;
+
+        static Mesh Box()
+        {
+            if (_box == null)
+            {
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                _box = cube.GetComponent<MeshFilter>().sharedMesh;
+                Destroy(cube);
+            }
+            return _box;
+        }
+
+        /// Упряжка видна, как есть: парами перед повозкой, по числу живых лошадей.
+        public static void ShowHarness(Transform root, int horses)
+        {
+            var team = root.Find("Упряжка");
+            if (team == null || team.childCount == horses) return;
+            for (int i = team.childCount - 1; i >= 0; i--) Destroy(team.GetChild(i).gameObject);
+            team.DetachChildren();
+            for (int i = 0; i < horses; i++)
+            {
+                var horse = Beast.Horse(team);
+                int pair = i / 2;
+                horse.transform.localPosition = new Vector3(i % 2 == 0 ? -0.6f : 0.6f, -1f, 3.4f + pair * 2.6f);
+            }
         }
 
         static void Zone(Transform root, Actor owner, string zone, Vector3 at, Vector3 size)
@@ -217,6 +271,7 @@ namespace DjvaGoda.Game
             float y = Mathf.MoveTowards(transform.position.y, ground + 1f, ClimbRate * Time.deltaTime);
             var at = Trip.Position.ToUnity();
             transform.SetPositionAndRotation(new Vector3(at.x, y, at.z), CoreSpace.YawToRotation(Trip.Yaw));
+            ShowHarness(transform, Trip.Horses);
             if (e == TripEvent.Finished)
             {
                 if (Home != null) Home(this);

@@ -80,7 +80,7 @@ namespace DjvaGoda.Game
 
         void SpawnBody()
         {
-            var go = Agents.Make(AgentRole.Swordsman, Faction.Guard, CommanderPost.Position + new V3(0f, 0.5f, 0f), "Распорядитель стражи");
+            var go = Agents.Make(AgentRole.Champion, Faction.Guard, CommanderPost.Position + new V3(0f, 0.5f, 0f), "Распорядитель стражи");
             var unit = go.AddComponent<UnitAgent>();
             unit.Setup(UnitKind.Swordsman, (int)Faction.Guard, 0, CommanderPost.Position, CommanderPost.Leash);
             unit.Champion = true;

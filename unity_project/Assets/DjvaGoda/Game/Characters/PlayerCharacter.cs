@@ -188,8 +188,9 @@ namespace DjvaGoda.Game
             _shownFallen = fallen;
             var body = transform.Find("Тело");
             if (body == null) return;
-            body.localRotation = fallen ? Quaternion.Euler(0f, 0f, 90f) : Quaternion.identity;
-            body.localPosition = new Vector3(0f, fallen ? 0.35f : 0.9f, 0f);
+            // Фигура стоит от ног: павший лежит на спине, у земли.
+            body.localRotation = fallen ? Quaternion.Euler(-90f, 0f, 0f) : Quaternion.identity;
+            body.localPosition = new Vector3(0f, fallen ? 0.15f : 0f, 0f);
         }
 
         /// Поставить на точку (возрождение): CharacterController помнит своё

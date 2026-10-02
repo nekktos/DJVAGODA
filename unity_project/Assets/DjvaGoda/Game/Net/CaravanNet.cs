@@ -59,6 +59,7 @@ namespace DjvaGoda.Game
             _cart.ShownOwner = Owner.Value;
             _cart.ShownState = State.Value;
             _cart.ShownLeft = Left.Value;
+            CaravanActor.ShowHarness(transform, Horses.Value);
         }
     }
 }

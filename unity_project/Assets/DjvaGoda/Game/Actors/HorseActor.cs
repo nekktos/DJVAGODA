@@ -1,4 +1,4 @@
-// Лошадь (перенос units/horse.gd). Не боец: не дерётся, не входит в отряд и
+// Лошадь (перенос units/horse.gd; вид — Beast.Horse). Не боец: не дерётся, не входит в отряд и
 // не принадлежит стороне. Её уводят из упряжки стоящего чужого обоза и ездят
 // сами (E рядом — сесть, E верхом — спешиться); её можно убить. Пока на ней
 // едут, её тело убрано, а всадник быстрее (HorseStats.RideSpeedScale в ядре).
@@ -73,11 +73,8 @@ namespace DjvaGoda.Game
             if (_view != null) return;
             _view = new GameObject("Вид").transform;
             _view.SetParent(transform, false);
-            Box("Тело", new Vector3(0f, 1.3f, 0f), new Vector3(0.8f, 0.9f, 2.2f));
-            Box("Шея", new Vector3(0f, 1.9f, 1.0f), new Vector3(0.4f, 0.9f, 0.5f));
-            Box("Голова", new Vector3(0f, 2.3f, 1.35f), new Vector3(0.35f, 0.35f, 0.7f));
-            for (int i = 0; i < 4; i++)
-                Box("Нога", new Vector3(i % 2 == 0 ? -0.3f : 0.3f, 0.45f, i < 2 ? 0.8f : -0.8f), new Vector3(0.2f, 0.9f, 0.2f));
+            Beast.Horse(_view);
+            Saddle(_view);
             if (!hittable) return;
             var zone = new GameObject("Зона попадания");
             zone.layer = HitZone.Layer;
@@ -91,15 +88,11 @@ namespace DjvaGoda.Game
             hit.Owner = this;
         }
 
-        void Box(string name, Vector3 at, Vector3 size)
+        /// Седло и потник — лошадь уведена из упряжки и ждёт всадника.
+        public static void Saddle(Transform horse)
         {
-            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            part.name = name;
-            Destroy(part.GetComponent<Collider>());
-            part.transform.SetParent(_view, false);
-            part.transform.localPosition = at;
-            part.transform.localScale = size;
-            part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("bark");
+            BodyShapes.Part(horse, "Потник", BodyShapes.Dome(), "accent", new Vector3(0f, Beast.HorseBack - 0.06f, 0.05f), new Vector3(0.78f, 0.14f, 0.8f));
+            BodyShapes.Part(horse, "Седло", BodyShapes.Dome(), "leather", new Vector3(0f, Beast.HorseBack - 0.03f, 0.05f), new Vector3(0.52f, 0.18f, 0.56f));
         }
 
         /// Под седлом — тела нет; спешились — снова видна.

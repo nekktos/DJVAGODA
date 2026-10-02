@@ -97,46 +97,26 @@ namespace DjvaGoda.Game
         }
     }
 
-    /// Вид батрака, бойца, волка: капсула-заглушка цвета стороны.
+    /// Вид батрака, бойца, распорядителя — фигура (Figure) по роли и стороне,
+    /// с орудием в руке; зверь призыва — волк (Beast).
     public static class AgentBody
     {
         public static void Build(Transform root, AgentRole role, Faction side)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = "Тело";
-            Object.Destroy(body.GetComponent<Collider>());
-            body.transform.SetParent(root, false);
+            if (role == AgentRole.Beast)
+            {
+                Beast.Wolf(root).name = "Тело";
+                return;
+            }
+            var figure = Figure.Build(root, FigureLook.Agent(role, side));
+            WeaponKind tool;
             switch (role)
             {
-                case AgentRole.Beast:
-                    body.transform.localPosition = new Vector3(0f, 0.5f, 0f);
-                    body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                    body.transform.localScale = new Vector3(0.6f, 0.7f, 0.6f);
-                    break;
-                case AgentRole.Labourer:
-                    body.transform.localPosition = new Vector3(0f, 0.8f, 0f);
-                    body.transform.localScale = new Vector3(0.6f, 0.8f, 0.6f);
-                    break;
-                case AgentRole.Champion:
-                    body.transform.localPosition = new Vector3(0f, 1.1f, 0f);
-                    body.transform.localScale = new Vector3(0.9f, 1.1f, 0.9f);
-                    break;
-                default:
-                    body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-                    body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
-                    break;
+                case AgentRole.Archer: tool = WeaponKind.Bow; break;
+                case AgentRole.Labourer: tool = WeaponKind.Axe; break;
+                default: tool = WeaponKind.Sword; break;
             }
-            body.GetComponent<MeshRenderer>().sharedMaterial = Palette.Side(side);
-            // Батрак — без оружия, лучник — с луком за спиной: видно издали.
-            if (role == AgentRole.Archer)
-            {
-                var bow = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                Object.Destroy(bow.GetComponent<Collider>());
-                bow.transform.SetParent(root, false);
-                bow.transform.localPosition = new Vector3(0f, 1.2f, -0.3f);
-                bow.transform.localScale = new Vector3(0.05f, 1.1f, 0.05f);
-                bow.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("wood");
-            }
+            WeaponView.Hold(WeaponView.Build(tool), figure.HandR, tool);
         }
     }
 }

@@ -23,6 +23,7 @@ namespace DjvaGoda.Game
 
         readonly PathFollower _follower = new PathFollower();
         CharacterController _controller;
+        Figure _figure;
         float _fall;
 
         public override bool Alive { get { return Health > 0f; } }
@@ -125,6 +126,8 @@ namespace DjvaGoda.Game
         void Strike(Sighting target)
         {
             if (!Brain.TryStrike(true)) return;
+            if (_figure == null) _figure = GetComponentInChildren<Figure>();
+            if (_figure != null && !Brain.IsArcher) _figure.Swing();
             var victim = Actor.ById(target.Id);
             if (victim == null) return;
             // Лучник стреляет стрелой (полёт — ProjectileFlight); пока — удар без полёта.
