@@ -73,7 +73,7 @@ namespace DjvaGoda.Game
             go.transform.SetParent(root, false);
             go.transform.localPosition = at;
             go.transform.localScale = size;
-            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of(material);
+            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving(material);
         }
     }
 }

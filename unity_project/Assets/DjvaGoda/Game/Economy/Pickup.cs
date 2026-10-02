@@ -82,14 +82,14 @@ namespace DjvaGoda.Game
             {
                 part.transform.localPosition = new Vector3(0f, 0.3f, 0f);
                 part.transform.localScale = new Vector3(0.9f, 0.6f, 0.7f);
-                part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of("wood");
+                part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("wood");
             }
             else
             {
                 part.transform.localPosition = new Vector3(0f, 0.12f, 0f);
                 part.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
                 part.transform.localScale = new Vector3(0.18f, kind == PickupKind.Arm ? 0.35f : 0.45f, 0.18f);
-                part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of("accent");
+                part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("accent");
             }
         }
 

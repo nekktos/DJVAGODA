@@ -55,7 +55,7 @@ namespace DjvaGoda.Game
             go.name = Weapons.Names[(int)kind];
             Destroy(go.GetComponent<Collider>());
             go.transform.localScale = fire ? Vector3.one * 0.45f : new Vector3(0.05f, 0.05f, 0.8f);
-            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of(fire ? "accent" : "wood");
+            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving(fire ? "accent" : "wood");
             go.transform.position = origin.ToUnity();
             var shot = go.AddComponent<Shot>();
             shot.Id = id;

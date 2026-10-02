@@ -167,7 +167,7 @@ namespace DjvaGoda.Game
             cart.transform.SetParent(root, false);
             cart.transform.localPosition = new Vector3(0f, 0.2f, 0f);
             cart.transform.localScale = new Vector3(2.6f, 2f, 4.4f);
-            cart.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of("wood");
+            cart.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("wood");
             var flag = GameObject.CreatePrimitive(PrimitiveType.Cube);
             flag.name = "Флаг";
             Destroy(flag.GetComponent<Collider>());

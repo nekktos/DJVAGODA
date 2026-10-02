@@ -99,7 +99,7 @@ namespace DjvaGoda.Game
             part.transform.SetParent(_view, false);
             part.transform.localPosition = at;
             part.transform.localScale = size;
-            part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of("bark");
+            part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("bark");
         }
 
         /// Под седлом — тела нет; спешились — снова видна.

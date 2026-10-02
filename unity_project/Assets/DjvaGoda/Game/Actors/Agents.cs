@@ -135,7 +135,7 @@ namespace DjvaGoda.Game
                 bow.transform.SetParent(root, false);
                 bow.transform.localPosition = new Vector3(0f, 1.2f, -0.3f);
                 bow.transform.localScale = new Vector3(0.05f, 1.1f, 0.05f);
-                bow.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of("wood");
+                bow.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("wood");
             }
         }
     }
