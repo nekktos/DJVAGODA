@@ -332,12 +332,30 @@ namespace DjvaGoda.Game
             Kind = kind;
             Placing = true;
             if (_ghost != null) Destroy(_ghost.gameObject);
-            var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            box.name = "Призрак: " + Res.BuildingNames[(int)kind];
-            Destroy(box.GetComponent<Collider>());
-            var size = Res.BuildingSize(kind).ToUnity();
-            box.transform.localScale = new Vector3(size.x, Mathf.Min(size.y, 1.2f), size.z);
-            _ghost = box.transform;
+            // Призрак — та же модель, что встанет, только светится насквозь.
+            _ghost = new GameObject("Призрак: " + Res.BuildingNames[(int)kind]).transform;
+            BuildingShapes.Build(_ghost, kind, 0, _character.Faction, true);
+            foreach (var c in _ghost.GetComponentsInChildren<Collider>()) Destroy(c);
+            _ghostRenderers = _ghost.GetComponentsInChildren<Renderer>();
+            _ghostValid = null;
+        }
+
+        Renderer[] _ghostRenderers;
+        bool? _ghostValid;
+
+        void Paint(bool valid)
+        {
+            if (_ghostValid == valid) return;
+            _ghostValid = valid;
+            var material = Palette.Glow(valid ? "ghost_ok" : "ghost_bad");
+            foreach (var r in _ghostRenderers)
+            {
+                if (r == null) continue;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                var shared = r.sharedMaterials;
+                for (int i = 0; i < shared.Length; i++) shared[i] = material;
+                r.sharedMaterials = shared;
+            }
         }
 
         void Stop()
@@ -367,9 +385,8 @@ namespace DjvaGoda.Game
             _point = hit.point.ToCore();
             float top;
             _valid = Fits(Kind, _point, out top) && (!Res.IsElfHouse(Kind) || _point.FlatDistance(_character.Feet) <= Deals.ElfBuildReach);
-            var size = Res.BuildingSize(Kind).ToUnity();
-            _ghost.position = new Vector3(_point.X, top + Mathf.Min(size.y, 1.2f) * 0.5f, _point.Z);
-            _ghost.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of(_valid ? "ghost_ok" : "ghost_bad");
+            _ghost.position = new Vector3(_point.X, top, _point.Z);
+            Paint(_valid);
         }
 
         /// Годится ли место: земля пятью лучами (перепад не больше ступени) и

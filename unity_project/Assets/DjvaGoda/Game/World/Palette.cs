@@ -103,6 +103,9 @@ namespace DjvaGoda.Game
             { "heal", new Color(0.45f, 1f, 0.55f) },
             { "rally", new Color(1f, 0.85f, 0.35f) },
             { "nature", new Color(0.35f, 0.85f, 0.3f) },
+            // Призрак постановки: та же модель постройки, светится насквозь.
+            { "ghost_ok", new Color(0.35f, 0.95f, 0.4f, 0.55f) },
+            { "ghost_bad", new Color(1f, 0.25f, 0.2f, 0.55f) },
         };
 
         static readonly Dictionary<string, Material> Cache = new Dictionary<string, Material>();
