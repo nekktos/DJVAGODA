@@ -1,6 +1,7 @@
 // Постройка в мире (перенос economy/building.gd): состояние — BuildingState
-// ядра (стройка, ступени, урон с правилом стражи), вид — серая коробка
-// размером с постройку; недостроенная растёт из земли. Твёрдая постройка
+// ядра (стройка, ступени, урон с правилом стражи), вид — своя модель
+// (BuildingShapes): стены по ступени укрепления, крыша, приметы вида;
+// недостроенная — леса и растущие стены. Твёрдая постройка
 // вырезает себя из запечённой сетки навигации (NavMeshObstacle), снесённая —
 // возвращает место.
 //
@@ -110,26 +111,22 @@ namespace DjvaGoda.Game
         void Rebuild()
         {
             if (_view != null) Destroy(_view.gameObject);
-            var size = Res.BuildingSize(State.Kind).ToUnity();
-            var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            box.name = "Вид";
-            box.transform.SetParent(transform, false);
-            var grade = State.Grade <= 0 ? "wood" : (State.Grade == 1 ? "stone" : "dark_stone");
-            box.GetComponent<MeshRenderer>().sharedMaterial = Palette.Of(grade);
-            // Поле проходимо: без коллизии.
-            if (Res.Walkable(State.Kind)) Destroy(box.GetComponent<Collider>());
-            _view = box.transform;
+            // Модель по виду и ступени (BuildingShapes); недостроенная — леса и стены без крыши.
+            _view = BuildingShapes.Build(transform, State.Kind, State.Grade, State.Side, State.Done);
+            _walls = _view.Find(BuildingShapes.WallsName);
             _shownGrade = State.Grade;
             _wasDone = State.Done;
-            ShowProgress(size);
+            ShowProgress(Res.BuildingSize(State.Kind).ToUnity());
         }
 
-        /// Недостроенная — по пояс: видно, сколько осталось.
+        Transform _walls;
+
+        /// Недостроенная — стены растут с ходом стройки: видно, сколько осталось.
         void ShowProgress(Vector3 size)
         {
-            float height = size.y * (State.Done ? 1f : Mathf.Max(0.15f, State.Progress));
-            _view.localScale = new Vector3(size.x, height, size.z);
-            _view.localPosition = new Vector3(0f, height * 0.5f, 0f);
+            if (_walls == null) return;
+            float height = State.Done ? 1f : Mathf.Max(0.12f, State.Progress);
+            _walls.localScale = new Vector3(1f, height, 1f);
         }
 
         /// Вырез в сетке во всю постройку (а не по недостроенной высоте):
