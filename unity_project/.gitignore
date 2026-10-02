@@ -23,3 +23,7 @@
 .idea/
 .vscode/
 crashlytics-build.properties
+
+# Временная сцена тест-раннера Unity: создаётся на каждый прогон PlayMode.
+/[Aa]ssets/InitTestScene*.unity
+/[Aa]ssets/InitTestScene*.unity.meta
