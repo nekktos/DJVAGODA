@@ -1,5 +1,6 @@
 // Вспышка заклинания (перенос effects.gd: druid): только картинка, на игру не
-// влияет. Шар цвета заклинания растёт и гаснет за полсекунды.
+// влияет. Светящаяся сфера цвета заклинания (DjvaGoda/Glow) растёт и гаснет
+// за полсекунды.
 using DjvaGoda.Core;
 using UnityEngine;
 
@@ -13,12 +14,12 @@ namespace DjvaGoda.Game
 
         public static void Show(AbilityKind kind, Vector3 at)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            go.name = "Вспышка: " + Abilities.NameOf(kind);
-            Destroy(go.GetComponent<Collider>());
+            var go = new GameObject("Вспышка: " + Abilities.NameOf(kind));
             go.transform.position = at + Vector3.up;
             bool villain = kind == AbilityKind.Paralysis || kind == AbilityKind.Wither || kind == AbilityKind.Blind;
-            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Side(villain ? Faction.Villain : Faction.Elves);
+            string glow = villain ? "curse" : kind == AbilityKind.Heal ? "heal" : kind == AbilityKind.Rally ? "rally" : "nature";
+            BodyShapes.Part(go.transform, "Сфера", BodyShapes.Ellipsoid(16, 10), "dark_metal", Vector3.zero, Vector3.one)
+                .GetComponent<MeshRenderer>().sharedMaterial = Palette.Glow(glow);
             var fx = go.AddComponent<SpellFx>();
             fx._size = kind == AbilityKind.Heal || kind == AbilityKind.Rally ? Abilities.RangeOf(kind) * 0.5f : 2.5f;
         }

@@ -89,8 +89,19 @@ namespace DjvaGoda.Game
             { "ore_3", new Color(0.55f, 0.30f, 0.18f) }, { "ore_5", new Color(0.10f, 0.10f, 0.11f) },
         };
 
+        /// Свечение: огонь, угли, заклинания (шейдер DjvaGoda/Glow).
+        static readonly Dictionary<string, Color> GlowColors = new Dictionary<string, Color>
+        {
+            { "fire", new Color(1f, 0.45f, 0.12f) },
+            { "embers", new Color(1f, 0.32f, 0.06f) },
+            { "curse", new Color(0.62f, 0.22f, 0.95f) },
+            { "heal", new Color(0.45f, 1f, 0.55f) },
+            { "rally", new Color(1f, 0.85f, 0.35f) },
+            { "nature", new Color(0.35f, 0.85f, 0.3f) },
+        };
+
         static readonly Dictionary<string, Material> Cache = new Dictionary<string, Material>();
-        static Material _stub, _triplanar;
+        static Material _stub, _triplanar, _glow;
         static bool _loaded;
 
         /// Материал неподвижного: текстура лежит в мире.
@@ -111,6 +122,26 @@ namespace DjvaGoda.Game
             _stub = Resources.Load<Material>("Stub");
             if (_stub == null) _stub = new Material(Shader.Find("Standard"));
             _triplanar = Resources.Load<Material>("Triplanar");
+            _glow = Resources.Load<Material>("Glow");
+        }
+
+        /// Светящийся полупрозрачный материал (огонь, заклинания); нет образца — оттенок на заглушке.
+        public static Material Glow(string key)
+        {
+            string id = "свечение " + key;
+            Material material;
+            if (Cache.TryGetValue(id, out material) && material != null) return material;
+            Load();
+            Color color;
+            if (!GlowColors.TryGetValue(key, out color)) color = Color.white;
+            if (_glow != null)
+            {
+                material = new Material(_glow) { name = "Мир " + id, enableInstancing = true };
+                material.SetColor("_BaseColor", color);
+            }
+            else material = new Material(_stub) { name = "Заглушка " + id, color = color };
+            Cache[id] = material;
+            return material;
         }
 
         static Material Get(string key, bool moving)

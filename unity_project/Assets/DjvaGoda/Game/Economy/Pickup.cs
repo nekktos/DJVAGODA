@@ -73,24 +73,45 @@ namespace DjvaGoda.Game
             Make(limb == Limb.ArmL || limb == Limb.ArmR ? PickupKind.Arm : PickupKind.Leg, at);
         }
 
+        /// Вид: куча — мешок, ящик и щит; рука или нога — в рукаве или штанине, с кистью или сапогом.
         public static void Build(Transform root, PickupKind kind)
         {
-            var part = GameObject.CreatePrimitive(kind == PickupKind.Loot ? PrimitiveType.Cube : PrimitiveType.Capsule);
-            Destroy(part.GetComponent<Collider>());
-            part.transform.SetParent(root, false);
+            var e = BodyShapes.Ellipsoid();
             if (kind == PickupKind.Loot)
             {
-                part.transform.localPosition = new Vector3(0f, 0.3f, 0f);
-                part.transform.localScale = new Vector3(0.9f, 0.6f, 0.7f);
-                part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("wood");
+                BodyShapes.Part(root, "Мешок", e, "linen", new Vector3(0f, 0.3f, 0f), new Vector3(0.7f, 0.6f, 0.6f));
+                BodyShapes.Part(root, "Горловина", BodyShapes.Cone(8), "linen", new Vector3(0f, 0.55f, 0f), new Vector3(0.25f, 0.22f, 0.25f));
+                BodyShapes.Part(root, "Завязка", e, "leather", new Vector3(0f, 0.58f, 0f), new Vector3(0.18f, 0.05f, 0.18f));
+                BodyShapes.Part(root, "Ящик", WeaponShapesBox(), "wood", new Vector3(0.5f, 0.2f, 0.25f), new Vector3(0.45f, 0.4f, 0.45f),
+                    Quaternion.Euler(0f, 25f, 0f));
+                BodyShapes.Part(root, "Щит", BodyShapes.Loft("щит", new[] { new BodyShapes.Ring(0f, 0.32f, 0.32f), new BodyShapes.Ring(0.04f, 0.3f, 0.3f) }, 12),
+                    "wood", new Vector3(-0.45f, 0.04f, 0.2f), Vector3.one, Quaternion.Euler(8f, 0f, 0f));
+                return;
             }
-            else
+            bool arm = kind == PickupKind.Arm;
+            float length = arm ? 0.55f : 0.85f;
+            var limb = BodyShapes.Loft(arm ? "рука на земле" : "нога на земле", new[]
             {
-                part.transform.localPosition = new Vector3(0f, 0.12f, 0f);
-                part.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
-                part.transform.localScale = new Vector3(0.18f, kind == PickupKind.Arm ? 0.35f : 0.45f, 0.18f);
-                part.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving("accent");
+                new BodyShapes.Ring(0f, arm ? 0.055f : 0.08f, arm ? 0.055f : 0.08f), new BodyShapes.Ring(-length, arm ? 0.038f : 0.05f, arm ? 0.038f : 0.05f),
+            }, 8);
+            var part = BodyShapes.Part(root, arm ? "Рука" : "Нога", limb, arm ? "linen" : "leather", new Vector3(length * 0.5f, 0.08f, 0f), Vector3.one,
+                Quaternion.Euler(0f, 0f, 90f));
+            BodyShapes.Part(part, "Срез", e, "accent", Vector3.zero, new Vector3(0.1f, 0.03f, 0.1f));
+            if (arm) BodyShapes.Part(part, "Кисть", e, "skin", new Vector3(0f, -length - 0.04f, 0f), new Vector3(0.075f, 0.1f, 0.05f));
+            else BodyShapes.Part(part, "Сапог", e, "leather", new Vector3(0f, -length, 0.06f), new Vector3(0.1f, 0.07f, 0.25f));
+        }
+
+        static Mesh _box;
+
+        static Mesh WeaponShapesBox()
+        {
+            if (_box == null)
+            {
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                _box = cube.GetComponent<MeshFilter>().sharedMesh;
+                Destroy(cube);
             }
+            return _box;
         }
 
         void OnEnable() { All.Add(this); }

@@ -195,7 +195,9 @@ namespace DjvaGoda.Game
                         Post(root, "wood", new Vector3(w * 0.33f * s, 0f, d * 0.5f + 3f), wallH * 0.7f, 0.1f);
                     Box(root, "Наковальня", "dark_metal", new Vector3(-1f, 0.6f, d * 0.5f + 1.6f), new Vector3(0.9f, 0.35f, 0.4f));
                     Box(root, "Колода", "wood", new Vector3(-1f, 0.25f, d * 0.5f + 1.6f), new Vector3(0.6f, 0.5f, 0.6f));
-                    Box(root, "Угли", "accent", new Vector3(1.4f, 0.55f, d * 0.5f + 1.2f), new Vector3(1f, 0.25f, 0.8f));
+                    Box(root, "Очаг", "stone", new Vector3(1.4f, 0.35f, d * 0.5f + 1.2f), new Vector3(1.2f, 0.7f, 1f));
+                    Box(root, "Угли", "accent", new Vector3(1.4f, 0.72f, d * 0.5f + 1.2f), new Vector3(1f, 0.08f, 0.8f))
+                        .GetComponent<MeshRenderer>().sharedMaterial = Palette.Glow("embers");
                     break;
             }
         }

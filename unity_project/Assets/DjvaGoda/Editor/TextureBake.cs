@@ -83,15 +83,21 @@ namespace DjvaGoda.EditorTools
 
         static void EnsureTemplate()
         {
-            const string path = "Assets/DjvaGoda/Resources/Triplanar.mat";
+            Template("Triplanar", "DjvaGoda/Triplanar");
+            Template("Glow", "DjvaGoda/Glow");
+        }
+
+        static void Template(string name, string shaderName)
+        {
+            string path = "Assets/DjvaGoda/Resources/" + name + ".mat";
             if (AssetDatabase.LoadAssetAtPath<Material>(path) != null) return;
-            var shader = Shader.Find("DjvaGoda/Triplanar");
+            var shader = Shader.Find(shaderName);
             if (shader == null)
             {
-                Debug.LogError("[текстуры] шейдер DjvaGoda/Triplanar не найден");
+                Debug.LogError("[текстуры] шейдер " + shaderName + " не найден");
                 return;
             }
-            AssetDatabase.CreateAsset(new Material(shader) { name = "Triplanar" }, path);
+            AssetDatabase.CreateAsset(new Material(shader) { name = name }, path);
         }
 
         // --- бесшовный шум ------------------------------------------------------

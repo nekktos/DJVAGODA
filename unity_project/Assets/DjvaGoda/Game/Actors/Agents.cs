@@ -116,7 +116,7 @@ namespace DjvaGoda.Game
                 case AgentRole.Labourer: tool = WeaponKind.Axe; break;
                 default: tool = WeaponKind.Sword; break;
             }
-            WeaponView.Hold(WeaponView.Build(tool), figure.HandR, tool);
+            WeaponView.Hold(WeaponShapes.Build(tool), figure.HandR, tool);
         }
     }
 }

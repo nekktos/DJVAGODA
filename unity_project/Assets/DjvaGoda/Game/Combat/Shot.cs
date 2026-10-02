@@ -51,11 +51,17 @@ namespace DjvaGoda.Game
         static Shot Make(int id, WeaponKind kind, V3 origin, V3 dir)
         {
             bool fire = kind == WeaponKind.Spell;
-            var go = GameObject.CreatePrimitive(fire ? PrimitiveType.Sphere : PrimitiveType.Cube);
-            go.name = Weapons.Names[(int)kind];
-            Destroy(go.GetComponent<Collider>());
-            go.transform.localScale = fire ? Vector3.one * 0.45f : new Vector3(0.05f, 0.05f, 0.8f);
-            go.GetComponent<MeshRenderer>().sharedMaterial = Palette.Moving(fire ? "accent" : "wood");
+            GameObject go;
+            if (fire)
+            {
+                // Огненный шар: ядро и ореол свечения.
+                go = new GameObject(Weapons.Names[(int)kind]);
+                BodyShapes.Part(go.transform, "Ядро", BodyShapes.Ellipsoid(), "dark_metal", Vector3.zero, Vector3.one * 0.3f)
+                    .GetComponent<MeshRenderer>().sharedMaterial = Palette.Glow("fire");
+                BodyShapes.Part(go.transform, "Ореол", BodyShapes.Ellipsoid(), "dark_metal", Vector3.zero, Vector3.one * 0.6f)
+                    .GetComponent<MeshRenderer>().sharedMaterial = Palette.Glow("embers");
+            }
+            else go = WeaponShapes.Arrow(kind == WeaponKind.Crossbow).gameObject;
             go.transform.position = origin.ToUnity();
             var shot = go.AddComponent<Shot>();
             shot.Id = id;
