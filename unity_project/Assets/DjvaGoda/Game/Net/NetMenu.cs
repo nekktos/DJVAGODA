@@ -14,6 +14,7 @@
 //   -shot путь [секунды]    снимок экрана через N секунд после входа в
 //                           партию (по умолчанию 8) — проверка вида у клиента
 using System;
+using System.Collections.Generic;
 using DjvaGoda.Core;
 using Unity.Netcode;
 using UnityEngine;
@@ -69,6 +70,19 @@ namespace DjvaGoda.Game
                 if (shot + 2 < args.Length && float.TryParse(args[shot + 2], System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out delay)) _shotDelay = delay;
             }
+            // -deals "вид:арг@сек,…" — заявки сделок по расписанию после входа
+            // (проверки вдвоём: подбор, верстак, прокачка у клиента).
+            int deals = Array.IndexOf(args, "-deals");
+            if (deals >= 0 && deals + 1 < args.Length)
+                foreach (var item in args[deals + 1].Split(','))
+                {
+                    var parts = item.Split('@', ':');
+                    int kind, arg;
+                    float at;
+                    if (parts.Length == 3 && int.TryParse(parts[0], out kind) && int.TryParse(parts[1], out arg)
+                        && float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out at))
+                        _deals.Add(new KeyValuePair<float, Vector2Int>(at, new Vector2Int(kind, arg)));
+                }
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-host") _session.Host(PortAt(args, i + 1));
@@ -79,6 +93,9 @@ namespace DjvaGoda.Game
         bool _walk;
         int _attackSlot;
         int _castSlot;
+
+        readonly List<KeyValuePair<float, Vector2Int>> _deals = new List<KeyValuePair<float, Vector2Int>>();
+        float _inSession;
 
         string _shotPath;
         float _shotDelay = 8f;
@@ -94,6 +111,20 @@ namespace DjvaGoda.Game
                     ScreenCapture.CaptureScreenshot(_shotPath);
                     Debug.Log("[снимок] " + _shotPath);
                     _shotPath = null;
+                }
+            }
+            if (_deals.Count > 0 && InSession && NetworkManager.Singleton.LocalClient != null
+                && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+            {
+                _inSession += Time.deltaTime;
+                for (int i = _deals.Count - 1; i >= 0; i--)
+                {
+                    if (_inSession < _deals[i].Key) continue;
+                    var shop = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<Shop>();
+                    var deal = _deals[i].Value;
+                    if (shop != null) shop.Request((DealKind)deal.x, deal.y);
+                    Debug.Log("[сделка] заявка " + (DealKind)deal.x + " " + deal.y);
+                    _deals.RemoveAt(i);
                 }
             }
             if (!_walk && _attackSlot <= 0 && _castSlot <= 0) return;

@@ -40,6 +40,10 @@ namespace DjvaGoda.Game
                 Bar(new Rect(Screen.width * 0.5f - 120, 66, 240, 8), state.CaptureProgress, new Color(0.9f, 0.7f, 0.2f));
         }
 
+        /// Ряд заклинаний над полосами здоровья и строки состояния над ним.
+        static float SpellRow { get { return Screen.height - 170; } }
+        static float Lines { get { return SpellRow - 4; } }
+
         void OnGUI()
         {
             var me = _rig != null ? _rig.Target : null;
@@ -87,6 +91,7 @@ namespace DjvaGoda.Game
                 Bar(new Rect(cx - 20, cy + 16, 40, 4), combat.Cooldown / combat.CooldownFull, new Color(1f, 1f, 1f, 0.8f));
 
             float x = 16, y = Screen.height - 110;
+            // Строки состояния — над рядом заклинаний, а не поверх него.
             Bar(new Rect(x, y, 240, 16), me.Vitals.Health / me.Vitals.MaxHealth, new Color(0.8f, 0.15f, 0.15f));
             GUI.Label(new Rect(x + 248, y - 4, 200, 24), Mathf.CeilToInt(me.Vitals.Health) + " / " + Mathf.CeilToInt(me.Vitals.MaxHealth), _label);
             Bar(new Rect(x, y + 22, 240, 10), me.Vitals.Stamina / me.Vitals.MaxStamina, new Color(0.85f, 0.75f, 0.2f));
@@ -99,18 +104,18 @@ namespace DjvaGoda.Game
             if (me.Spells.Paralysis > 0f) notes += "паралич   ";
             if (me.Spells.Wither > 0f) notes += "увядание   ";
             if (me.Spells.Rally > 0f) notes += "клич леса   ";
-            if (notes.Length > 0) GUI.Label(new Rect(x, y - 30, 900, 24), notes, _label);
+            if (notes.Length > 0) GUI.Label(new Rect(x, Lines - 24, 900, 24), notes, _label);
             // Приказ стража или задание эльфа — строкой над полосами.
             if (me.Faction == Faction.Guard && me.Service.Order.HasValue)
-                GUI.Label(new Rect(x, y - 78, 900, 24), "приказ: " + Orders.NameOf(me.Service.Order.Value) + " — "
+                GUI.Label(new Rect(x, Lines - 72, 900, 24), "приказ: " + Orders.NameOf(me.Service.Order.Value) + " — "
                     + Orders.ProgressText(me.Service.Order.Value, me.Service.Progress), _label);
             if (me.Faction == Faction.Elves && me.Tasks.Task.HasValue)
-                GUI.Label(new Rect(x, y - 78, 900, 24), "задание: " + ElfTasks.NameOf(me.Tasks.Task.Value) + " — "
+                GUI.Label(new Rect(x, Lines - 72, 900, 24), "задание: " + ElfTasks.NameOf(me.Tasks.Task.Value) + " — "
                     + ElfTasks.ProgressText(me.Tasks.Task.Value, me.Tasks.Progress), _label);
             var t = me.Trophies;
             string wounds = me.Body.Summary();
             if (wounds != "цел" || t[0] + t[1] + t[2] > 0)
-                GUI.Label(new Rect(x, y - 54, 900, 24), "тело: " + wounds
+                GUI.Label(new Rect(x, Lines - 48, 900, 24), "тело: " + wounds
                     + (t[0] + t[1] + t[2] > 0 ? "   трофеи: рук " + t[0] + ", ног " + t[1] + ", глаз " + t[2] : ""), _label);
 
             // Каст — полоса над прицелом.
@@ -130,7 +135,7 @@ namespace DjvaGoda.Game
                 string title = KeyOf("ability_" + (i + 1)) + "  " + Abilities.NameOf(kind) + (cd > 0f ? "  " + Mathf.CeilToInt(cd) : "");
                 bool can = cd <= 0f && me.Vitals.Mana >= Abilities.ManaCost[(int)kind];
                 GUI.color = can ? Color.white : new Color(1f, 1f, 1f, 0.5f);
-                var slot = new Rect(16 + i * 214, Screen.height - 170, 208, 38);
+                var slot = new Rect(16 + i * 214, SpellRow, 208, 38);
                 GUI.Box(slot, GUIContent.none);
                 Icons.Draw(new Rect(slot.x + 4, slot.y + 3, 32, 32), "ab_" + (int)kind, !can);
                 GUI.Label(new Rect(slot.x + 40, slot.y + 8, 168, 24), title, new GUIStyle(_small) { fontSize = 14 });
