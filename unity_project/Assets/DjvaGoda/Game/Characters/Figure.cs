@@ -294,7 +294,11 @@ namespace DjvaGoda.Game
         }
 
         /// Удар: правая рука взмывает и рубит (бойцы и персонажи у хоста и владельца).
-        public void Swing() { _swing = 0f; }
+        public void Swing()
+        {
+            _swing = 0f;
+            Sfx.Play(SoundKind.Swing, transform.position + Vector3.up * 1.4f, 0.6f);
+        }
 
         void LateUpdate()
         {
@@ -320,7 +324,11 @@ namespace DjvaGoda.Game
             }
 
             float stride = Mathf.Clamp01(_speed / 6f);
+            float before = _phase;
             _phase += delta * (2.2f + _speed * 1.1f) * (stride > 0.05f ? 1f : 0f);
+            // Шаг — когда нога проходит вертикаль (каждые пол-оборота фазы); в седле не топаем.
+            if (stride > 0.2f && Mathf.Floor(_phase / Mathf.PI) != Mathf.Floor(before / Mathf.PI) && !Riding)
+                Sfx.Footfall(false, transform.position);
             float leg = Mathf.Sin(_phase) * 38f * stride;
             for (int i = 0; i < 2; i++)
             {
@@ -361,6 +369,7 @@ namespace DjvaGoda.Game
         }
 
         Beast _mount;
+        bool Riding { get { return _mount != null && _mount.gameObject.activeSelf; } }
 
         /// Верхом: конь под седлом, ноги по бокам, руки на поводьях. Лошадь
         /// под всадником своя у каждого пира (Mounted едет по сети).

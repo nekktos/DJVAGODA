@@ -53,6 +53,7 @@ namespace DjvaGoda.Game
             gameObject.AddComponent<Elder>();
             gameObject.AddComponent<SaveGame>();
             gameObject.AddComponent<Experience>();
+            gameObject.AddComponent<Sfx>();
         }
 
         public override void OnDestroy()
@@ -236,6 +237,7 @@ namespace DjvaGoda.Game
         void Show(string text)
         {
             Feed.Add(new KeyValuePair<string, float>(text, Time.time));
+            Sfx.PlayFlat(SoundKind.Notice, 0.6f);
             while (Feed.Count > FeedSize) Feed.RemoveAt(0);
         }
     }

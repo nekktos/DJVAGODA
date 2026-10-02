@@ -261,7 +261,11 @@ namespace DjvaGoda.Game
             if (measured > 25f) measured = 0f;
             _speed = Mathf.Lerp(_speed, DrivenSpeed >= 0f ? DrivenSpeed : measured, Mathf.Clamp01(delta * 6f));
             float stride = Mathf.Clamp01(_speed / (_horse ? 8f : 6f));
+            float before = _phase;
             _phase += delta * (3f + _speed * 0.9f) * (stride > 0.03f ? 1f : 0f);
+            // Рысь: пара копыт ударяет каждые пол-оборота фазы.
+            if (_horse && stride > 0.1f && Mathf.Floor(_phase / Mathf.PI) != Mathf.Floor(before / Mathf.PI))
+                Sfx.Footfall(true, transform.position);
             if (_hop)
             {
                 Hop(stride);

@@ -16,6 +16,7 @@ namespace DjvaGoda.Game
         {
             var go = new GameObject("Вспышка: " + Abilities.NameOf(kind));
             go.transform.position = at + Vector3.up;
+            Sfx.ForSpell(kind, at);
             bool villain = kind == AbilityKind.Paralysis || kind == AbilityKind.Wither || kind == AbilityKind.Blind;
             string glow = villain ? "curse" : kind == AbilityKind.Heal ? "heal" : kind == AbilityKind.Rally ? "rally" : "nature";
             BodyShapes.Part(go.transform, "Сфера", BodyShapes.Ellipsoid(16, 10), "dark_metal", Vector3.zero, Vector3.one)
