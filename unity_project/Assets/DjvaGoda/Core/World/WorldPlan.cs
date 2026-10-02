@@ -34,6 +34,11 @@ namespace DjvaGoda.Core
         public int ShapeSeed;
         /// Без коллизии (конус крыши, дорога): только вид.
         public bool Decor;
+        /// Чем кусок является для отделки (WorldDetail Unity-слоя): «wall» —
+        /// зубцы поверху, «tower:крыша» — зубцы и конус крыши, «house:крыша»,
+        /// «keep», «trader», «bench», «well», «mine_rock», «mine_door», «ore».
+        /// Пусто — без отделки. На форму и коллизию не влияет.
+        public string Detail;
     }
 
     public class WorldPlan
@@ -141,7 +146,7 @@ namespace DjvaGoda.Core
 
         void Trader(V3 at)
         {
-            Box(at + new V3(0f, 1f, 0f), new V3(7f, 2f, 4f), "wood");
+            Box(at + new V3(0f, 1f, 0f), new V3(7f, 2f, 4f), "wood").Detail = "trader";
             Box(at + new V3(0f, 2.3f, 0f), new V3(8f, 0.6f, 5f), "stone");
             for (int corner = 0; corner < 4; corner++)
             {
@@ -170,27 +175,27 @@ namespace DjvaGoda.Core
                 new V3(MapLayout.RampWidth, top, MapLayout.RampRun), "stone", 0f);
 
             float w = CourtWall;
-            Box(new V3(c.X, 12f, c.Z + w), new V3(w * 2f, 12f, 6f), "marble");
-            Box(new V3(c.X - w, 12f, c.Z), new V3(6f, 12f, w * 2f), "marble");
-            Box(new V3(c.X + w, 12f, c.Z), new V3(6f, 12f, w * 2f), "marble");
-            Box(new V3(c.X - 75f, 12f, c.Z - w), new V3(116f, 12f, 6f), "marble");
-            Box(new V3(c.X + 75f, 12f, c.Z - w), new V3(116f, 12f, 6f), "marble");
+            Box(new V3(c.X, 12f, c.Z + w), new V3(w * 2f, 12f, 6f), "marble").Detail = "wall";
+            Box(new V3(c.X - w, 12f, c.Z), new V3(6f, 12f, w * 2f), "marble").Detail = "wall";
+            Box(new V3(c.X + w, 12f, c.Z), new V3(6f, 12f, w * 2f), "marble").Detail = "wall";
+            Box(new V3(c.X - 75f, 12f, c.Z - w), new V3(116f, 12f, 6f), "marble").Detail = "wall";
+            Box(new V3(c.X + 75f, 12f, c.Z - w), new V3(116f, 12f, 6f), "marble").Detail = "wall";
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
-                    Cylinder(new V3(c.X + sx * w, 16f, c.Z - sz * w), 9f, 20f, "marble");
+                    Cylinder(new V3(c.X + sx * w, 16f, c.Z - sz * w), 9f, 20f, "marble").Detail = "tower:roof";
 
             float pw = PalaceHalfWidth, pd = PalaceHalfDepth, ph = PalaceWallHeight, wall = 4f, gate = PalaceGateHalf;
-            Box(new V3(c.X, top + ph * 0.5f, c.Z + pd), new V3(pw * 2f, ph, wall), "marble");
-            Box(new V3(c.X - pw, top + ph * 0.5f, c.Z), new V3(wall, ph, pd * 2f), "marble");
-            Box(new V3(c.X + pw, top + ph * 0.5f, c.Z), new V3(wall, ph, pd * 2f), "marble");
+            Box(new V3(c.X, top + ph * 0.5f, c.Z + pd), new V3(pw * 2f, ph, wall), "marble").Detail = "palace_wall";
+            Box(new V3(c.X - pw, top + ph * 0.5f, c.Z), new V3(wall, ph, pd * 2f), "marble").Detail = "palace_wall";
+            Box(new V3(c.X + pw, top + ph * 0.5f, c.Z), new V3(wall, ph, pd * 2f), "marble").Detail = "palace_wall";
             float jamb = (pw - gate) * 0.5f;
             for (int side = -1; side <= 1; side += 2)
-                Box(new V3(c.X + side * (gate + jamb), top + ph * 0.5f, c.Z - pd), new V3(jamb * 2f, ph, wall), "marble");
+                Box(new V3(c.X + side * (gate + jamb), top + ph * 0.5f, c.Z - pd), new V3(jamb * 2f, ph, wall), "marble").Detail = "palace_wall";
             Box(new V3(c.X, top + ph - 3f, c.Z - pd), new V3(gate * 2f, 6f, wall), "marble");
             Box(new V3(c.X, top + ph + 1f, c.Z), new V3(pw * 2f, 2f, pd * 2f), "marble");
-            Box(new V3(c.X, 33f, c.Z), new V3(60f, 6f, 40f), "marble");
+            Box(new V3(c.X, 33f, c.Z), new V3(60f, 6f, 40f), "marble").Detail = "wall";
             Cylinder(new V3(c.X, 44f, c.Z), 12f, 28f, "marble");
-            Cone(new V3(c.X, 62f, c.Z), 15f, 14f, "accent");
+            Cone(new V3(c.X, 62f, c.Z), 15f, 14f, "roof");
         }
 
         /// Форт злодея: квадрат 160 м с воротами на юг, донжон, башни, руины у ворот,
@@ -207,15 +212,15 @@ namespace DjvaGoda.Core
 
             var f = c + FortOffset;
             float w = FortHalf;
-            Box(new V3(f.X, 8f, f.Z + w), new V3(w * 2f, 16f, 5f), "dark_stone");
-            Box(new V3(f.X - w, 8f, f.Z), new V3(5f, 16f, w * 2f), "dark_stone");
-            Box(new V3(f.X + w, 8f, f.Z), new V3(5f, 16f, w * 2f), "dark_stone");
-            Box(new V3(f.X - 50f, 8f, f.Z - w), new V3(65f, 16f, 5f), "dark_stone");
-            Box(new V3(f.X + 50f, 8f, f.Z - w), new V3(65f, 16f, 5f), "dark_stone");
+            Box(new V3(f.X, 8f, f.Z + w), new V3(w * 2f, 16f, 5f), "dark_stone").Detail = "wall";
+            Box(new V3(f.X - w, 8f, f.Z), new V3(5f, 16f, w * 2f), "dark_stone").Detail = "wall";
+            Box(new V3(f.X + w, 8f, f.Z), new V3(5f, 16f, w * 2f), "dark_stone").Detail = "wall";
+            Box(new V3(f.X - 50f, 8f, f.Z - w), new V3(65f, 16f, 5f), "dark_stone").Detail = "wall";
+            Box(new V3(f.X + 50f, 8f, f.Z - w), new V3(65f, 16f, 5f), "dark_stone").Detail = "wall";
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
-                    Cylinder(new V3(f.X + sx * w, 11f, f.Z - sz * w), 8f, 22f, "dark_stone");
-            Box(new V3(f.X, 16f, f.Z + 20f), new V3(40f, 32f, 40f), "dark_stone");
+                    Cylinder(new V3(f.X + sx * w, 11f, f.Z - sz * w), 8f, 22f, "dark_stone").Detail = "tower:dark_stone";
+            Box(new V3(f.X, 16f, f.Z + 20f), new V3(40f, 32f, 40f), "dark_stone").Detail = "keep";
             for (int side = -1; side <= 1; side += 2) Ruin(new V3(f.X + side * 45f, 0f, f.Z - 30f));
 
             var grove = new Rng(4231);
@@ -301,11 +306,11 @@ namespace DjvaGoda.Core
                 // Глыба и вход симметричны, вид от этого не меняется.
                 float yaw = (float)Math.Atan2(-dir.X, -dir.Z);
                 float y = _relief.Height(at.X, at.Z);
-                Box(new V3(at.X, y + MapLayout.MineHeight * 0.5f, at.Z), new V3(MapLayout.MineRock, MapLayout.MineHeight, MapLayout.MineRock), "rock", yaw);
+                Box(new V3(at.X, y + MapLayout.MineHeight * 0.5f, at.Z), new V3(MapLayout.MineRock, MapLayout.MineHeight, MapLayout.MineRock), "rock", yaw).Detail = "mine_rock";
                 var door = at + dir * (MapLayout.MineRock * 0.5f + 1f);
-                Box(new V3(door.X, y + 4f, door.Z), new V3(12f, 8f, 4f), "dark_stone", yaw);
+                Box(new V3(door.X, y + 4f, door.Z), new V3(12f, 8f, 4f), "dark_stone", yaw).Detail = "mine_door";
                 var heap = at + dir * (MapLayout.MineRock * 0.5f + 6f) + new V3(dir.Z, 0f, -dir.X) * 8f;
-                Box(new V3(heap.X, y + 0.8f, heap.Z), new V3(4f, 1.6f, 4f), "ore_" + (int)mine.Kind, yaw - 0.4f);
+                Box(new V3(heap.X, y + 0.8f, heap.Z), new V3(4f, 1.6f, 4f), "ore_" + (int)mine.Kind, yaw - 0.4f).Detail = "ore";
             }
         }
 
@@ -313,7 +318,7 @@ namespace DjvaGoda.Core
         {
             _group = "Crossroads";
             var bench = MapLayout.Workbench;
-            Box(new V3(bench.X, 1.2f, bench.Z), new V3(6f, 2.4f, 3f), "wood");
+            Box(new V3(bench.X, 1.2f, bench.Z), new V3(6f, 2.4f, 3f), "wood").Detail = "bench";
             Box(new V3(bench.X, 2.7f, bench.Z), new V3(6.6f, 0.6f, 3.6f), "stone");
             Cylinder(new V3(bench.X - 3.6f, 2f, bench.Z), 0.4f, 4f, "accent");
             Cylinder(new V3(0f, 6f, 0f), 3f, 12f, "marble");
@@ -355,9 +360,9 @@ namespace DjvaGoda.Core
                     float yaw = -(float)(rng.NextDouble() * 2 * Math.PI);
                     float size = Range(rng, 0.85f, 1.25f);
                     float h = 3.4f * size;
-                    Box(new V3(at.X, h * 0.5f, at.Z), new V3(6f * size, h, 5f * size), "wood", yaw);
+                    Box(new V3(at.X, h * 0.5f, at.Z), new V3(6f * size, h, 5f * size), "wood", yaw).Detail = "house:thatch";
                 }
-                Cylinder(new V3(centre.X, 0.6f, centre.Z), 1.6f, 1.2f, "stone");
+                Cylinder(new V3(centre.X, 0.6f, centre.Z), 1.6f, 1.2f, "stone").Detail = "well";
                 Box(new V3(centre.X, 2.4f, centre.Z), new V3(3.2f, 0.3f, 3.2f), "wood");
             }
         }
@@ -372,8 +377,7 @@ namespace DjvaGoda.Core
                 float t = i % 7 - 3f;
                 var p = c + new V3(t * 34f, 0f, -row * 26f);
                 float hh = Range(rng, 7f, 11f);
-                Box(new V3(p.X, hh * 0.5f, p.Z), new V3(18f, hh, 14f), "wood");
-                Cone(new V3(p.X, hh + 3f, p.Z), 14f, 6f, "accent");
+                Box(new V3(p.X, hh * 0.5f, p.Z), new V3(18f, hh, 14f), "wood").Detail = "house:roof";
             }
             Box(new V3(c.X, 0.1f, c.Z), new V3(80f, 0.2f, 20f), "road").Decor = true;
             Cylinder(new V3(c.X, 1.5f, c.Z), 4f, 3f, "stone");
