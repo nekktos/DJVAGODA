@@ -115,7 +115,7 @@ namespace DjvaGoda.Game
             {
                 var at = source.transform.position.ToCore();
                 if (source.TreeIndex < 0 && at.FlatDistance(MapLayout.MicroMine) <= AiStats.MicroRadius)
-                    view.MicroVeins.Add(new Vein(at, 2f));
+                    view.MicroVeins.Add(new Vein(at, RockRadius(source)));
                 else if (side == Faction.Elves && source.Resource == ResourceKind.Wood
                     && at.FlatDistance(Factions.Spawn[(int)Faction.Elves]) <= AiStats.ElfWoods)
                     view.Trees.Add(new Vein(at, Forest.TrunkRadius * source.transform.localScale.x));
@@ -139,6 +139,16 @@ namespace DjvaGoda.Game
                     if (_builder != null && decision.BuildAt.HasValue) _builder.ServerBuild(BuildingKind.ElfHouse, decision.BuildAt.Value);
                     break;
             }
+        }
+
+        /// Радиус валуна по его коллайдеру: с прежних «2 м» вожак вставал так
+        /// далеко, что молот (3.2 м) до камня не доставал и казна стояла на нуле.
+        static float RockRadius(Harvestable source)
+        {
+            var col = source.GetComponentInChildren<Collider>();
+            if (col == null) return 1f;
+            var ext = col.bounds.extents;
+            return Mathf.Min(ext.x, ext.z) * 0.7f;
         }
 
         /// Каждый кадр: идти к цели по сетке, смотреть на цель, бить, когда можно.

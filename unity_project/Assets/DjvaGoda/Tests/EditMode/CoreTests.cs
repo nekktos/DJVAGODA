@@ -14,7 +14,7 @@ using NUnit.Framework;
 [TestFixture]
 public class CoreTests
 {
-    const int Expected = 182;
+    const int Expected = 184;
     static int _ran;
     static readonly List<string> Failures = new List<string>();
 
@@ -282,6 +282,22 @@ public class CoreTests
             && StewardRules.PickOre(rich, false, barracks) == StewardRules.PickOre(rich, false),
             "обоз — за рудой, которой не хватает на ближайшую стройку (казарме — камень), а не за самой редкой",
             StewardRules.PickOre(stalled, false, barracks) + " / " + StewardRules.PickOre(stalled, false));
+
+        var early = new EconomyView { Has = new HashSet<BuildingKind> { BuildingKind.Storage, BuildingKind.Stable } };
+        var late = new EconomyView { Has = new HashSet<BuildingKind> { BuildingKind.Storage, BuildingKind.Stable, BuildingKind.Farm,
+            BuildingKind.House, BuildingKind.SwordBarracks } };
+        var gear = Res.ForgeGearCost(1);
+        Check(!StewardRules.ForgeAhead(early, 2) && StewardRules.ForgeAhead(late, 2)
+            && StewardRules.PickOre(rich, false, gear) == ResourceKind.Coal,
+            "кузня на подходе — уголь на закалку везут заранее, ещё до кузни",
+            StewardRules.ForgeAhead(early, 2) + " / " + StewardRules.ForgeAhead(late, 2) + " / " + StewardRules.PickOre(rich, false, gear));
+
+        var purse = new Wallet();
+        purse.Grant(new[] { 0, 0, 30, 30, 0, 0 });
+        var hold = StewardRules.GearReserve(true, Res.ForgeGearCost(1));
+        Check(!StewardRules.CanSpareFor(purse, Res.UnitCost, hold) && StewardRules.CanSpareFor(purse, Res.UnitCost, StewardRules.GearReserve(false, Res.ForgeGearCost(1)))
+            && StewardRules.CanSpareFor(purse, Res.LabourerCost, StewardRules.GearReserve(true, new int[0])),
+            "с кузней золото на закалку вожака не тратится на наём", "резерв закалки");
 
         Check(StewardRules.CaravanGuards(2) == 0 && StewardRules.CaravanGuards(3) == 1 && StewardRules.CaravanGuards(8) == 2,
             "в охрану обоза — только сверх двух работающих", "охрана при 2, 3, 8 батраках");
@@ -880,10 +896,10 @@ public class CoreTests
         var toForge = HeroBrain.Decide(smith);
         smith.AtForge = true;
         var forge = HeroBrain.Decide(smith);
-        smith.Stock = new[] { 15, 0, 0, 20 };
+        smith.Stock = new[] { 5, 0, 0, 20 };
         var spare = HeroBrain.Decide(smith);
         Check(toForge.Task == HeroTask.ForgeGear && toForge.Walk && forge.Interact && spare.Task == HeroTask.Follow,
-            "лишнее вдвое против цены — в кузню; меньше — добро остаётся на стройку", spare.Task.ToString());
+            "хватает на закалку (её откладывает распорядитель) — в кузню; не хватает — не идёт", spare.Task.ToString());
 
         var hurt = VillainHero(at);
         hurt.Health = 35f;

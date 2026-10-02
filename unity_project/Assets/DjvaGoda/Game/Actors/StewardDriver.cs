@@ -86,7 +86,7 @@ namespace DjvaGoda.Game
 
         void Hire(EconomyView view)
         {
-            if (!StewardRules.ShouldHire(view) || !Treasury.Spend(Res.LabourerCost)) return;
+            if (!StewardRules.ShouldHire(view) || !Spare(Res.LabourerCost) || !Treasury.Spend(Res.LabourerCost)) return;
             var at = StewardRules.HireSpot(Home, Crew.Count);
             var go = Agents.Make(AgentRole.Labourer, Side, at, "Батрак");
             var worker = go.AddComponent<LabourerAgent>();
@@ -129,6 +129,22 @@ namespace DjvaGoda.Game
                     }
         }
 
+        /// Хватит ли на трату, не залезая в отложенное на закалку вожака: с
+        /// кузней золото иначе целиком уходило на наём (батрак 12, боец 25), и
+        /// «долгая партия» так и не закаливала оружие при готовой кузне.
+        bool Spare(int[] cost)
+        {
+            var reserve = StewardRules.GearReserve(Ready(BuildingKind.Forge) != null, LeaderGearCost());
+            return StewardRules.CanSpareFor(Treasury, cost, reserve);
+        }
+
+        int[] LeaderGearCost()
+        {
+            var leader = Object.FindAnyObjectByType<MatchAi>();
+            var hero = leader != null ? leader.HeroOf(Side) : null;
+            return hero != null && hero.Alive ? hero.Kit.NextGearCost() : null;
+        }
+
         void Train()
         {
             if (Warband == null) return;
@@ -139,7 +155,8 @@ namespace DjvaGoda.Game
             var kind = StewardRules.TrainKind(Ready(BuildingKind.ArcherBarracks) != null, Ready(BuildingKind.SwordBarracks) != null,
                 Warband.Band.Count, capacity);
             if (!kind.HasValue) return;
-            if (!Treasury.Spend(kind.Value == UnitKind.Archer ? Res.ArcherCost : Res.UnitCost)) return;
+            var price = kind.Value == UnitKind.Archer ? Res.ArcherCost : Res.UnitCost;
+            if (!Spare(price) || !Treasury.Spend(price)) return;
             int slot = Warband.Band.Count;
             var go = Agents.Make(Agents.RoleOf(kind.Value), Side, StewardRules.TrainSpot(Home, slot),
                 kind.Value == UnitKind.Archer ? "Лучник" : "Мечник");
@@ -153,7 +170,7 @@ namespace DjvaGoda.Game
         void BuyHorse()
         {
             if (!StewardRules.WantHorse(Ready(BuildingKind.Stable) != null, Treasury.Horses)) return;
-            if (Treasury.Spend(Res.HorseCost)) Treasury.Horses++;
+            if (Spare(Res.HorseCost) && Treasury.Spend(Res.HorseCost)) Treasury.Horses++;
         }
 
         void SendCaravan(EconomyView view)
@@ -172,7 +189,7 @@ namespace DjvaGoda.Game
             // партия» доходила до кузни и так и не закаливала оружие).
             var leader = Object.FindAnyObjectByType<MatchAi>();
             var hero = leader != null ? leader.HeroOf(Side) : null;
-            if (forge && hero != null)
+            if (hero != null && StewardRules.ForgeAhead(view, 2))
             {
                 var gear = hero.Kit.NextGearCost();
                 for (int i = 0; i < Res.Count; i++) need[i] += Res.At(gear, i);

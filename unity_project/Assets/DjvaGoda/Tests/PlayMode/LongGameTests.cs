@@ -6,7 +6,7 @@
 // В общий прогон НЕ входят ([Explicit]): мир живой, итог от раза к разу
 // разнится. Запуск по имени: LongGameTests.ForElves (злодей и стража под ИИ,
 // эльфом сидит неподвижный человек) и LongGameTests.ForGuard (злодей и эльфы
-// под ИИ). Время ускорено вчетверо: 20 игровых минут — пять реальных (в
+// под ИИ). Время ускорено вчетверо: 24 игровых минуты — шесть реальных (в
 // Godot-версии кузня появлялась к 17-й минуте).
 // Каждые 5 игровых секунд отмечаются звенья, раз в минуту печатается сводка
 // с пометкой «[долгая]» — по ней и видно, где рвётся.
@@ -22,7 +22,7 @@ namespace DjvaGoda.Tests
 {
     public class LongGameTests
     {
-        const float GameMinutes = 20f;
+        const float GameMinutes = 24f;
         const float Speed = 4f;
         const float Sample = 5f;
         static readonly string[] Links = { "storage", "labourers", "caravan", "iron", "barracks", "soldier", "forge", "gear", "armor" };
@@ -114,6 +114,13 @@ namespace DjvaGoda.Tests
                 if (cart == null || cart.Side != (int)Faction.Villain || cart.Trip == null) continue;
                 Debug.Log(string.Format("[долгая]      обоз: {0} в {1},{2}, стоит {3}, ждёт {4}, груз {5}", cart.Trip.State,
                     Mathf.Round(cart.At.X), Mathf.Round(cart.At.Z), cart.Trip.Halted, cart.Trip.Waiting, cart.Trip.CargoTotal));
+            }
+            if (hero != null)
+            {
+                var brain = hero.GetComponent<HeroDriver>();
+                var d = brain != null ? brain.Decision : null;
+                Debug.Log(string.Format("[долгая]      вожак злодея: {0} в {1},{2}, цель {3}, оружие {4}", d != null ? d.Task.ToString() : "—",
+                    Mathf.Round(hero.At.X), Mathf.Round(hero.At.Z), d != null ? Mathf.Round(d.Goal.X) + "," + Mathf.Round(d.Goal.Z) : "—", hero.Kit.GearTier));
             }
             var elves = _ai.HeroOf(Faction.Elves);
             int houses = 0;

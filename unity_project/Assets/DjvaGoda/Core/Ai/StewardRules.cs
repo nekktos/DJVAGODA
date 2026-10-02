@@ -134,6 +134,44 @@ namespace DjvaGoda.Core
             return sum;
         }
 
+        /// Что отложено на закалку вожака: с готовой кузней — цена следующей
+        /// ступени (пусто, когда закалять больше нечего); без кузни — ничего.
+        public static int[] GearReserve(bool forgeReady, int[] nextGear)
+        {
+            if (!forgeReady || nextGear == null || nextGear.Length == 0) return Res.Empty();
+            return nextGear;
+        }
+
+        /// Хватит ли на трату так, чтобы отложенное осталось целым.
+        public static bool CanSpareFor(IStock have, int[] cost, int[] reserve)
+        {
+            for (int i = 0; i < Res.Count; i++)
+            {
+                int need = Res.At(cost, i);
+                if (need == 0) continue;
+                if (have.GetAmount((ResourceKind)i) - need < Res.At(reserve, i)) return false;
+            }
+            return true;
+        }
+
+        /// Кузня среди ближайших count построек очереди (или уже стоит): тогда
+        /// уголь и золото на закалку вожака везут заранее — «долгая партия»
+        /// доходила до кузни к 15-й минуте и за оставшиеся пять (один рейс
+        /// обоза на руду) закалить оружие не успевала.
+        public static bool ForgeAhead(EconomyView view, int count)
+        {
+            if (view.Has != null && view.Has.Contains(BuildingKind.Forge)) return true;
+            int taken = 0;
+            foreach (var kind in BuildOrder)
+            {
+                if (taken >= count) break;
+                if (view.Has != null && view.Has.Contains(kind)) continue;
+                if (kind == BuildingKind.Forge) return true;
+                taken++;
+            }
+            return false;
+        }
+
         /// За какой рудой слать обоз. Есть цель (need — цена ближайших построек)
         /// и руды на неё не хватает — за самым большим недостатком: «долгая
         /// партия» Unity-версии застала злодея с 104 железа, обоз поехал за
@@ -143,7 +181,7 @@ namespace DjvaGoda.Core
         public static ResourceKind PickOre(IStock have, bool forgeReady, int[] need = null)
         {
             var wanted = new List<ResourceKind> { ResourceKind.Iron, ResourceKind.Stone, ResourceKind.Gold };
-            if (forgeReady) wanted.Add(ResourceKind.Coal);
+            if (forgeReady || Res.At(need, (int)ResourceKind.Coal) > 0) wanted.Add(ResourceKind.Coal);
             if (need != null)
             {
                 var short_ = ResourceKind.Iron;

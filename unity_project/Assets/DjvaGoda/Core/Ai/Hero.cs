@@ -313,7 +313,10 @@ namespace DjvaGoda.Core
         /// Лишнее добро — в снаряжение: кузня (не эльфы), доспех в лавке, зелье эльфам.
         static bool GearErrand(HeroView view, HeroDecision decision)
         {
-            if (view.Forge.HasValue && view.Side != Faction.Elves && Rich(view.Stock, view.NextGearCost))
+            // Закалка — без запаса сверху: на неё казну откладывает распорядитель
+            // (StewardRules.GearReserve), и «с запасом» её не набиралось никогда.
+            if (view.Forge.HasValue && view.Side != Faction.Elves && view.NextGearCost != null && view.NextGearCost.Length > 0
+                && Res.CanAfford(view.Stock, view.NextGearCost))
                 return Errand(decision, HeroTask.ForgeGear, view.Forge.Value, view.AtForge);
             if (Rich(view.Stock, view.NextArmorCost))
                 return Errand(decision, HeroTask.BuyArmor, view.Trader, view.AtTrader);
