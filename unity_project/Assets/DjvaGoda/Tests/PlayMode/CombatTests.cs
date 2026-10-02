@@ -94,6 +94,8 @@ namespace DjvaGoda.Tests
             var villain = Fighter(Faction.Villain, Arena, 0f);
             var guard = Fighter(Faction.Guard, Arena + new Vector3(0f, 0f, 1.8f), Mathf.PI);
             yield return Settle();
+            // Считать до молота: тяжёлый удар может добить и сам.
+            int corpses = Corpses.Count;
             villain.GetComponent<PlayerCombat>().ServerAttack(WeaponKind.Hammer, Aim.Origin(villain.Feet), AimAt(villain, guard, 1.1f));
             yield return null;
             Assert.That(guard.GetComponent<PlayerCombat>().Stagger, Is.GreaterThan(0f), "молот не сбил с ног");
@@ -102,7 +104,8 @@ namespace DjvaGoda.Tests
             yield return null;
             Assert.That(guard.Alive, Is.False, "1000 урона — а жив");
             var body = guard.transform.Find("Тело");
-            Assert.That(Vector3.Angle(body.up, Vector3.up), Is.GreaterThan(60f), "павший стоит, а должен лежать");
+            Assert.That(body.gameObject.activeSelf, Is.False, "павший стоит, а вместо него должен лежать труп");
+            Assert.That(Corpses.Count, Is.EqualTo(corpses + 1), "труп не лёг");
         }
     }
 }

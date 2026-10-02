@@ -176,7 +176,10 @@ namespace DjvaGoda.Game
                 {
                     crew[i].MissedMeals = hunger[i];
                     crew[i].Hungry = hunger[i] > 0;
-                    if (hunger[i] >= Res.HungerFatal) Agents.Remove(crew[i].gameObject);
+                    if (hunger[i] < Res.HungerFatal) continue;
+                    var t = crew[i].transform;
+                    Corpses.Spawn(t.position, t.eulerAngles.y, (int)AgentRole.Labourer, side, 0);
+                    Agents.Remove(crew[i].gameObject);
                 }
                 if (string.IsNullOrEmpty(result.Message)) continue;
                 Debug.Log("[голод] " + result.Message);
@@ -188,6 +191,13 @@ namespace DjvaGoda.Game
                     if (combat != null) combat.Tell(result.Message);
                 }
             }
+        }
+
+        /// Павший лёг (рассылает хост, себе тоже).
+        [Rpc(SendTo.Everyone)]
+        public void CorpseRpc(Vector3 at, float yaw, int look, int side, int severed)
+        {
+            Corpses.Place(at, yaw, look, side, severed);
         }
 
         /// Источник исчерпан (зовёт хост): убрать у себя и сообщить всем.

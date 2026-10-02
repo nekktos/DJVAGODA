@@ -147,6 +147,7 @@ namespace DjvaGoda.Game
             if (Alive) return;
             // Ноша падает на землю кучей — подобрать может любой.
             Brain.DropOnDeath();
+            Corpses.Spawn(transform.position, transform.eulerAngles.y, (int)AgentRole.Labourer, Side, 0);
             Agents.Remove(gameObject);
         }
     }

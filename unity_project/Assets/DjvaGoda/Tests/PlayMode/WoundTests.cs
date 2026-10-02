@@ -47,10 +47,12 @@ namespace DjvaGoda.Tests
             Treasury.Of(Faction.Elves).Carried.Capacity = 500;
             Treasury.Of(Faction.Elves).Add((int)ResourceKind.Wood, 40);
             yield return TestArena.Settle();
+            int corpses = Corpses.Count;
             Actor.Strike(victim, 5000f, "torso", WeaponKind.Sword, false, looter);
             yield return null;
             yield return null;
             Assert.That(victim.Alive, Is.False, "павший жив");
+            Assert.That(Corpses.Count, Is.EqualTo(corpses + 1), "труп не лёг");
             Assert.That(Pickup.All.Count, Is.EqualTo(1), "куча с павшего не упала");
             var pile = Pickup.All[0].Pile;
             Assert.That(pile.Armor, Is.EqualTo(2), "доспех не в куче");

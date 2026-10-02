@@ -430,6 +430,28 @@ namespace DjvaGoda.Game
             }
         }
 
+        /// Труп: лежит на спине, руки раскинуты, оторванного нет; дальше не
+        /// оживает (анимация выключена).
+        public void Lay(int severed)
+        {
+            enabled = false;
+            transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            transform.localPosition = new Vector3(0f, 0.12f, 0f);
+            for (int i = 0; i < 2; i++)
+            {
+                float side = i == 0 ? -1f : 1f;
+                _shoulder[i].localRotation = Quaternion.Euler(-10f, 0f, 70f * side);
+                _elbow[i].localRotation = Quaternion.Euler(-25f, 0f, 0f);
+                _hip[i].localRotation = Quaternion.Euler(0f, 0f, 8f * side);
+                _knee[i].localRotation = Quaternion.Euler(10f, 0f, 0f);
+            }
+            _head.localRotation = Quaternion.Euler(0f, 25f, 0f);
+            for (int i = 0; i < 4; i++)
+                if ((severed & (1 << i)) != 0)
+                    foreach (Transform part in _limb[i])
+                        if (part.GetComponent<MeshRenderer>() != null || part.childCount > 0) part.gameObject.SetActive(false);
+        }
+
         static readonly string[] TierMaterials = { "wood", "wood", "metal", "gold", "pale_skin" };
 
         Transform Prosthesis(Transform joint, bool leg, int tier)

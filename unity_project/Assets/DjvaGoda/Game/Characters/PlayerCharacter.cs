@@ -129,6 +129,8 @@ namespace DjvaGoda.Game
             // Пал (от удара или от крови) — у хоста всё с тела падает кучей.
             if (_wasAlive && !Alive && MatchNet.Hosting)
             {
+                // Тело остаётся лежать трупом; сам персонаж до возрождения не виден.
+                Corpses.Spawn(transform.position, Yaw * Mathf.Rad2Deg, Corpses.HeroLook, (int)Faction, Body.SeveredMask);
                 DropBelongings();
                 // Павший всадник падает с седла: лошадь остаётся рядом с телом.
                 if (Horse != null) Horse.Dismount(Feet + new V3(1.5f, 0f, 0f));
@@ -181,16 +183,13 @@ namespace DjvaGoda.Game
 
         bool _shownFallen;
 
-        /// Павший лежит: капсула-заглушка — на боку.
+        /// Павший: вместо него лежит труп (Corpses), сам он до возрождения скрыт.
         void ShowFallen(bool fallen)
         {
             if (fallen == _shownFallen) return;
             _shownFallen = fallen;
             var body = transform.Find("Тело");
-            if (body == null) return;
-            // Фигура стоит от ног: павший лежит на спине, у земли.
-            body.localRotation = fallen ? Quaternion.Euler(-90f, 0f, 0f) : Quaternion.identity;
-            body.localPosition = new Vector3(0f, fallen ? 0.15f : 0f, 0f);
+            if (body != null) body.gameObject.SetActive(!fallen);
         }
 
         /// Поставить на точку (возрождение): CharacterController помнит своё

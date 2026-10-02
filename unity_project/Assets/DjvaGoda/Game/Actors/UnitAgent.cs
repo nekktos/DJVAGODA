@@ -141,7 +141,9 @@ namespace DjvaGoda.Game
             if (!Alive) return;
             var formation = Brain.Formation(Commander != null ? CommanderFormation : (FormationKind?)null);
             Health = Mathf.Max(0f, Health - DamageRules.ToUnit(amount, formation, aoe, weapon));
-            if (!Alive) Agents.Remove(gameObject);
+            if (Alive) return;
+            Corpses.Spawn(transform.position, transform.eulerAngles.y, (int)Agents.RoleOf(Brain.Kind), Side, 0);
+            Agents.Remove(gameObject);
         }
     }
 }
