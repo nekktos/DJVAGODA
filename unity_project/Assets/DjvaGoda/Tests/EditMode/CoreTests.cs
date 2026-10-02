@@ -275,6 +275,13 @@ public class CoreTests
         Check(StewardRules.PickOre(rich, true) == ResourceKind.Coal && StewardRules.PickOre(rich, false) != ResourceKind.Coal,
             "с кузней — за углём, когда его меньше всего; без кузни уголь не возят",
             StewardRules.PickOre(rich, true) + " / " + StewardRules.PickOre(rich, false));
+        var stalled = new Wallet();
+        stalled.Grant(new[] { 200, 5, 4, 104, 0, 0 });
+        var barracks = Res.BuildingCost(BuildingKind.SwordBarracks);
+        Check(StewardRules.PickOre(stalled, false, barracks) == ResourceKind.Stone && StewardRules.PickOre(stalled, false) == ResourceKind.Gold
+            && StewardRules.PickOre(rich, false, barracks) == StewardRules.PickOre(rich, false),
+            "обоз — за рудой, которой не хватает на ближайшую стройку (казарме — камень), а не за самой редкой",
+            StewardRules.PickOre(stalled, false, barracks) + " / " + StewardRules.PickOre(stalled, false));
 
         Check(StewardRules.CaravanGuards(2) == 0 && StewardRules.CaravanGuards(3) == 1 && StewardRules.CaravanGuards(8) == 2,
             "в охрану обоза — только сверх двух работающих", "охрана при 2, 3, 8 батраках");

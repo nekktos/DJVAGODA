@@ -40,7 +40,7 @@ namespace DjvaGoda.Game
             AssignRoles(view);
             Train();
             BuyHorse();
-            SendCaravan();
+            SendCaravan(view);
         }
 
         List<BuildingActor> Buildings()
@@ -156,7 +156,7 @@ namespace DjvaGoda.Game
             if (Treasury.Spend(Res.HorseCost)) Treasury.Horses++;
         }
 
-        void SendCaravan()
+        void SendCaravan(EconomyView view)
         {
             var storage = Ready(BuildingKind.Storage);
             if (storage == null) return;
@@ -166,7 +166,18 @@ namespace DjvaGoda.Game
             if (out_ >= StewardRules.CaravansWanted) return;
             int free = Treasury.HorsesFree;
             if (free <= 0) return;
-            var ore = StewardRules.PickOre(Treasury, Ready(BuildingKind.Forge) != null);
+            bool forge = Ready(BuildingKind.Forge) != null;
+            var need = StewardRules.UpcomingCost(view, 2);
+            // С кузней — ещё и закалка вожака: без угля горн холоден («долгая
+            // партия» доходила до кузни и так и не закаливала оружие).
+            var leader = Object.FindAnyObjectByType<MatchAi>();
+            var hero = leader != null ? leader.HeroOf(Side) : null;
+            if (forge && hero != null)
+            {
+                var gear = hero.Kit.NextGearCost();
+                for (int i = 0; i < Res.Count; i++) need[i] += Res.At(gear, i);
+            }
+            var ore = StewardRules.PickOre(Treasury, forge, need);
             var mine = MapLayout.MineOf(ore);
             if (!mine.HasValue) return;
             int team = Mathf.Min(StewardRules.AiHarness, free);

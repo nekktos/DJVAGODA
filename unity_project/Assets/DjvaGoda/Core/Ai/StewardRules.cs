@@ -117,12 +117,48 @@ namespace DjvaGoda.Core
             return wanted;
         }
 
-        /// За какой рудой слать обоз: за той, которой меньше всего. Железо,
-        /// камень, золото; с кузней — и уголь. Равенство — в пользу железа.
-        public static ResourceKind PickOre(IStock have, bool forgeReady)
+        /// Сколько стоят ближайшие постройки очереди (count штук) — под них
+        /// подбирается руда для обоза.
+        public static int[] UpcomingCost(EconomyView view, int count)
+        {
+            var sum = Res.Empty();
+            int taken = 0;
+            foreach (var kind in BuildOrder)
+            {
+                if (taken >= count) break;
+                if (view.Has != null && view.Has.Contains(kind)) continue;
+                var cost = Res.BuildingCost(kind);
+                for (int i = 0; i < Res.Count; i++) sum[i] += Res.At(cost, i);
+                taken++;
+            }
+            return sum;
+        }
+
+        /// За какой рудой слать обоз. Есть цель (need — цена ближайших построек)
+        /// и руды на неё не хватает — за самым большим недостатком: «долгая
+        /// партия» Unity-версии застала злодея с 104 железа, обоз поехал за
+        /// золотом (его было 4, камня 5), а казарма стояла на камне. Иначе — за
+        /// той, которой меньше всего. Железо, камень, золото; с кузней — и
+        /// уголь. Равенство — в пользу железа.
+        public static ResourceKind PickOre(IStock have, bool forgeReady, int[] need = null)
         {
             var wanted = new List<ResourceKind> { ResourceKind.Iron, ResourceKind.Stone, ResourceKind.Gold };
             if (forgeReady) wanted.Add(ResourceKind.Coal);
+            if (need != null)
+            {
+                var short_ = ResourceKind.Iron;
+                int worst = 0;
+                foreach (var kind in wanted)
+                {
+                    int gap = Res.At(need, (int)kind) - (have != null ? have.GetAmount(kind) : 0);
+                    if (gap > worst)
+                    {
+                        worst = gap;
+                        short_ = kind;
+                    }
+                }
+                if (worst > 0) return short_;
+            }
             var best = ResourceKind.Iron;
             int bestHave = int.MaxValue;
             foreach (var kind in wanted)

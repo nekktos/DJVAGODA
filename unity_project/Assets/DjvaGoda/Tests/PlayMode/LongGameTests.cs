@@ -6,7 +6,8 @@
 // В общий прогон НЕ входят ([Explicit]): мир живой, итог от раза к разу
 // разнится. Запуск по имени: LongGameTests.ForElves (злодей и стража под ИИ,
 // эльфом сидит неподвижный человек) и LongGameTests.ForGuard (злодей и эльфы
-// под ИИ). Время ускорено вчетверо: 12 игровых минут — около трёх реальных.
+// под ИИ). Время ускорено вчетверо: 20 игровых минут — пять реальных (в
+// Godot-версии кузня появлялась к 17-й минуте).
 // Каждые 5 игровых секунд отмечаются звенья, раз в минуту печатается сводка
 // с пометкой «[долгая]» — по ней и видно, где рвётся.
 using System.Collections;
@@ -21,7 +22,7 @@ namespace DjvaGoda.Tests
 {
     public class LongGameTests
     {
-        const float GameMinutes = 12f;
+        const float GameMinutes = 20f;
         const float Speed = 4f;
         const float Sample = 5f;
         static readonly string[] Links = { "storage", "labourers", "caravan", "iron", "barracks", "soldier", "forge", "gear", "armor" };
