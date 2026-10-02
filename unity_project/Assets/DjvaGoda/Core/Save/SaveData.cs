@@ -67,6 +67,8 @@ namespace DjvaGoda.Core
         public bool inWheelchair;
         public int experience;
         public int[] upgrades = new int[4];
+        /// Прокачка заклинаний по AbilityKind.
+        public int[] spellLevels = new int[6];
     }
 
     [Serializable]

@@ -1,5 +1,5 @@
 // Проверки заклинаний в живой сцене (шаг 4): лечение, паралич с кастом и его
-// срыв ударом, увядание и слепота, призыв не больше двух волков, мана.
+// срыв ударом, увядание и слепота, призыв стаи белок по прокачке магии, мана.
 // Правила — в ядре (CoreTests); здесь — что Unity-слой исполняет их у хоста:
 // находит своих и чужих рядом, платит только за сработавшее.
 using System.Collections;
@@ -92,23 +92,45 @@ namespace DjvaGoda.Tests
         }
 
         [UnityTest]
-        public IEnumerator SummonAtMostTwoWolves()
+        public IEnumerator SummonSquirrelSwarmBySkill()
         {
             var druid = TestArena.Fighter(Faction.Elves, Arena, 0f);
             yield return TestArena.Settle();
             var spells = SpellsOf(druid);
-            for (int i = 0; i < 3; i++)
+            System.Func<int> squirrels = () =>
             {
-                druid.Vitals.Mana = druid.Vitals.MaxMana;
-                druid.Spells.Cooldowns[(int)AbilityKind.Summon] = 0f;
-                spells.ServerCast(AbilityKind.Summon);
-                yield return null;
-            }
-            int wolves = 0;
-            foreach (var unit in Object.FindObjectsByType<UnitAgent>(FindObjectsSortMode.None))
-                if (unit.Brain != null && unit.Brain.Kind == UnitKind.Beast && unit.Side == (int)Faction.Elves) wolves++;
-            Assert.That(wolves, Is.EqualTo(Abilities.SummonLimit), "волков " + wolves);
-            Assert.That(druid.GetComponent<PlayerCombat>().Refusal, Does.Contain("волков"), "третий призыв не объяснён");
+                int n = 0;
+                foreach (var unit in Object.FindObjectsByType<UnitAgent>(FindObjectsSortMode.None))
+                    if (unit.Brain != null && unit.Brain.Kind == UnitKind.Beast && unit.Side == (int)Faction.Elves && unit.Alive) n++;
+                return n;
+            };
+            druid.Vitals.Mana = druid.Vitals.MaxMana;
+            spells.ServerCast(AbilityKind.Summon);
+            yield return null;
+            Assert.That(squirrels(), Is.EqualTo(Abilities.SwarmMin), "без прокачки заклинания стая не из трёх");
+            Assert.That(Object.FindAnyObjectByType<Beast>().name, Is.EqualTo("Тело"), "у зверя призыва нет модели");
+            druid.Vitals.Mana = druid.Vitals.MaxMana;
+            druid.Spells.Cooldowns[(int)AbilityKind.Summon] = 0f;
+            spells.ServerCast(AbilityKind.Summon);
+            Assert.That(druid.GetComponent<PlayerCombat>().Refusal, Does.Contain("стая"), "полная стая — призыв без отказа");
+
+            // Прокачка маны стаю не растит — только прокачка самого заклинания.
+            druid.Vitals.Levels[(int)Stat.Mana] = Progression.MaxLevel;
+            druid.Vitals.Mana = druid.Vitals.MaxMana;
+            druid.Spells.Cooldowns[(int)AbilityKind.Summon] = 0f;
+            spells.ServerCast(AbilityKind.Summon);
+            yield return null;
+            Assert.That(squirrels(), Is.EqualTo(Abilities.SwarmMin), "прокачка маны вырастила стаю");
+
+            // Заклинание прокачано за опыт до предела — стая растёт до пятнадцати.
+            druid.Vitals.Experience = 100000;
+            for (int i = 0; i < Abilities.MaxSpellLevel; i++) druid.GetComponent<Shop>().Request(DealKind.Upgrade, 10 + (int)AbilityKind.Summon);
+            Assert.That(druid.Vitals.SpellLevels[(int)AbilityKind.Summon], Is.EqualTo(Abilities.MaxSpellLevel), "заклинание не прокачалось");
+            druid.Vitals.Mana = druid.Vitals.MaxMana;
+            druid.Spells.Cooldowns[(int)AbilityKind.Summon] = 0f;
+            spells.ServerCast(AbilityKind.Summon);
+            yield return null;
+            Assert.That(squirrels(), Is.EqualTo(Abilities.SwarmMax), "прокачанное заклинание — не пятнадцать белок");
         }
     }
 }

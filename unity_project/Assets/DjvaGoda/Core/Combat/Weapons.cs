@@ -93,7 +93,7 @@ namespace DjvaGoda.Core
     {
         public static readonly string[] Names =
         {
-            "лечение", "клич леса", "призыв волка",
+            "лечение", "клич леса", "призыв стаи белок",
             "паралич воли", "проклятие увядания", "слепящее проклятие"
         };
         public static readonly float[] Cooldown = { 8f, 22f, 30f, 28f, 14f, 18f };
@@ -105,7 +105,31 @@ namespace DjvaGoda.Core
         public const float RallySpeedScale = 1.35f;
         public const float RallyAttackScale = 0.72f;
         public const float SummonLifetime = 60f;
-        public const int SummonLimit = 2;
+        /// Стая белок (решение автора от 02.10, вместо двух волков): от трёх без
+        /// прокачки самого заклинания до пятнадцати на её пределе.
+        public const int SwarmMin = 3;
+        public const int SwarmMax = 15;
+
+        /// Прокачка заклинания (за опыт, как уровни здоровья и маны): 0..MaxSpellLevel.
+        public const int MaxSpellLevel = 5;
+
+        /// У каких заклинаний прокачка что-то меняет. Пока — только у призыва:
+        /// уровень без действия обманывал бы игрока.
+        public static bool Upgradable(AbilityKind kind) { return kind == AbilityKind.Summon; }
+
+        /// Что даёт следующий уровень — для окна прокачки.
+        public static string UpgradeText(AbilityKind kind, int level)
+        {
+            if (kind == AbilityKind.Summon) return "белок в стае: " + SwarmSize(level);
+            return "";
+        }
+
+        /// Сколько белок в стае при уровне заклинания «призыв стаи белок».
+        public static int SwarmSize(int spellLevel)
+        {
+            int level = spellLevel < 0 ? 0 : (spellLevel > MaxSpellLevel ? MaxSpellLevel : spellLevel);
+            return SwarmMin + (int)System.Math.Round((SwarmMax - SwarmMin) * (double)level / MaxSpellLevel);
+        }
         public const float ParalysisCast = 1.75f;
         public const float ParalysisHold = 3f;
         public const float ParalysisCharm = 8f;

@@ -114,10 +114,10 @@ namespace DjvaGoda.Core
         public static float RallySpeedScale(bool rallied) { return rallied ? Abilities.RallySpeedScale : 1f; }
         public static float RallyAttackScale(bool rallied) { return rallied ? Abilities.RallyAttackScale : 1f; }
 
-        /// Волков у игрока не больше двух.
-        public static bool CanSummon(int beastsAlive) { return beastsAlive < Abilities.SummonLimit; }
+        /// Стая не больше своего размера: повторный призыв только доводит её до полной.
+        public static bool CanSummon(int beastsAlive, int spellLevel) { return beastsAlive < Abilities.SwarmSize(spellLevel); }
 
-        /// Волк появляется перед призывающим на дальности заклинания.
+        /// Стая появляется перед призывающим на дальности заклинания.
         public static V3 SummonPoint(V3 here, float yaw)
         {
             return here + UnitBrain.Rotate(new V3(0f, 0f, Abilities.RangeOf(AbilityKind.Summon)), yaw);

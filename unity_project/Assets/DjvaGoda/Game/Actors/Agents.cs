@@ -1,4 +1,4 @@
-// Батраки, бойцы, волки — появление и уход одним входом.
+// Батраки, бойцы, белки призыва — появление и уход одним входом.
 //
 // По сети это префаб Resources/Agent (NetworkObject, NetworkTransform хоста,
 // AgentNet): ходит и думает он ТОЛЬКО у хоста — мозг (UnitAgent или
@@ -98,14 +98,14 @@ namespace DjvaGoda.Game
     }
 
     /// Вид батрака, бойца, распорядителя — фигура (Figure) по роли и стороне,
-    /// с орудием в руке; зверь призыва — волк (Beast).
+    /// с орудием в руке; зверь призыва — белка (Beast).
     public static class AgentBody
     {
         public static void Build(Transform root, AgentRole role, Faction side)
         {
             if (role == AgentRole.Beast)
             {
-                Beast.Wolf(root).name = "Тело";
+                Beast.Squirrel(root).name = "Тело";
                 return;
             }
             var figure = Figure.Build(root, FigureLook.Agent(role, side));

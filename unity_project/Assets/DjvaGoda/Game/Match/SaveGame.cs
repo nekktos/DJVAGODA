@@ -226,6 +226,7 @@ namespace DjvaGoda.Game
             saved.inWheelchair = body.InWheelchair;
             saved.experience = player.Vitals.Experience;
             saved.upgrades = (int[])player.Vitals.Levels.Clone();
+            saved.spellLevels = (int[])player.Vitals.SpellLevels.Clone();
             // Отряд — составом: 0 мечник, 1 лучник; звери призыва не хранятся.
             var squad = new List<int>();
             foreach (var unit in Squads.Of(player)) squad.Add(unit.Brain.Kind == UnitKind.Archer ? 1 : 0);
@@ -303,6 +304,8 @@ namespace DjvaGoda.Game
             body.InWheelchair = saved.inWheelchair;
             player.Vitals.Experience = saved.experience;
             for (int i = 0; i < 4 && i < saved.upgrades.Length; i++) player.Vitals.Levels[i] = saved.upgrades[i];
+            if (saved.spellLevels != null)
+                for (int i = 0; i < player.Vitals.SpellLevels.Length && i < saved.spellLevels.Length; i++) player.Vitals.SpellLevels[i] = saved.spellLevels[i];
             player.Vitals.Revive();
             for (int i = 0; i < saved.squad.Length; i++)
                 Squads.Spawn(player, saved.squad[i] == 1 ? UnitKind.Archer : UnitKind.Swordsman, player.Feet, i);

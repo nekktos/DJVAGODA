@@ -28,7 +28,8 @@ namespace DjvaGoda.Core
             {
                 case UnitKind.Archer: return 65f;
                 case UnitKind.Champion: return 700f;
-                case UnitKind.Beast: return 55f;
+                // Зверь призыва — белка: одна слаба, сила в стае.
+                case UnitKind.Beast: return 12f;
                 default: return 90f;
             }
         }
@@ -41,7 +42,7 @@ namespace DjvaGoda.Core
             switch (kind)
             {
                 case UnitKind.Champion: return 6.6f;
-                case UnitKind.Beast: return 7.4f;
+                case UnitKind.Beast: return 8f;
                 default: return BaseSpeed;
             }
         }
@@ -51,7 +52,7 @@ namespace DjvaGoda.Core
             switch (kind)
             {
                 case UnitKind.Champion: return 32f;
-                case UnitKind.Beast: return 14f;
+                case UnitKind.Beast: return 3f;
                 // Лучник стреляет стрелой лука, а не бьёт как мечник.
                 case UnitKind.Archer: return Weapons.Damage[(int)WeaponKind.Bow];
                 default: return 22f;
@@ -63,7 +64,7 @@ namespace DjvaGoda.Core
             switch (kind)
             {
                 case UnitKind.Champion: return 1f;
-                case UnitKind.Beast: return 0.8f;
+                case UnitKind.Beast: return 0.6f;
                 case UnitKind.Archer: return Weapons.Cooldown[(int)WeaponKind.Bow];
                 default: return 1.1f;
             }

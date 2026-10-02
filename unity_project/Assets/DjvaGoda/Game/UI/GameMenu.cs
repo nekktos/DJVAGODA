@@ -225,6 +225,22 @@ namespace DjvaGoda.Game
                 }
                 GUI.enabled = true;
             }
+            // Заклинания своей стороны, у которых прокачка что-то меняет.
+            foreach (var spell in Factions.AbilitiesOf(me.Faction))
+            {
+                if (!Abilities.Upgradable(spell)) continue;
+                int level = vitals.SpellLevels[(int)spell];
+                int cost = level >= Abilities.MaxSpellLevel ? -1 : Progression.CostOf(level);
+                string title = Abilities.NameOf(spell) + ": уровень " + level + " из " + Abilities.MaxSpellLevel + ", "
+                    + Abilities.UpgradeText(spell, level) + (cost < 0 ? " — выше некуда" : " → " + Abilities.UpgradeText(spell, level + 1) + " за " + cost);
+                GUI.enabled = cost >= 0 && vitals.Experience >= cost;
+                if (GUILayout.Button(title, _button, GUILayout.Height(34)))
+                {
+                    var shop = me.GetComponent<Shop>();
+                    if (shop != null) shop.Request(DealKind.Upgrade, 10 + (int)spell);
+                }
+                GUI.enabled = true;
+            }
             if (GUILayout.Button("Закрыть (P)", _button, GUILayout.Height(34))) Show(Page.None);
         }
     }

@@ -221,6 +221,14 @@ namespace DjvaGoda.Game
                     _character.HarnessSize = Mathf.Clamp(arg, CaravanRules.HorsesMin, CaravanRules.HorsesMax);
                     return;
                 case DealKind.Upgrade:
+                    // 0..3 — здоровье, выносливость, бег, мана; 10 + AbilityKind — заклинание своей стороны.
+                    if (arg >= 10)
+                    {
+                        var spell = (AbilityKind)(arg - 10);
+                        if (arg - 10 >= Abilities.Names.Length || System.Array.IndexOf(Factions.AbilitiesOf(_character.Faction), spell) < 0) return;
+                        if (!_character.Vitals.BuySpellLevel(spell) && _combat != null) _combat.Tell("на этот уровень заклинания не хватает опыта");
+                        return;
+                    }
                     if (arg < 0 || arg >= Progression.Names.Length) return;
                     if (!_character.Vitals.BuyLevel((Stat)arg) && _combat != null) _combat.Tell("на этот уровень не хватает опыта");
                     return;

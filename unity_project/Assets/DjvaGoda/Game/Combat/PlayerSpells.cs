@@ -7,7 +7,7 @@
 // ударом, мана и откат списываются ТОЛЬКО когда заклинание сработало.
 // Таймеры заклинаний и мана тикают у хоста, клиентам — сетевой переменной.
 //
-// Эльфы: лечение, клич леса, призыв волка. Злодей: паралич, увядание, слепота.
+// Эльфы: лечение, клич леса, призыв стаи белок. Злодей: паралич, увядание, слепота.
 using System.Collections.Generic;
 using DjvaGoda.Core;
 using UnityEngine;
@@ -20,7 +20,7 @@ namespace DjvaGoda.Game
         PlayerCharacter _character;
         PlayerCombat _combat;
         NetPlayer _net;
-        readonly List<UnitAgent> _wolves = new List<UnitAgent>();
+        readonly List<UnitAgent> _swarm = new List<UnitAgent>();
 
         /// Заклинание по ключу -cast (проверка без клавиатуры); −1 — нет.
         public int ScriptedCast = -1;
@@ -45,7 +45,7 @@ namespace DjvaGoda.Game
                     var done = _character.Spells.Tick(delta);
                     if (done.HasValue) Finish(done.Value);
                 }
-                _wolves.RemoveAll(w => w == null || !w.Alive);
+                _swarm.RemoveAll(w => w == null || !w.Alive);
             }
             if (!_character.LocalControl || !_character.Alive) return;
             if (GameMode.Strategy && ScriptedCast < 0) return;
@@ -155,25 +155,36 @@ namespace DjvaGoda.Game
             return allies.Count > 0;
         }
 
-        /// Волк — боец-зверь: ходит за призвавшим и бьёт чужих.
+        /// Стая белок: от трёх до пятнадцати по прокачке самого заклинания;
+        /// ходят россыпью за призвавшим и кусают чужих. Повторный призыв, пока
+        /// стая жива, только доводит её до полной.
         bool Summon()
         {
-            if (!SpellEffects.CanSummon(_wolves.Count))
+            int level = _character.Vitals.SpellLevels[(int)AbilityKind.Summon];
+            int size = Abilities.SwarmSize(level);
+            if (!SpellEffects.CanSummon(_swarm.Count, level))
             {
-                Refuse("волков уже двое");
+                Refuse("стая уже в сборе: белок " + _swarm.Count + " из " + size);
                 return false;
             }
             var at = SpellEffects.SummonPoint(_character.Feet, _character.Yaw);
-            var go = Agents.Make(AgentRole.Beast, _character.Faction, at + new V3(0f, 0.5f, 0f), "Волк");
-            var wolf = go.AddComponent<UnitAgent>();
-            wolf.Setup(UnitKind.Beast, (int)_character.Faction, _wolves.Count, at, 40f);
-            wolf.Commander = _character;
-            wolf.CommanderFormation = FormationKind.Loose;
             var nav = Object.FindAnyObjectByType<NavWorld>();
-            wolf.Nav = nav;
-            wolf.Lifetime = Abilities.SummonLifetime;
-            Agents.Show(go);
-            _wolves.Add(wolf);
+            while (_swarm.Count < size)
+            {
+                int slot = _swarm.Count;
+                // Россыпью вокруг точки призыва: в одной точке тела влезли бы друг в друга.
+                float a = slot * 2.4f, r = 0.6f + slot * 0.18f;
+                var spot = at + new V3(Mathf.Cos(a) * r, 0.3f, Mathf.Sin(a) * r);
+                var go = Agents.Make(AgentRole.Beast, _character.Faction, spot, "Белка");
+                var squirrel = go.AddComponent<UnitAgent>();
+                squirrel.Setup(UnitKind.Beast, (int)_character.Faction, slot, at, UnitStats.SquadLeash);
+                squirrel.Commander = _character;
+                squirrel.CommanderFormation = FormationKind.Loose;
+                squirrel.Nav = nav;
+                squirrel.Lifetime = Abilities.SummonLifetime;
+                Agents.Show(go);
+                _swarm.Add(squirrel);
+            }
             return true;
         }
 

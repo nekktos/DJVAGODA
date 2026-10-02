@@ -1445,11 +1445,18 @@ public class CoreTests
             "лечение: +45 здоровья, кровь остановлена, срастается одна перебитая конечность; целого не лечит",
             "здоровье " + vitals.Health);
 
-        var wolf = SpellEffects.SummonPoint(new V3(10f, 0f, -10f), 0f);
-        Check(SpellEffects.CanSummon(1) && !SpellEffects.CanSummon(Abilities.SummonLimit)
-            && wolf.Distance(new V3(10f, 0f, -10f + Abilities.RangeOf(AbilityKind.Summon))) < 0.01f
+        var swarm = SpellEffects.SummonPoint(new V3(10f, 0f, -10f), 0f);
+        Check(Abilities.SwarmSize(0) == 3 && Abilities.SwarmSize(Abilities.MaxSpellLevel) == 15
+            && Abilities.SwarmSize(1) > 3 && Abilities.SwarmSize(99) == 15
+            && SpellEffects.CanSummon(2, 0) && !SpellEffects.CanSummon(3, 0) && SpellEffects.CanSummon(14, Abilities.MaxSpellLevel)
+            && swarm.Distance(new V3(10f, 0f, -10f + Abilities.RangeOf(AbilityKind.Summon))) < 0.01f
             && SpellEffects.RallySpeedScale(true) > 1f && SpellEffects.RallyAttackScale(true) < 1f,
-            "волков не больше двух, встают перед эльфом; клич — быстрее ход, чаще удар", "волк " + wolf);
+            "стая белок: от 3 без прокачки заклинания до 15 на пределе, встаёт перед эльфом; клич — быстрее ход, чаще удар",
+            "стая " + Abilities.SwarmSize(0) + ".." + Abilities.SwarmSize(Abilities.MaxSpellLevel));
+        var caster = new Vitals { Experience = 1000 };
+        Check(caster.BuySpellLevel(AbilityKind.Summon) && caster.SpellLevels[(int)AbilityKind.Summon] == 1
+            && caster.Experience == 1000 - Progression.CostOf(0) && !caster.BuySpellLevel(AbilityKind.Heal),
+            "прокачка призыва за опыт; у заклинаний без действия уровня нет", "опыт " + caster.Experience);
     }
 
     [Test]

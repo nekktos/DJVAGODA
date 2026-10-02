@@ -14,7 +14,7 @@ namespace DjvaGoda.Game
         /// Командир-игрок, за которым идёт строй; null — ведёт ИИ или стоит дома.
         public PlayerCharacter Commander;
         public FormationKind CommanderFormation = FormationKind.Line;
-        /// Сколько ещё живёт (волк призыва — минуту); ноль и меньше — без срока.
+        /// Сколько ещё живёт (белка призыва — минуту); ноль и меньше — без срока.
         public float Lifetime;
         /// Охраняемая повозка (приказ «с обозом»): строй — вокруг неё.
         public CaravanActor Escort;

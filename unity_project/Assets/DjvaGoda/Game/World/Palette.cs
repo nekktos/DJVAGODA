@@ -69,6 +69,9 @@ namespace DjvaGoda.Game
             { "horse", new Spec("fur", new Color(0.50f, 0.32f, 0.20f), 2f) },
             { "mane", new Spec("fur", new Color(0.12f, 0.09f, 0.07f), 3f) },
             { "wolf", new Spec("fur", new Color(0.55f, 0.55f, 0.55f), 2f) },
+            { "squirrel", new Spec("fur", new Color(0.92f, 0.42f, 0.14f), 10f) },
+            { "squirrel_belly", new Spec("fur", new Color(1f, 0.96f, 0.88f), 10f) },
+            { "squirrel_tail", new Spec("fur", new Color(0.74f, 0.3f, 0.1f), 8f) },
         };
 
         /// Заливки без текстуры: призрак постройки виден насквозь своим цветом.

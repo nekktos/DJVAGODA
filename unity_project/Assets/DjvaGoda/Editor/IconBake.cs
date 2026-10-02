@@ -184,16 +184,19 @@ namespace DjvaGoda.EditorTools
                 c.Circle(0.42f, 0.28f, 0.14f, new Color(0.5f, 0.35f, 0.1f));
                 c.Capsule(-0.7f, -0.45f, -0.55f, -0.35f, 0.08f, leather);
             });
-            Save("ab_2", c => // призыв волка — голова
+            Save("ab_2", c => // призыв стаи белок — белка с хвостом-завитком
             {
-                var fur = new Color(0.6f, 0.6f, 0.62f);
-                c.Box(-0.38f, 0.45f, 0.14f, 0.3f, 20f, fur);
-                c.Box(0.38f, 0.45f, 0.14f, 0.3f, -20f, fur);
-                c.Circle(0f, 0.05f, 0.5f, fur);
-                c.Ellipse(0f, -0.35f, 0.26f, 0.28f, new Color(0.72f, 0.72f, 0.74f));
-                c.Circle(0f, -0.48f, 0.08f, Ink);
-                c.Circle(-0.2f, 0.12f, 0.07f, gold);
-                c.Circle(0.2f, 0.12f, 0.07f, gold);
+                var fur = new Color(0.82f, 0.42f, 0.16f);
+                var belly = new Color(0.96f, 0.86f, 0.68f);
+                c.Circle(0.38f, 0.2f, 0.42f, fur);
+                c.Circle(0.48f, 0.58f, 0.24f, fur);
+                c.Ellipse(-0.18f, -0.28f, 0.34f, 0.4f, fur);
+                c.Ellipse(-0.1f, -0.32f, 0.18f, 0.26f, belly);
+                c.Circle(-0.32f, 0.22f, 0.24f, fur);
+                c.Box(-0.4f, 0.48f, 0.06f, 0.12f, 15f, fur);
+                c.Circle(-0.5f, 0.18f, 0.1f, belly);
+                c.Circle(-0.27f, 0.28f, 0.075f, Ink);
+                c.Ellipse(-0.05f, -0.68f, 0.22f, 0.07f, belly);
             });
             Save("ab_3", c => // паралич — цепь
             {

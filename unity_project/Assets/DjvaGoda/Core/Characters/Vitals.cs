@@ -62,6 +62,8 @@ namespace DjvaGoda.Core
         public const float StaminaRest = 0.6f;
 
         public readonly int[] Levels = new int[4];
+        /// Прокачка заклинаний по AbilityKind (Abilities.Upgradable): за тот же опыт.
+        public readonly int[] SpellLevels = new int[6];
         public int Experience;
         public float Health;
         public bool Alive = true;
@@ -159,6 +161,19 @@ namespace DjvaGoda.Core
             if (Stamina < StaminaJump) return false;
             Stamina = Math.Max(0f, Stamina - StaminaJump);
             _restLeft = StaminaRest;
+            return true;
+        }
+
+        /// Прокачать заклинание за опыт — по той же шкале цен, что и уровни.
+        public bool BuySpellLevel(AbilityKind kind)
+        {
+            if (!Abilities.Upgradable(kind)) return false;
+            int level = SpellLevels[(int)kind];
+            if (level >= Abilities.MaxSpellLevel) return false;
+            int cost = Progression.CostOf(level);
+            if (cost < 0 || Experience < cost) return false;
+            Experience -= cost;
+            SpellLevels[(int)kind] += 1;
             return true;
         }
 
