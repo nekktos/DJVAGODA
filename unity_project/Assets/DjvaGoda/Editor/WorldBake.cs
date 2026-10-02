@@ -265,9 +265,6 @@ namespace DjvaGoda.EditorTools
                 harvest.Key = Harvestable.PlanBase + index;
             }
             SetStatic(go, !piece.Harvest.HasValue);
-            // Отделка (зубцы, крыши, окна, крепь…) — без коллизий, рядом с куском.
-            var detail = WorldDetail.Decorate(piece, parent);
-            if (detail != null) SetStatic(detail, true);
             return go;
         }
 

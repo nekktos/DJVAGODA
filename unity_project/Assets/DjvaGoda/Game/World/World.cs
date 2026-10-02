@@ -88,6 +88,10 @@ namespace DjvaGoda.Game
                     Harvestable.PlanBase + p);
                 grove++;
             }
+            // Отделка кусков плана (зубцы, крыши, окна, крепь шахт — WorldDetail):
+            // как и деревья, строится при загрузке и в сцене не хранится — иначе
+            // файл сцены вырос бы в пять раз.
+            for (int p = 0; p < Plan.Pieces.Count; p++) WorldDetail.Decorate(Plan.Pieces[p], _holder);
             if (editing) Hide(_holder);
         }
 
