@@ -86,6 +86,9 @@ namespace DjvaGoda.EditorTools
         {
             Template("Triplanar", "DjvaGoda/Triplanar");
             Template("Glow", "DjvaGoda/Glow");
+            // Частицы (кровь, искры, щепки): свой шейдер — у штатного шейдера
+            // частиц URP материал из скрипта выходил с вывернутым цветом.
+            Template("Particle", "DjvaGoda/Particle");
         }
 
         static void Template(string name, string shaderName)

@@ -200,7 +200,15 @@ namespace DjvaGoda.Game
                 bool alive = actor.Alive;
                 float was;
                 if (_health.TryGetValue(actor, out was) && hp < was - 0.01f && _alive[actor])
-                    Play(Impact(actor), actor.transform.position + Vector3.up, 0.8f);
+                {
+                    var impact = Impact(actor);
+                    var at = actor.transform.position + Vector3.up * (actor is BuildingActor ? 1.5f : 1.2f);
+                    Play(impact, at, 0.8f);
+                    // Тот же удар — картинкой: живому кровь, постройке и обозу щепки.
+                    var side = new Vector3(Random.Range(-1f, 1f), 0.6f, Random.Range(-1f, 1f));
+                    if (impact == SoundKind.HitFlesh) Effects.Blood(at, side, was - hp);
+                    else Effects.Chips(at, impact == SoundKind.HitStone ? new Color(0.58f, 0.57f, 0.54f) : new Color(0.45f, 0.30f, 0.16f));
+                }
                 if (_alive.ContainsKey(actor) && _alive[actor] && !alive && !(actor is BuildingActor) && !(actor is CaravanActor))
                     Play(SoundKind.Death, actor.transform.position);
                 _health[actor] = hp;

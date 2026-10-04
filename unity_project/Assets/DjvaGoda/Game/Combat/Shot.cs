@@ -45,7 +45,11 @@ namespace DjvaGoda.Game
             Shot shot;
             if (!Live.TryGetValue(id, out shot) || shot == null) return;
             shot.transform.position = at;
-            if (shot.Kind == WeaponKind.Spell) Sfx.Play(SoundKind.Explosion, at);
+            if (shot.Kind == WeaponKind.Spell)
+            {
+                Sfx.Play(SoundKind.Explosion, at);
+                Effects.Explosion(at, Weapons.SpellBlastRadius);
+            }
             Destroy(shot.gameObject);
         }
 
@@ -155,7 +159,11 @@ namespace DjvaGoda.Game
         void Finish(Vector3 at)
         {
             if (Ended != null) Ended(Id, at);
-            if (Kind == WeaponKind.Spell) Sfx.Play(SoundKind.Explosion, at);
+            if (Kind == WeaponKind.Spell)
+            {
+                Sfx.Play(SoundKind.Explosion, at);
+                Effects.Explosion(at, Weapons.SpellBlastRadius);
+            }
             Destroy(gameObject);
         }
     }
