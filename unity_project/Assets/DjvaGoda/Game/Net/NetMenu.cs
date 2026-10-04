@@ -170,7 +170,7 @@ namespace DjvaGoda.Game
             {
                 var net = NetworkManager.Singleton;
                 string role = net.IsHost ? "Хост" : net.IsConnectedClient ? "Клиент" : "Подключение…";
-                GUI.Label(new Rect(12, 8, 900, 30), role + ". " + _session.Status);
+                Hud.Shadowed(new Rect(12, 8, 900, 30), role + ". " + _session.Status, new GUIStyle(GUI.skin.label) { fontSize = 15 });
                 if (Cursor.lockState != CursorLockMode.Locked && GUI.Button(new Rect(12, 40, 160, 34), "Выйти"))
                     _session.Leave();
                 return;

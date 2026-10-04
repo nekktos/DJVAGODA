@@ -15,6 +15,16 @@ namespace DjvaGoda.Game
         void Awake() { _rig = GetComponent<CameraRig>(); }
 
         /// Исход партии: объявления сверху, у дворца — чей он и ход захвата.
+        /// Надпись с тенью: читается и на белом мраморе, и на небе.
+        public static void Shadowed(Rect rect, string text, GUIStyle style)
+        {
+            var color = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.8f * color.a);
+            GUI.Label(new Rect(rect.x + 1.5f, rect.y + 1.5f, rect.width, rect.height), text, style);
+            GUI.color = color;
+            GUI.Label(rect, text, style);
+        }
+
         void Goals(PlayerCharacter me)
         {
             var goals = MatchGoals.Instance;
@@ -25,7 +35,7 @@ namespace DjvaGoda.Game
             {
                 if (Time.time - entry.Value > MatchGoals.AnnounceSeconds && !entry.Key.StartsWith("ПОБЕДА")) continue;
                 bool win = entry.Key.StartsWith("ПОБЕДА");
-                GUI.Label(new Rect(Screen.width * 0.5f - 400, y, 800, win ? 40 : 28), entry.Key,
+                Shadowed(new Rect(Screen.width * 0.5f - 400, y, 800, win ? 40 : 28), entry.Key,
                     win ? new GUIStyle(center) { fontSize = 30 } : center);
                 y += win ? 40 : 28;
             }
@@ -35,7 +45,7 @@ namespace DjvaGoda.Game
             string text = "Дворец: " + Factions.NameOf(state.PalaceOwner);
             if (state.Contested) text += " — оспаривают";
             else if (state.Claimant >= 0) text += " — берёт " + Factions.Names[state.Claimant];
-            GUI.Label(new Rect(Screen.width * 0.5f - 200, 40, 400, 24), text, center);
+            Shadowed(new Rect(Screen.width * 0.5f - 200, 40, 400, 24), text, center);
             if (state.CaptureProgress > 0f)
                 Bar(new Rect(Screen.width * 0.5f - 120, 66, 240, 8), state.CaptureProgress, new Color(0.9f, 0.7f, 0.2f));
         }
@@ -58,7 +68,7 @@ namespace DjvaGoda.Game
             {
                 float left = net != null && net.IsSpawned ? net.RespawnIn.Value : -1f;
                 string text = left < 0f ? "Вожак пал — злодей выбыл из партии." : "Вы пали. Встанете через " + Mathf.CeilToInt(left) + " с";
-                GUI.Label(new Rect(Screen.width * 0.5f - 220, Screen.height * 0.4f, 440, 40), text,
+                Shadowed(new Rect(Screen.width * 0.5f - 300, Screen.height * 0.4f, 600, 40), text,
                     new GUIStyle(_label) { fontSize = 26, alignment = TextAnchor.MiddleCenter });
                 return;
             }
