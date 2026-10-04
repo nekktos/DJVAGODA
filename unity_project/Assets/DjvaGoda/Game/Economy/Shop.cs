@@ -440,6 +440,7 @@ namespace DjvaGoda.Game
 
         void OnGUI()
         {
+            GUI.depth = 0;
             if (!_character.LocalControl || GameMode.Strategy || !_character.Alive) return;
             if (!_open)
             {
@@ -459,7 +460,14 @@ namespace DjvaGoda.Game
             if (_style == null) _style = new GUIStyle(GUI.skin.button) { fontSize = 16, alignment = TextAnchor.MiddleLeft };
             var kit = _character.Kit;
             var wallet = Treasury.Of(_character.Faction);
-            GUILayout.BeginArea(new Rect(Screen.width * 0.5f - 260, Screen.height * 0.2f, 520, 520), GUI.skin.box);
+            // Окно — поверх всего экрана боя и ниже полосы ресурсов, сплошной подложкой.
+            GUI.depth = -50;
+            float top = Mathf.Max(146f, Screen.height * 0.2f);
+            var area = new Rect(Screen.width * 0.5f - 260, top, 520, Mathf.Min(520f, Screen.height - top - 12f));
+            GUI.color = new Color(0f, 0f, 0f, 0.6f);
+            GUI.DrawTexture(area, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUILayout.BeginArea(area, GUI.skin.box);
             if (AtChief) ChiefPanel();
             if (AtBench || NeedsWood) BenchPanel(wallet);
             if (AtTrader)
