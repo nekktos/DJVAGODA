@@ -36,19 +36,21 @@ namespace DjvaGoda.Game
             _camera.farClipPlane = 2000f;
         }
 
+        bool _wasStrategy;
+
         void Update()
         {
-            if (Target != null && GameInput.Pressed("toggle_camera"))
+            if (Target != null && GameInput.Pressed("toggle_camera")) GameMode.Strategy = !GameMode.Strategy;
+            // Вход в вид сверху — откуда угодно (Tab, «маршрут» из окна склада):
+            // обзор начинается над собой, а не там, где камера была в прошлый раз.
+            if (GameMode.Strategy && !_wasStrategy && Target != null)
             {
-                GameMode.Strategy = !GameMode.Strategy;
-                if (GameMode.Strategy)
-                {
-                    _focus = Target.transform.position;
-                    _turn = Target.Yaw * Mathf.Rad2Deg;
-                    Cursor.lockState = CursorLockMode.None;
-                    Cursor.visible = true;
-                }
+                _focus = Target.transform.position;
+                _turn = Target.Yaw * Mathf.Rad2Deg;
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
             }
+            _wasStrategy = GameMode.Strategy;
             if (GameMode.Strategy)
             {
                 Strategy(Time.unscaledDeltaTime);

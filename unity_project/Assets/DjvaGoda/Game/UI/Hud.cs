@@ -65,6 +65,8 @@ namespace DjvaGoda.Game
 
             Resources(me.Faction);
             BuildPanel(me);
+            // Сверху — только хозяйство: прицел, заклинания и оружие там ни к чему.
+            if (GameMode.Strategy) return;
 
             // Слепота: заклятие злодея и выбитые глаза — экран темнеет.
             float blind = Mathf.Max(me.Spells.Blind > 0f ? 0.85f : 0f, me.Body.Blindness() * 0.6f);
@@ -195,59 +197,62 @@ namespace DjvaGoda.Game
                     GUI.Label(new Rect(16, 140, 500, 24), KeyOf("build_elf_house") + " — поставить дом эльфов", _label);
                 return;
             }
-            float y = 140;
-            GUI.Label(new Rect(16, y, 500, 24), "Вид сверху.  " + KeyOf("toggle_camera") + " — в бой", _label);
-            y += 26;
+            // Сверху — одна панель на подложке: стройка, отряд, обоз, хозяйство.
+            var lines = new List<KeyValuePair<string, bool>>();
+            lines.Add(Line("Вид сверху.  " + KeyOf("toggle_camera") + " — в бой"));
             foreach (var item in Builder.Menu)
             {
                 if (!Factions.MayBuild(me.Faction, item.Value, me.Kit.IsLeader)) continue;
                 var cost = Res.BuildingCost(item.Value);
-                bool can = Treasury.Of(me.Faction).CanAfford(cost);
-                GUI.color = can ? Color.white : new Color(1f, 1f, 1f, 0.5f);
-                GUI.Label(new Rect(16, y, 700, 24), KeyOf(item.Key) + "  " + Res.BuildingNames[(int)item.Value] + " — " + Res.FormatCost(cost), _label);
-                GUI.color = Color.white;
-                y += 24;
+                lines.Add(new KeyValuePair<string, bool>(KeyOf(item.Key) + "  " + Res.BuildingNames[(int)item.Value] + " — " + Res.FormatCost(cost),
+                    Treasury.Of(me.Faction).CanAfford(cost)));
             }
             var wallet = Treasury.Of(me.Faction);
             if (builder != null && builder.Routing)
                 GUI.Label(new Rect(Screen.width * 0.5f - 300, Screen.height - 200, 600, 26),
                     "Маршрут обоза: точек " + builder.RoutePoints + " из " + Builder.MaxRoutePoints
                     + ".  ЛКМ — точка, Enter — отправить, ПКМ — отмена", new GUIStyle(_label) { alignment = TextAnchor.MiddleCenter });
-            y = SquadPanel(me, y + 8);
-            y += 8;
-            GUI.Label(new Rect(16, y, 700, 24), KeyOf("route") + "  маршрут обоза (лошадей свободно " + wallet.HorsesFree + " из " + wallet.Horses + ")", _label);
-            y += 24;
-            if (!Factions.CanBuild(me.Faction) && !me.Kit.IsLeader) return;
-            // Хозяйство: найм и роли батраков (счёт — по видимым батракам стороны).
-            var counts = new int[LabourerStats.RoleNames.Length];
-            int crew = Agents.CountCrew(me.Faction, counts);
-            y += 8;
-            GUI.Label(new Rect(16, y, 700, 24), KeyOf("hire_labourer") + "  нанять батрака — " + Res.FormatCost(Res.LabourerCost)
-                + "   (батраков " + crew + " из " + Res.LabourerLimit + ")", _label);
-            y += 24;
-            foreach (var role in Builder.Roles)
+            SquadPanel(me, lines);
+            lines.Add(Line(KeyOf("route") + "  маршрут обоза (лошадей свободно " + wallet.HorsesFree + " из " + wallet.Horses + ")"));
+            if (Factions.CanBuild(me.Faction) || me.Kit.IsLeader)
             {
-                GUI.Label(new Rect(16, y, 700, 24), KeyOf(role.Key) + "  в " + LabourerStats.RoleNames[(int)role.Value] + "ы — сейчас " + counts[(int)role.Value], _label);
-                y += 22;
+                // Хозяйство: найм и роли батраков (счёт — по видимым батракам стороны).
+                var counts = new int[LabourerStats.RoleNames.Length];
+                int crew = Agents.CountCrew(me.Faction, counts);
+                lines.Add(Line(KeyOf("hire_labourer") + "  нанять батрака — " + Res.FormatCost(Res.LabourerCost)
+                    + "   (батраков " + crew + " из " + Res.LabourerLimit + ")"));
+                foreach (var role in Builder.Roles)
+                    lines.Add(Line(KeyOf(role.Key) + "  в " + LabourerStats.RoleNames[(int)role.Value] + "ы — сейчас " + counts[(int)role.Value]));
             }
+            var style = new GUIStyle(_small) { fontSize = 15 };
+            const float row = 20f;
+            float width = 0f;
+            foreach (var line in lines) width = Mathf.Max(width, style.CalcSize(new GUIContent(line.Key)).x);
+            var panel = new Rect(10, 140, width + 20, lines.Count * row + 12);
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(panel, Texture2D.whiteTexture);
+            for (int i = 0; i < lines.Count; i++)
+            {
+                GUI.color = lines[i].Value ? Color.white : new Color(1f, 1f, 1f, 0.5f);
+                GUI.Label(new Rect(panel.x + 10, panel.y + 6 + i * row, width + 4, row), lines[i].Key, style);
+            }
+            GUI.color = Color.white;
         }
 
+        static KeyValuePair<string, bool> Line(string text) { return new KeyValuePair<string, bool>(text, true); }
+
         /// Отряд сверху: состав, строй, приказы (как command_bar Godot-версии).
-        float SquadPanel(PlayerCharacter me, float y)
+        void SquadPanel(PlayerCharacter me, List<KeyValuePair<string, bool>> lines)
         {
             var net = me.GetComponent<NetPlayer>();
             int count = net != null && net.IsSpawned && !net.IsServer ? net.Squad.Value & 255 : Squads.Of(me).Count;
-            if (count == 0) return y;
-            GUI.Label(new Rect(16, y, 900, 24), "Отряд: " + count + ", строй — " + Formations.Names[(int)me.SquadFormation]
-                + (me.SquadHold ? ", стоит на точке" : ", идёт за вами"), _label);
-            y += 24;
-            GUI.Label(new Rect(16, y, 900, 24), "ПКМ — идти туда   " + KeyOf("squad_follow") + " — ко мне   "
-                + KeyOf("squad_escort") + " — с обозом", _label);
-            y += 24;
+            if (count == 0) return;
+            lines.Add(Line("Отряд: " + count + ", строй — " + Formations.Names[(int)me.SquadFormation]
+                + (me.SquadHold ? ", стоит на точке" : ", идёт за вами")));
+            lines.Add(Line("ПКМ — идти туда   " + KeyOf("squad_follow") + " — ко мне   " + KeyOf("squad_escort") + " — с обозом"));
             var line = "";
             for (int i = 0; i < Formations.Names.Length; i++) line += KeyOf("formation_" + (i + 1)) + " — " + Formations.Names[i] + "   ";
-            GUI.Label(new Rect(16, y, 900, 24), line, _label);
-            return y + 24;
+            lines.Add(Line(line));
         }
 
         /// Ресурсы стороны: иконка и число — при себе (под риском) и на складе.
