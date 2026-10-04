@@ -212,6 +212,13 @@ godot_project/                 эталон: прежняя версия
    отрубленного при жизни нет (`Combat/Corpses`, `Figure.Lay`). Только вид,
    без коллизии; хост рассылает `MatchNet.CorpseRpc`, не больше 30 (старые
    убираются). Сам павший персонаж до возрождения скрыт. Белок не кладём.
+   ✅ Консоль плейтеста (перенос cheats.gd): «~» в отладочной сборке и в
+   редакторе (`UI/DevConsole`), команды выполняет хост (`Net/Cheats`,
+   `NetPlayer.CheatRpc` → ответ `CheatReplyRpc`): res, xp, heal, bandages,
+   hurt, limb, tp, goto, kill, who, help. Пока открыта — игровые клавиши
+   молчат (`GameInput.Muted`). Проверка — `CheatTests`.
+   Без редактора компиляцию проверяет `tools/unity_compile_check.sh` (Roslyn
+   из поставки Unity против Library/ScriptAssemblies).
 9. **Цели партии:** захват дворца, выбывание сторон, командир и приказы,
    старейшина и задания, сохранения.
    ✅ 9а: исход партии — `Match/MatchGoals` на «Партии» (хост; клиентам —

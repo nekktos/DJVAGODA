@@ -41,14 +41,19 @@ namespace DjvaGoda.Game
             return Actions.TryGetValue(name, out action) ? action : null;
         }
 
+        /// Ввод занят (открыта консоль): игровые клавиши молчат, пока печатают.
+        public static bool Muted;
+
         public static bool Held(string name)
         {
+            if (Muted) return false;
             var action = Of(name);
             return action != null && action.IsPressed();
         }
 
         public static bool Pressed(string name)
         {
+            if (Muted) return false;
             var action = Of(name);
             return action != null && action.WasPressedThisFrame();
         }

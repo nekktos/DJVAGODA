@@ -396,6 +396,17 @@ namespace DjvaGoda.Game
             if (_combat != null) _combat.ShowHit(head, killed);
         }
 
+        /// Команда консоли плейтеста (только отладочная сборка): выполняет хост.
+        [Rpc(SendTo.Server)]
+        public void CheatRpc(string line, RpcParams rpcParams = default(RpcParams))
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            CheatReplyRpc(Cheats.Run(_character, line));
+        }
+
+        [Rpc(SendTo.Owner)]
+        public void CheatReplyRpc(string reply) { DevConsole.Reply(reply); }
+
         /// Отказ хоста — владельцу на экран.
         [Rpc(SendTo.Owner)]
         public void RefuseRpc(string why)

@@ -54,6 +54,7 @@ namespace DjvaGoda.Game
             gameObject.AddComponent<SaveGame>();
             gameObject.AddComponent<Experience>();
             gameObject.AddComponent<Sfx>();
+            if (Cheats.Allowed) gameObject.AddComponent<DevConsole>();
         }
 
         public override void OnDestroy()
