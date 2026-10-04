@@ -128,7 +128,10 @@ namespace DjvaGoda.Game
             var look = Aim.Straight(Target.Yaw, Target.Pitch).ToUnity();
             var pivotCore = feet + UnitBrain.Rotate(FirstPerson ? FirstPivot : ThirdPivot, Target.Yaw);
             var pivot = pivotCore.ToUnity();
-            float arm = FirstPerson ? 0f : ThirdArm;
+            // Верхом: от первого лица — глаза на высоте седла; из-за плеча —
+            // выше и дальше, чтобы всадник с лошадью не заслоняли прицел.
+            if (Target.Mounted) pivot += Vector3.up * (FirstPerson ? Beast.HorseBack : 0.9f);
+            float arm = FirstPerson ? 0f : ThirdArm + (Target.Mounted ? 1.5f : 0f);
             if (arm > 0f)
             {
                 RaycastHit hit;
