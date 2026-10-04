@@ -6,7 +6,9 @@
         "Unity.InputSystem",
         "Unity.Netcode.Runtime",
         "Unity.Networking.Transport",
-        "Unity.AI.Navigation"
+        "Unity.AI.Navigation",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

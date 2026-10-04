@@ -14,6 +14,8 @@ namespace DjvaGoda.Game
     {
         public const float Cell = 16f;
         public const int Radius = 5;
+        /// Низкая графика (меню): трава только вблизи.
+        public static int RadiusNow { get { return GameMenu.LowGraphics ? 3 : Radius; } }
         public const int TuftsPerCell = 70;
         const float RoadHalf = 8.5f;
 
@@ -86,10 +88,11 @@ namespace DjvaGoda.Game
             // Сверху (вид стратега) трава не видна, а клеток вокруг — сотни: не рисуем.
             if (at.y - _world.Relief.Height(at.x, at.z) > 40f) return;
             int ox = Mathf.FloorToInt(at.x / Cell), oz = Mathf.FloorToInt(at.z / Cell);
-            for (int dx = -Radius; dx <= Radius; dx++)
-                for (int dz = -Radius; dz <= Radius; dz++)
+            int radius = RadiusNow;
+            for (int dx = -radius; dx <= radius; dx++)
+                for (int dz = -radius; dz <= radius; dz++)
                 {
-                    if (dx * dx + dz * dz > Radius * Radius) continue;
+                    if (dx * dx + dz * dz > radius * radius) continue;
                     var tufts = CellTufts(ox + dx, oz + dz);
                     if (tufts.Length > 0) Graphics.RenderMeshInstanced(_params, _tuft, 0, tufts);
                 }

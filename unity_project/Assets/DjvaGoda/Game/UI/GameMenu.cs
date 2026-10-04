@@ -31,6 +31,53 @@ namespace DjvaGoda.Game
         {
             _rig = GetComponent<CameraRig>();
             AudioListener.volume = Volume;
+            ApplyGraphics();
+        }
+
+        const string GraphicsKey = "low_graphics";
+
+        /// Низкая графика — для слабых машин тестеров: копия конвейера URP с
+        /// рендером в 0.75 разрешения, тенями ближе и без сглаживания, трава
+        /// ближе. Уровни качества не годятся: «Mobile» шаблона на ПК недоступен.
+        public static bool LowGraphics
+        {
+            get { return PlayerPrefs.GetInt(GraphicsKey, 0) == 1; }
+            set
+            {
+                PlayerPrefs.SetInt(GraphicsKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+                ApplyGraphics();
+            }
+        }
+
+        static UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset _high, _low;
+
+        static void ApplyGraphics()
+        {
+            if (_high == null)
+            {
+                _high = QualitySettings.renderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+                if (_high == null) return;
+                // На выходе (и при остановке игры в редакторе) — исходный конвейер:
+                // настройки качества в редакторе принадлежат проекту.
+                var high = _high;
+                Application.quitting += () => { if (QualitySettings.renderPipeline != high) QualitySettings.renderPipeline = high; };
+            }
+            if (!LowGraphics)
+            {
+                if (QualitySettings.renderPipeline != _high) QualitySettings.renderPipeline = _high;
+                return;
+            }
+            if (_low == null)
+            {
+                // Копия, а не правка ассета: в редакторе правка ушла бы в файл проекта.
+                _low = Object.Instantiate(_high);
+                _low.name = "Низкая графика";
+                _low.renderScale = 0.75f;
+                _low.shadowDistance = Mathf.Min(_high.shadowDistance, 40f);
+                _low.msaaSampleCount = 1;
+            }
+            QualitySettings.renderPipeline = _low;
         }
 
         const string VolumeKey = "volume";
@@ -193,6 +240,8 @@ namespace DjvaGoda.Game
             if (GUILayout.Button("−", _button, GUILayout.Width(60), GUILayout.Height(40))) Volume = Mathf.Round(Volume * 10f - 1f) / 10f;
             if (GUILayout.Button("+", _button, GUILayout.Width(60), GUILayout.Height(40))) Volume = Mathf.Round(Volume * 10f + 1f) / 10f;
             GUILayout.EndHorizontal();
+            if (GUILayout.Button("Графика: " + (LowGraphics ? "низкая (для слабых машин)" : "высокая"), _button, GUILayout.Height(40)))
+                LowGraphics = !LowGraphics;
             GUILayout.Space(12);
             if (GUILayout.Button("Выйти в главное меню", _button, GUILayout.Height(40))) Leave();
         }

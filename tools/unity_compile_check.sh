@@ -16,7 +16,7 @@ base() {
   echo "-r:\"$E/NetStandard/ref/2.1.0/netstandard.dll\""
   echo "-r:\"$E/NetStandard/compat/2.1.0/shims/netfx/mscorlib.dll\""
   for f in "$E"/Managed/UnityEngine/*.dll; do echo "-r:\"$f\""; done
-  for f in DjvaGoda.Core Unity.InputSystem Unity.Netcode.Runtime Unity.Networking.Transport Unity.AI.Navigation Unity.Collections UnityEngine.TestRunner; do
+  for f in DjvaGoda.Core Unity.InputSystem Unity.Netcode.Runtime Unity.Networking.Transport Unity.AI.Navigation Unity.Collections UnityEngine.TestRunner Unity.RenderPipelines.Universal.Runtime Unity.RenderPipelines.Core.Runtime; do
     echo "-r:\"$(pwd -W)/Library/ScriptAssemblies/$f.dll\""
   done
 }
