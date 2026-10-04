@@ -191,9 +191,10 @@ namespace DjvaGoda.Game
 
         void Update()
         {
-            var seen = new List<Actor>(Actor.All);
-            foreach (var actor in seen)
+            // По индексу, без копии списка: звук участников не добавляет.
+            for (int a = 0; a < Actor.All.Count; a++)
             {
+                var actor = Actor.All[a];
                 if (actor == null) continue;
                 float hp = HealthOf(actor);
                 bool alive = actor.Alive;
