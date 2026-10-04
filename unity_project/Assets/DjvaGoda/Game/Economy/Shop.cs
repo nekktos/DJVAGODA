@@ -463,7 +463,10 @@ namespace DjvaGoda.Game
             // Окно — поверх всего экрана боя и ниже полосы ресурсов, сплошной подложкой.
             GUI.depth = -50;
             float top = Mathf.Max(146f, Screen.height * 0.2f);
-            var area = new Rect(Screen.width * 0.5f - 260, top, 520, Mathf.Min(520f, Screen.height - top - 12f));
+            // Высота — по содержимому прошлого кадра: пара строк не тянет за
+            // собой пустую подложку на полэкрана.
+            float room = Screen.height - top - 12f;
+            var area = new Rect(Screen.width * 0.5f - 260, top, 520, Mathf.Min(_windowHeight, room));
             GUI.color = new Color(0f, 0f, 0f, 0.6f);
             GUI.DrawTexture(area, Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -521,8 +524,13 @@ namespace DjvaGoda.Game
                     _style, GUILayout.Height(32))) Ask(DealKind.Fortify, 0);
                 GUI.enabled = true;
             }
+            // Нижний край содержимого — для высоты окна в следующем кадре.
+            GUILayout.Label(GUIContent.none, GUILayout.Height(0f));
+            if (Event.current.type == EventType.Repaint) _windowHeight = GUILayoutUtility.GetLastRect().yMax + 12f;
             GUILayout.EndArea();
         }
+
+        float _windowHeight = 520f;
 
         /// Сколько в отряде — у хоста по бойцам, у клиента по сводке NetPlayer.
         int _squadShown { get { return _net != null && _net.IsSpawned && !_net.IsServer ? _net.Squad.Value & 255 : Squads.Of(_character).Count; } }
