@@ -193,6 +193,30 @@ namespace DjvaGoda.Game
             }
         }
 
+        static readonly Color[] ChipColors =
+        {
+            new Color(0.45f, 0.30f, 0.16f), new Color(0.55f, 0.55f, 0.58f), new Color(0.85f, 0.70f, 0.20f),
+            new Color(0.60f, 0.62f, 0.68f), new Color(0.75f, 0.60f, 0.30f), new Color(0.15f, 0.15f, 0.16f),
+        };
+
+        /// Удар по источнику (зовёт хост): стук и щепки — у всех.
+        public static void Chips(Vector3 at, int resource)
+        {
+            var me = Instance;
+            if (me != null && me.IsSpawned) me.ChipsRpc(at, resource);
+            else ShowChips(at, resource);
+        }
+
+        [Rpc(SendTo.Everyone)]
+        void ChipsRpc(Vector3 at, int resource) { ShowChips(at, resource); }
+
+        static void ShowChips(Vector3 at, int resource)
+        {
+            bool wood = resource == (int)ResourceKind.Wood;
+            Sfx.Play(wood ? SoundKind.HitWood : SoundKind.HitStone, at, 0.7f);
+            Effects.Chips(at, ChipColors[Mathf.Clamp(resource, 0, ChipColors.Length - 1)]);
+        }
+
         /// Павший лёг (рассылает хост, себе тоже).
         [Rpc(SendTo.Everyone)]
         public void CorpseRpc(Vector3 at, float yaw, int look, int side, int severed)

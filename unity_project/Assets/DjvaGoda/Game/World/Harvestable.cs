@@ -47,6 +47,8 @@ namespace DjvaGoda.Game
                 HitsLeft--;
                 gone = HitsLeft <= 0;
             }
+            // Удар слышен и виден всем: стук и щепки цветом ресурса.
+            MatchNet.Chips(transform.position + Vector3.up * (TreeIndex >= 0 ? 1.2f : 0.8f), (int)Resource);
             if (gone) MatchNet.Deplete(Key);
             return gone;
         }
