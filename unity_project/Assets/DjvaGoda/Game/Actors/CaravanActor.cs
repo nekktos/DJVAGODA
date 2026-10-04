@@ -193,8 +193,12 @@ namespace DjvaGoda.Game
                     new BodyShapes.Ring(0f, 0.05f, 0.05f), new BodyShapes.Ring(2.4f, 0.04f, 0.04f),
                 }, 6), "wood", new Vector3(0.55f * s, -0.35f, 2f), Vector3.one, Quaternion.Euler(84f, 0f, 0f));
             }
-            // Полотняный верх на дугах.
-            BodyShapes.Part(view, "Верх", BodyShapes.Dome(16, 6), "linen", new Vector3(0f, 0.25f, 0f), new Vector3(2.25f, 1.7f, 3.9f));
+            // Полотняный тент на дугах: полукруглый тоннель вдоль кузова, у
+            // концов расходится раструбом; поверх полотна — четыре дуги.
+            BodyShapes.Part(view, "Тент", Tilt("тент", 1.14f, 1.25f, 3.9f, 0.1f, 6), "linen", new Vector3(0f, 0.22f, 0f), Vector3.one);
+            for (int i = 0; i < 4; i++)
+                BodyShapes.Part(view, "Дуга", Tilt("дуга", 1.17f, 1.28f, 0.07f, 0f, 1), "wood",
+                    new Vector3(0f, 0.22f, -1.45f + i * 0.97f), Vector3.one);
             BodyShapes.Part(view, "Древко", BodyShapes.Loft("древко", new[]
             {
                 new BodyShapes.Ring(0f, 0.035f, 0.035f), new BodyShapes.Ring(1.6f, 0.03f, 0.03f),
@@ -204,6 +208,50 @@ namespace DjvaGoda.Game
             if (owner == null) return;
             Zone(root, owner, "torso", new Vector3(0f, 0.2f, 0f), new Vector3(2.6f, 2f, 4.4f));
             Zone(root, owner, "harness", new Vector3(0f, 0f, 3.4f), new Vector3(1.6f, 1.6f, 2.2f));
+        }
+
+        static readonly System.Collections.Generic.Dictionary<string, Mesh> Tilts = new System.Collections.Generic.Dictionary<string, Mesh>();
+
+        /// Полукруглый тоннель вдоль z (низ открыт): полуширина halfWidth,
+        /// высота height, длина length; концы шире на flare. Двусторонний —
+        /// изнутри через открытые концы тоже видно полотно.
+        static Mesh Tilt(string name, float halfWidth, float height, float length, float flare, int rings)
+        {
+            Mesh mesh;
+            if (Tilts.TryGetValue(name, out mesh) && mesh != null) return mesh;
+            const int arc = 14;
+            var verts = new System.Collections.Generic.List<Vector3>();
+            for (int r = 0; r <= rings; r++)
+            {
+                float t = (float)r / rings;
+                float z = (t - 0.5f) * length;
+                // Раструб: к концам шире и чуть выше.
+                float spread = 1f + flare * Mathf.Pow(Mathf.Abs(t - 0.5f) * 2f, 3f);
+                for (int i = 0; i <= arc; i++)
+                {
+                    float a = Mathf.PI * i / arc;
+                    verts.Add(new Vector3(Mathf.Cos(a) * halfWidth * spread, Mathf.Sin(a) * height * spread, z));
+                }
+            }
+            var tris = new System.Collections.Generic.List<int>();
+            for (int r = 0; r < rings; r++)
+                for (int i = 0; i < arc; i++)
+                {
+                    int a0 = r * (arc + 1) + i, a1 = a0 + 1, b0 = a0 + arc + 1, b1 = b0 + 1;
+                    tris.AddRange(new[] { a0, b0, a1, a1, b0, b1 });
+                }
+            // Вторая сторона: те же вершины, обратный обход.
+            int count = verts.Count;
+            verts.AddRange(verts.ToArray());
+            int front = tris.Count;
+            for (int k = 0; k < front; k += 3) tris.AddRange(new[] { tris[k] + count, tris[k + 2] + count, tris[k + 1] + count });
+            mesh = new Mesh { name = name };
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            Tilts[name] = mesh;
+            return mesh;
         }
 
         static Mesh _box;
