@@ -162,33 +162,67 @@ namespace DjvaGoda.Game
                     for (int i = 0; i < 4; i++)
                         Part(root, "Бочка", Cylinder(), "wood", new Vector3(-w * 0.5f + 1f + i * 1.1f, 0.6f, d * 0.5f + 1.1f), new Vector3(0.9f, 1.2f, 0.9f));
                     Box(root, "Ящик", "wood", new Vector3(-w * 0.5f + 1.2f, 0.5f, d * 0.5f + 2.4f), new Vector3(1f, 1f, 1f), 20f);
+                    // Навес сбоку: поленница и мешки — склад видно и сверху.
+                    Shed(root, new Vector3(w * 0.5f + 1.6f, 0f, 0f), 3.2f, d * 0.8f, wallH * 0.75f);
+                    for (int row = 0; row < 3; row++)
+                        for (int i = 0; i < 5 - row; i++)
+                        {
+                            var log = Part(root, "Бревно", Cylinder(), "bark", new Vector3(w * 0.5f + 1.1f, 0.3f + row * 0.5f, -d * 0.3f + (i + row * 0.5f) * 0.55f),
+                                new Vector3(0.5f, 2.2f, 0.5f));
+                            log.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                        }
+                    for (int i = 0; i < 3; i++)
+                        Part(root, "Мешок", BodyShapes.Ellipsoid(), "linen", new Vector3(w * 0.5f + 2.2f, 0.4f, d * 0.2f + i * 0.8f), new Vector3(0.7f, 0.8f, 0.6f));
                     break;
                 case BuildingKind.SwordBarracks:
                     // Стойка с мечами у входа.
                     Box(root, "Стойка", "wood", new Vector3(-w * 0.5f + 2f, 0.9f, d * 0.5f + 0.9f), new Vector3(2.4f, 0.12f, 0.3f));
                     for (int i = 0; i < 5; i++)
                         Box(root, "Меч", "metal", new Vector3(-w * 0.5f + 1.1f + i * 0.45f, 0.9f, d * 0.5f + 0.9f), new Vector3(0.07f, 1.4f, 0.03f));
+                    // Плац перед казармой: утоптанная земля, изгородь, чучела для рубки.
+                    Box(root, "Плац", "road", new Vector3(0f, 0.03f, d * 0.5f + 5f), new Vector3(w * 0.9f, 0.06f, 6f));
+                    Fence(root, new Vector3(0f, 0f, d * 0.5f + 5f), w * 0.9f, 6f, true);
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        var dummy = new Vector3(i * w * 0.25f, 0f, d * 0.5f + 5.5f);
+                        Post(root, "wood", dummy, 1.9f, 0.1f);
+                        Box(root, "Перекладина", "wood", dummy + new Vector3(0f, 1.45f, 0f), new Vector3(1.1f, 0.1f, 0.1f));
+                        Part(root, "Чучело", BodyShapes.Ellipsoid(), "thatch", dummy + new Vector3(0f, 1.25f, 0f), new Vector3(0.55f, 0.8f, 0.45f));
+                        Part(root, "Голова чучела", BodyShapes.Ellipsoid(), "linen", dummy + new Vector3(0f, 1.85f, 0f), new Vector3(0.32f, 0.36f, 0.32f));
+                    }
                     break;
                 case BuildingKind.ArcherBarracks:
-                    // Мишень: соломенный круг с алым центром.
-                    var target = Part(root, "Мишень", Cylinder(), "thatch", new Vector3(-w * 0.5f - 2f, 1.3f, d * 0.5f), new Vector3(1.6f, 0.25f, 1.6f));
-                    target.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                    var bull = Part(root, "Яблочко", Cylinder(), "accent", new Vector3(-w * 0.5f - 2f, 1.3f, d * 0.5f + 0.14f), new Vector3(0.5f, 0.05f, 0.5f));
-                    bull.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    // Стрельбище: три мишени на стойках в ряд перед казармой.
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        var stand = new Vector3(i * w * 0.3f, 0f, d * 0.5f + 7f);
+                        for (int s = -1; s <= 1; s += 2) Post(root, "wood", stand + new Vector3(0.6f * s, 0f, -0.3f), 1.6f, 0.07f);
+                        var target = Part(root, "Мишень", Cylinder(), "thatch", stand + new Vector3(0f, 1.3f, 0f), new Vector3(1.5f, 0.25f, 1.5f));
+                        target.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                        var ring = Part(root, "Кольцо", Cylinder(), "linen", stand + new Vector3(0f, 1.3f, -0.13f), new Vector3(1f, 0.04f, 1f));
+                        ring.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                        var bull = Part(root, "Яблочко", Cylinder(), "accent", stand + new Vector3(0f, 1.3f, -0.15f), new Vector3(0.45f, 0.04f, 0.45f));
+                        bull.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    }
+                    Box(root, "Рубеж", "wood", new Vector3(0f, 0.08f, d * 0.5f + 1.8f), new Vector3(w * 0.8f, 0.16f, 0.2f));
                     break;
                 case BuildingKind.Stable:
-                    // Загон с изгородью и стог сена.
-                    for (int i = 0; i <= 4; i++)
-                        Post(root, "wood", new Vector3(-w * 0.5f + i * w / 4f, 0f, d * 0.5f + 4f), 1.3f, 0.09f);
-                    Box(root, "Жердь", "wood", new Vector3(0f, 1.0f, d * 0.5f + 4f), new Vector3(w, 0.12f, 0.12f));
-                    Box(root, "Жердь", "wood", new Vector3(0f, 0.55f, d * 0.5f + 4f), new Vector3(w, 0.12f, 0.12f));
+                    // Загон с изгородью со всех сторон, стог сена и лошадь в загоне.
+                    Fence(root, new Vector3(0f, 0f, d * 0.5f + 4.5f), w, 7f, false);
                     Part(root, "Стог", BodyShapes.Dome(), "thatch", new Vector3(w * 0.5f + 1.8f, 0f, 0f), new Vector3(2.6f, 2.6f, 2.6f));
+                    Box(root, "Кормушка", "wood", new Vector3(-w * 0.35f, 0.45f, d * 0.5f + 1.6f), new Vector3(2.2f, 0.5f, 0.7f));
+                    var horse = Beast.Horse(root);
+                    horse.transform.localPosition = new Vector3(w * 0.15f, 0f, d * 0.5f + 4.5f);
+                    horse.transform.localRotation = Quaternion.Euler(0f, 70f, 0f);
                     break;
                 case BuildingKind.House:
                     Box(root, "Труба", "stone", new Vector3(w * 0.25f, wallH + roofH * 0.7f, -d * 0.15f), new Vector3(0.8f, roofH * 1.1f, 0.8f));
                     break;
                 case BuildingKind.Forge:
-                    Box(root, "Горн", "stone", new Vector3(w * 0.3f, wallH + roofH * 0.6f, 0f), new Vector3(1.2f, roofH * 1.6f, 1.2f));
+                    // Высокая труба горна, верх тлеет — кузню видно издалека.
+                    Box(root, "Горн", "stone", new Vector3(w * 0.3f, wallH + roofH, 0f), new Vector3(1.3f, roofH * 2.4f, 1.3f));
+                    Box(root, "Жар трубы", "accent", new Vector3(w * 0.3f, wallH + roofH * 2.2f + 0.02f, 0f), new Vector3(1.0f, 0.06f, 1.0f))
+                        .GetComponent<MeshRenderer>().sharedMaterial = Palette.Glow("embers");
                     // Навес с наковальней и тлеющими углями.
                     Box(root, "Навес", "wood", new Vector3(0f, wallH * 0.7f, d * 0.5f + 1.6f), new Vector3(w * 0.7f, 0.15f, 3.2f));
                     for (int s = -1; s <= 1; s += 2)
@@ -199,6 +233,42 @@ namespace DjvaGoda.Game
                     Box(root, "Угли", "accent", new Vector3(1.4f, 0.72f, d * 0.5f + 1.2f), new Vector3(1f, 0.08f, 0.8f))
                         .GetComponent<MeshRenderer>().sharedMaterial = Palette.Glow("embers");
                     break;
+            }
+        }
+
+        /// Навес: четыре столба и односкатная крыша из досок.
+        static void Shed(Transform root, Vector3 at, float width, float depth, float height)
+        {
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                    Post(root, "wood", at + new Vector3(width * 0.5f * sx, 0f, depth * 0.5f * sz), height - (sx > 0 ? 0.6f : 0f), 0.09f);
+            var roof = Box(root, "Навес", "wood", at + new Vector3(0f, height - 0.25f, 0f), new Vector3(width + 0.6f, 0.12f, depth + 0.4f));
+            roof.localRotation = Quaternion.Euler(0f, 0f, -11f);
+        }
+
+        /// Изгородь прямоугольником вокруг центра: столбы и две жерди;
+        /// openFront — с проходом спереди (плац у казармы).
+        static void Fence(Transform root, Vector3 centre, float width, float depth, bool openFront)
+        {
+            float hx = width * 0.5f, hz = depth * 0.5f;
+            for (int side = 0; side < 4; side++)
+            {
+                bool alongX = side < 2;
+                float sign = side % 2 == 0 ? 1f : -1f;
+                if (openFront && alongX && sign > 0f) continue;
+                float length = alongX ? width : depth;
+                int count = Mathf.Max(2, Mathf.RoundToInt(length / 2.5f));
+                for (int i = 0; i <= count; i++)
+                {
+                    float t = -0.5f + (float)i / count;
+                    var at = alongX ? centre + new Vector3(t * width, 0f, hz * sign) : centre + new Vector3(hx * sign, 0f, t * depth);
+                    Post(root, "wood", at, 1.25f, 0.08f);
+                }
+                for (int r = 0; r < 2; r++)
+                {
+                    var mid = alongX ? centre + new Vector3(0f, 0.55f + r * 0.45f, hz * sign) : centre + new Vector3(hx * sign, 0.55f + r * 0.45f, 0f);
+                    Box(root, "Жердь", "wood", mid, alongX ? new Vector3(length, 0.1f, 0.1f) : new Vector3(0.1f, 0.1f, length));
+                }
             }
         }
 
