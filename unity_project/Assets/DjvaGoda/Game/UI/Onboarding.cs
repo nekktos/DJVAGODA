@@ -215,7 +215,7 @@ namespace DjvaGoda.Game
         {
             return new List<Step>
             {
-                new Step { Text = "Ты лесной эльф. Твой лес — юго-западный угол карты. Осмотрись", Keys = WalkKeys,
+                new Step { Text = "Ты лесной эльф. Твой лес — северо-западный угол карты. Осмотрись", Keys = WalkKeys,
                     Done = () => !Near(_spawn, LookedAround) },
                 new Step { Text = "Лавка — твоя и рядом. Запомни место: сюда носить награбленное и здесь же покупать",
                     Keys = () => K("interact") + " у прилавка · денег пока нет, они с грабежа · чужие лавки тебя не обслужат",
