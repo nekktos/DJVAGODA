@@ -274,14 +274,21 @@ namespace DjvaGoda.Game
                 _small = new GUIStyle(GUI.skin.label) { fontSize = 14, wordWrap = true };
             }
             var step = _chain[_passed];
-            var box = new Rect(Screen.width - 440, Screen.height - 230, 424, 120);
+            // Высота панели — по тексту: длинный шаг не наезжает на строку клавиш.
+            const float width = 424f;
+            string title = "Шаг " + (_passed + 1) + " из " + _chain.Count + ": " + LiveText(step);
+            string where = step.At.HasValue ? "  ·  " + step.Place + " — " + (int)_me.Feet.FlatDistance(step.At.Value) + " м" : "";
+            string keys = step.Keys() + where;
+            float titleH = _title.CalcHeight(new GUIContent(title), width - 16);
+            float keysH = _small.CalcHeight(new GUIContent(keys), width - 16);
+            float height = titleH + keysH + 16f;
+            // Низ панели — над рядом заклинаний и оружия.
+            var box = new Rect(Screen.width - width - 16, Screen.height - 110 - height, width, height);
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             GUI.color = Color.white;
-            GUI.Label(new Rect(box.x + 8, box.y + 4, box.width - 16, 50),
-                "Шаг " + (_passed + 1) + " из " + _chain.Count + ": " + LiveText(step), _title);
-            string where = step.At.HasValue ? "  ·  " + step.Place + " — " + (int)_me.Feet.FlatDistance(step.At.Value) + " м" : "";
-            GUI.Label(new Rect(box.x + 8, box.y + 56, box.width - 16, 60), step.Keys() + where, _small);
+            GUI.Label(new Rect(box.x + 8, box.y + 4, width - 16, titleH), title, _title);
+            GUI.Label(new Rect(box.x + 8, box.y + 8 + titleH, width - 16, keysH), keys, _small);
             if (step.At.HasValue) Marker(step.At.Value, step.Place);
         }
 
@@ -312,7 +319,8 @@ namespace DjvaGoda.Game
             float pulse = 0.65f + 0.35f * Mathf.Sin(Time.time * Mathf.PI * 2f * 0.8f);
             GUI.color = new Color(1f, 0.85f, 0.25f, pulse);
             GUI.Label(new Rect(x - 12, y - 20, 24, 30), "◆", new GUIStyle(_title) { fontSize = 24, alignment = TextAnchor.MiddleCenter });
-            GUI.Label(new Rect(x - 80, y + 6, 160, 22), place + " · " + (int)_me.Feet.FlatDistance(at) + " м",
+            float lx = Mathf.Clamp(x - 80, 4f, Screen.width - 164f);
+            GUI.Label(new Rect(lx, Mathf.Min(y + 6, Screen.height - 26f), 160, 22), place + " · " + (int)_me.Feet.FlatDistance(at) + " м",
                 new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
             GUI.color = Color.white;
         }

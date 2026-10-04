@@ -112,9 +112,24 @@ namespace DjvaGoda.Game
 
         public static string Human(string path)
         {
-            return UnityEngine.InputSystem.InputControlPath.ToHumanReadableString(path,
+            string name = UnityEngine.InputSystem.InputControlPath.ToHumanReadableString(path,
                 UnityEngine.InputSystem.InputControlPath.HumanReadableStringOptions.OmitDevice);
+            string russian;
+            return Russian.TryGetValue(name.ToLowerInvariant(), out russian) ? russian : name;
         }
+
+        /// Кнопки мыши и служебные клавиши — по-русски, как в инструкции тестерам.
+        static readonly Dictionary<string, string> Russian = new Dictionary<string, string>
+        {
+            { "left button", "ЛКМ" }, { "right button", "ПКМ" }, { "middle button", "СКМ" },
+            { "forward", "мышь вперёд" }, { "back", "мышь назад" }, { "scroll", "колесо" },
+            { "space", "Пробел" }, { "enter", "Enter" }, { "escape", "Esc" }, { "tab", "Tab" },
+            { "left shift", "Shift" }, { "right shift", "правый Shift" },
+            { "left ctrl", "Ctrl" }, { "right ctrl", "правый Ctrl" }, { "left control", "Ctrl" },
+            { "left alt", "Alt" }, { "right alt", "правый Alt" },
+            { "backspace", "Backspace" }, { "up arrow", "↑" }, { "down arrow", "↓" },
+            { "left arrow", "←" }, { "right arrow", "→" },
+        };
 
         static string Keys(Dictionary<string, string[]> map, string name)
         {

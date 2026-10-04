@@ -151,19 +151,19 @@ namespace DjvaGoda.Game
 
             if (combat == null) return;
             var set = Factions.WeaponsOf(me.Faction);
-            float wx = Screen.width - 16 - set.Length * 120;
+            float wx = Screen.width - 16 - set.Length * 146;
             for (int i = 0; i < set.Length; i++)
             {
                 bool chosen = set[i] == combat.Weapon;
                 bool can = combat.Allowed(set[i]);
                 string title = KeyOf("weapon_" + (i + 1)) + " " + Weapons.Names[(int)set[i]];
                 if (Weapons.UsesArrows(set[i])) title += " " + me.Kit.Arrows;
-                var slot = new Rect(wx + i * 120, Screen.height - 64, 114, 48);
+                var slot = new Rect(wx + i * 146, Screen.height - 64, 140, 48);
                 GUI.color = chosen ? Color.white : (can ? new Color(1f, 1f, 1f, 0.55f) : new Color(1f, 0.4f, 0.4f, 0.55f));
                 GUI.Box(slot, GUIContent.none);
                 if (chosen) GUI.Box(slot, GUIContent.none);
                 Icons.Draw(new Rect(slot.x + 3, slot.y + 4, 40, 40), "wpn_" + (int)set[i], !can);
-                GUI.Label(new Rect(slot.x + 44, slot.y + 4, 70, 40), title, new GUIStyle(_small) { fontSize = 13, wordWrap = true });
+                GUI.Label(new Rect(slot.x + 44, slot.y + 2, 94, 44), title, new GUIStyle(_small) { fontSize = 13, wordWrap = true, alignment = TextAnchor.MiddleLeft });
                 GUI.color = Color.white;
             }
             if (!string.IsNullOrEmpty(combat.Refusal))
@@ -175,7 +175,10 @@ namespace DjvaGoda.Game
         public static string KeyOf(string action)
         {
             var path = GameInput.Binding(action);
-            return path == null ? "?" : GameMenu.Human(path).ToUpperInvariant();
+            if (path == null) return "?";
+            // Буквы — заглавными (W, E), названия (Shift, ЛКМ) — как есть.
+            string name = GameMenu.Human(path);
+            return name.Length == 1 ? name.ToUpperInvariant() : name;
         }
 
         /// Вид сверху: что можно строить, клавиши и цены; при постановке — подсказка.
