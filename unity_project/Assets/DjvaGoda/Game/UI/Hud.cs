@@ -50,6 +50,26 @@ namespace DjvaGoda.Game
                 Bar(new Rect(Screen.width * 0.5f - 120, 66, 240, 8), state.CaptureProgress, new Color(0.9f, 0.7f, 0.2f));
         }
 
+        /// Прицел (как в Godot-версии): точка и четыре чёрточки с просветом —
+        /// сплошной крест закрывал бы ту самую цель, в которую смотришь. Тёмная
+        /// обводка — чтобы прицел читался и на белом мраморе, и на небе.
+        static void Crosshair(float cx, float cy)
+        {
+            const float gap = 5f, arm = 7f, thick = 2f;
+            var bars = new[]
+            {
+                new Rect(cx - gap - arm, cy - thick * 0.5f, arm, thick), new Rect(cx + gap, cy - thick * 0.5f, arm, thick),
+                new Rect(cx - thick * 0.5f, cy - gap - arm, thick, arm), new Rect(cx - thick * 0.5f, cy + gap, thick, arm),
+            };
+            GUI.color = new Color(0f, 0f, 0f, 0.5f);
+            foreach (var bar in bars) GUI.DrawTexture(new Rect(bar.x - 1, bar.y - 1, bar.width + 2, bar.height + 2), Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 1f, 1f, 0.85f);
+            foreach (var bar in bars) GUI.DrawTexture(bar, Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 0.85f, 0.35f, 0.95f);
+            GUI.DrawTexture(new Rect(cx - 1, cy - 1, 2, 2), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+        }
+
         /// Ряд заклинаний над полосами здоровья и строки состояния над ним.
         static float SpellRow { get { return Screen.height - 170; } }
         static float Lines { get { return SpellRow - 4; } }
@@ -89,7 +109,7 @@ namespace DjvaGoda.Game
 
             // Прицел; откат — полоской под ним.
             float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
-            GUI.Label(new Rect(cx - 6, cy - 14, 20, 30), "+", _label);
+            Crosshair(cx, cy);
             if (combat != null && combat.HitAge < 0.35f)
             {
                 // Попал: крест вокруг прицела; в голову — жёлтый, добил — красный и крупнее.
@@ -107,7 +127,9 @@ namespace DjvaGoda.Game
             Bar(new Rect(x, y, 240, 16), me.Vitals.Health / me.Vitals.MaxHealth, new Color(0.8f, 0.15f, 0.15f));
             GUI.Label(new Rect(x + 248, y - 4, 200, 24), Mathf.CeilToInt(me.Vitals.Health) + " / " + Mathf.CeilToInt(me.Vitals.MaxHealth), _label);
             Bar(new Rect(x, y + 22, 240, 10), me.Vitals.Stamina / me.Vitals.MaxStamina, new Color(0.85f, 0.75f, 0.2f));
-            Bar(new Rect(x, y + 38, 240, 10), me.Vitals.Mana / me.Vitals.MaxMana, new Color(0.25f, 0.45f, 0.95f));
+            // Мана — только у сторон с магией: страже синяя полоса ни о чём не говорит.
+            if (Factions.AbilitiesOf(me.Faction).Length > 0)
+                Bar(new Rect(x, y + 38, 240, 10), me.Vitals.Mana / me.Vitals.MaxMana, new Color(0.25f, 0.45f, 0.95f));
             Supplies(me, x, y + 54);
 
             var notes = "";
@@ -291,12 +313,14 @@ namespace DjvaGoda.Game
         /// Запасы при себе — иконками у полос: зелья, бинты, стрелы.
         void Supplies(PlayerCharacter me, float x, float y)
         {
-            var items = new[]
-            {
-                new KeyValuePair<string, int>("potion_heal", me.Kit.PotionsHeal), new KeyValuePair<string, int>("potion_mana", me.Kit.PotionsMana),
-                new KeyValuePair<string, int>("bandage", me.Body.Bandages), new KeyValuePair<string, int>("arrows", me.Kit.Arrows),
-            };
-            for (int i = 0; i < items.Length; i++)
+            // Зелья продают только эльфам: у прочих иконка — лишь когда зелье есть (с павшего).
+            bool potions = me.Faction == Faction.Elves;
+            var items = new List<KeyValuePair<string, int>>();
+            if (potions || me.Kit.PotionsHeal > 0) items.Add(new KeyValuePair<string, int>("potion_heal", me.Kit.PotionsHeal));
+            if (potions || me.Kit.PotionsMana > 0) items.Add(new KeyValuePair<string, int>("potion_mana", me.Kit.PotionsMana));
+            items.Add(new KeyValuePair<string, int>("bandage", me.Body.Bandages));
+            items.Add(new KeyValuePair<string, int>("arrows", me.Kit.Arrows));
+            for (int i = 0; i < items.Count; i++)
             {
                 Icons.Draw(new Rect(x + i * 64, y, 26, 26), items[i].Key, items[i].Value <= 0);
                 GUI.Label(new Rect(x + i * 64 + 28, y + 2, 40, 24), items[i].Value.ToString(), _label);

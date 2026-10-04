@@ -226,8 +226,10 @@ namespace DjvaGoda.Game
             var vitals = me.Vitals;
             GUILayout.Label("Прокачка — опыт: " + vitals.Experience);
             GUILayout.Label("Опыт дают донесённая добыча, убийства врагов и доехавшие обозы.");
+            bool magic = Factions.AbilitiesOf(me.Faction).Length > 0;
             for (int stat = 0; stat < Progression.Names.Length; stat++)
             {
+                if (stat == (int)Stat.Mana && !magic) continue;
                 int level = vitals.Levels[stat];
                 int cost = Progression.CostOf(level);
                 string title = Progression.Names[stat] + ": уровень " + level + " из " + Progression.MaxLevel
