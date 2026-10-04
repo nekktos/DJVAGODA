@@ -27,7 +27,25 @@ namespace DjvaGoda.Game
 
         public static bool Open { get; private set; }
 
-        void Awake() { _rig = GetComponent<CameraRig>(); }
+        void Awake()
+        {
+            _rig = GetComponent<CameraRig>();
+            AudioListener.volume = Volume;
+        }
+
+        const string VolumeKey = "volume";
+
+        /// Общая громкость (0…1) — запоминается на машине между запусками.
+        public static float Volume
+        {
+            get { return Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, 0.8f)); }
+            set
+            {
+                PlayerPrefs.SetFloat(VolumeKey, Mathf.Clamp01(value));
+                PlayerPrefs.Save();
+                AudioListener.volume = Mathf.Clamp01(value);
+            }
+        }
 
         void Update()
         {
@@ -168,6 +186,13 @@ namespace DjvaGoda.Game
             if (GUILayout.Button("Клавиши", _button, GUILayout.Height(40))) Show(Page.Keys);
             if (GUILayout.Button("Справка по клавишам", _button, GUILayout.Height(40))) Show(Page.Help);
             if (GUILayout.Button("Прокачка", _button, GUILayout.Height(40))) Show(Page.Upgrade);
+            // Громкость: шаг 10 %, 0 — тишина.
+            GUILayout.BeginHorizontal();
+            int percent = Mathf.RoundToInt(Volume * 100f);
+            GUILayout.Label("Громкость: " + (percent == 0 ? "выключена" : percent + " %"), GUILayout.Width(220), GUILayout.Height(40));
+            if (GUILayout.Button("−", _button, GUILayout.Width(60), GUILayout.Height(40))) Volume = Mathf.Round(Volume * 10f - 1f) / 10f;
+            if (GUILayout.Button("+", _button, GUILayout.Width(60), GUILayout.Height(40))) Volume = Mathf.Round(Volume * 10f + 1f) / 10f;
+            GUILayout.EndHorizontal();
             GUILayout.Space(12);
             if (GUILayout.Button("Выйти в главное меню", _button, GUILayout.Height(40))) Leave();
         }
