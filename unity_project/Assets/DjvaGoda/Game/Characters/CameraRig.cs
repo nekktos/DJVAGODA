@@ -93,8 +93,36 @@ namespace DjvaGoda.Game
             transform.SetPositionAndRotation(from, Quaternion.LookRotation(_focus - from, Vector3.up));
         }
 
+        PlayerCharacter _hiddenBody;
+
+        /// От первого лица своё тело и оружие не лезут в кадр (меч через весь
+        /// экран), но тень отбрасывают. Каждый кадр: смена оружия и протезы
+        /// приносят новые детали.
+        void HideOwnBody()
+        {
+            bool hide = Target != null && FirstPerson && !GameMode.Strategy;
+            if (_hiddenBody != null && (_hiddenBody != Target || !hide))
+            {
+                SetShadowsOnly(_hiddenBody, false);
+                _hiddenBody = null;
+            }
+            if (!hide) return;
+            SetShadowsOnly(Target, true);
+            _hiddenBody = Target;
+        }
+
+        static void SetShadowsOnly(PlayerCharacter who, bool only)
+        {
+            var body = who.transform.Find("Тело");
+            if (body == null) return;
+            var mode = only ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
+            foreach (var r in body.GetComponentsInChildren<Renderer>())
+                if (r.shadowCastingMode != mode) r.shadowCastingMode = mode;
+        }
+
         void LateUpdate()
         {
+            HideOwnBody();
             if (Target == null || GameMode.Strategy) return;
             var feet = Target.Feet;
             var look = Aim.Straight(Target.Yaw, Target.Pitch).ToUnity();
