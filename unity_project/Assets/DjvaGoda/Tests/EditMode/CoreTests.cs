@@ -14,7 +14,7 @@ using NUnit.Framework;
 [TestFixture]
 public class CoreTests
 {
-    const int Expected = 184;
+    const int Expected = 185;
     static int _ran;
     static readonly List<string> Failures = new List<string>();
 
@@ -729,6 +729,17 @@ public class CoreTests
         Check(elves.State == WarbandState.March && elves.Goal.HasValue && elves.Goal.Value.Distance(villainFort) < 0.1f
             && elves.Announced.HasValue,
             "полный отряд эльфов идёт в набег на постройку злодея в 600 м и объявляет его", elves.StateName);
+
+        var villainHome = Factions.Spawn[(int)Faction.Villain];
+        var weak = new WarbandBrain(Faction.Villain);
+        var strong = new WarbandBrain(Faction.Villain);
+        var palace = new V3(300f, 6f, 300f);
+        var weakView = new WarbandView { Band = BandAt(villainHome, AiStats.GarrisonSize), Palace = palace, HasBarracks = true };
+        var strongView = new WarbandView { Band = BandAt(villainHome, AiStats.AssaultBand), Palace = palace, HasBarracks = true };
+        var weakTarget = weak.PickTarget(weakView);
+        var strongTarget = strong.PickTarget(strongView);
+        Check(strongTarget.HasValue && strongTarget.Value.Distance(palace) < 0.1f && (!weakTarget.HasValue || weakTarget.Value.Distance(palace) > 1f),
+            "войско злодея в силе идёт брать дворец, малый отряд — нет", "сильный: " + strongTarget + ", слабый: " + weakTarget);
 
         var guard = new WarbandBrain(Faction.Guard);
         var guardView = new WarbandView { Band = BandAt(Factions.Spawn[(int)Faction.Guard], AiStats.GarrisonSize) };

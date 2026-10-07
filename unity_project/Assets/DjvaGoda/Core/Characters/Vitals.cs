@@ -69,6 +69,8 @@ namespace DjvaGoda.Core
         public bool Alive = true;
         public float Mana;
         public float Stamina;
+        /// Консоль плейтеста: выносливость не тратится («stamina»).
+        public bool EndlessStamina;
         public bool Winded;
         float _restLeft;
 
@@ -122,6 +124,12 @@ namespace DjvaGoda.Core
         /// верхом (устаёт лошадь, а не всадник). Возвращает, бежит ли на самом деле.
         public bool TickRun(float delta, bool wantsRun, bool mounted)
         {
+            if (EndlessStamina)
+            {
+                Stamina = MaxStamina;
+                Winded = false;
+                return wantsRun;
+            }
             bool running = wantsRun;
             if (running && !mounted)
             {
@@ -150,6 +158,7 @@ namespace DjvaGoda.Core
         /// Потратить силы (рывок): восстановление начнётся после передышки.
         public void SpendStamina(float amount)
         {
+            if (EndlessStamina) return;
             Stamina = Math.Max(0f, Stamina - amount);
             _restLeft = StaminaRest;
         }
@@ -157,7 +166,7 @@ namespace DjvaGoda.Core
         /// Прыжок стоит сил (верхом — нет). Возвращает, прыгнул ли.
         public bool TryJump(bool mounted)
         {
-            if (mounted) return true;
+            if (mounted || EndlessStamina) return true;
             if (Stamina < StaminaJump) return false;
             Stamina = Math.Max(0f, Stamina - StaminaJump);
             _restLeft = StaminaRest;

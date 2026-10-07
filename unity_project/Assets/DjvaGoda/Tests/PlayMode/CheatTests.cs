@@ -33,6 +33,11 @@ namespace DjvaGoda.Tests
             Cheats.Run(me, "goto bench");
             yield return null;
             Assert.That(me.At.FlatDistance(MapLayout.Workbench), Is.LessThan(6f), "goto bench не перенёс к верстаку");
+            Cheats.Run(me, "stamina");
+            me.Vitals.SpendStamina(500f);
+            Assert.That(me.Vitals.Stamina, Is.EqualTo(me.Vitals.MaxStamina), "stamina: выносливость тратится");
+            Cheats.Run(me, "stamina");
+            Assert.That(me.Vitals.EndlessStamina, Is.False, "stamina не выключилась");
             Assert.That(Cheats.Run(me, "нечто"), Does.StartWith("нет такой команды"));
         }
     }

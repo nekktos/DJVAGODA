@@ -13,7 +13,7 @@ namespace DjvaGoda.Game
     {
         public const string Help =
             "res <дер> <кам> <зол> <жел> [еда] [уголь] — выдать; res all <n> — всего по n\n" +
-            "xp <n> — опыт   heal — вылечить всё   bandages <n> — бинты\n" +
+            "xp <n> — опыт   heal — вылечить всё   bandages <n> — бинты   stamina — бесконечная выносливость вкл/выкл\n" +
             "hurt <зона> <урон> — head torso arm_l arm_r leg_l leg_r   limb <зона> — оторвать\n" +
             "tp <x> <z> — телепорт   goto villain|elves|guard|bench|mine|trader\n" +
             "kill — умереть   who — кто в партии   help — этот список";
@@ -33,6 +33,9 @@ namespace DjvaGoda.Game
             {
                 case "help": return Help;
                 case "res": return Resources(me, words);
+                case "stamina":
+                    me.Vitals.EndlessStamina = !me.Vitals.EndlessStamina;
+                    return "бесконечная выносливость: " + (me.Vitals.EndlessStamina ? "вкл" : "выкл");
                 case "xp":
                     me.Vitals.Experience += Int(words, 1, 1000);
                     return "опыт: " + me.Vitals.Experience;

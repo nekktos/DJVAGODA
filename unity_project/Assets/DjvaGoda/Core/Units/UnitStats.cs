@@ -143,6 +143,9 @@ namespace DjvaGoda.Core
         public const float RetreatFraction = 0.5f;
         public const float SallyFraction = 1f;
         public const float RaidRange = 800f;
+        /// С какого числа бойцов войско злодея-ИИ идёт брать дворец: гарнизон —
+        /// четверо, значит, нужно ещё хотя бы четверо нанятых.
+        public const int AssaultBand = 8;
         public const float StuckSeconds = 24f;
         public const float StuckStep = 2f;
         /// Враг у своей постройки или батрака — идём отбивать (не дальше DefendRange от базы).

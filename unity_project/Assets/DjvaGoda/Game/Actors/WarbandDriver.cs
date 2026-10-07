@@ -24,6 +24,9 @@ namespace DjvaGoda.Game
             Band.RemoveAll(unit => unit == null || !unit.Alive);
             var view = new WarbandView();
             foreach (var unit in Band) view.Band.Add(unit.At);
+            var goals = MatchGoals.Instance;
+            if (Side == Faction.Villain && goals != null && goals.State.PalaceOwner != Faction.Villain && !MatchGoals.IsOut(Side))
+                view.Palace = MatchState.Palace;
             foreach (var actor in Actor.All)
             {
                 if (actor == null || !actor.Alive) continue;

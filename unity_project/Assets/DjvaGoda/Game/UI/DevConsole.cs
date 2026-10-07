@@ -71,7 +71,11 @@ namespace DjvaGoda.Game
             Reply("> " + line);
             var me = Me();
             var net = me != null ? me.GetComponent<NetPlayer>() : null;
-            if (net != null && net.IsSpawned && !NetworkManager.Singleton.IsServer) net.CheatRpc(line);
+            bool remote = net != null && net.IsSpawned && !NetworkManager.Singleton.IsServer;
+            // Выносливость считает владелец персонажа (движение — у клиента), так
+            // что «stamina» у клиента — у себя, а не у хоста.
+            if (remote && line.Trim().ToLowerInvariant() == "stamina") Reply(Cheats.Run(me, line));
+            else if (remote) net.CheatRpc(line);
             else Reply(Cheats.Run(me, line));
         }
 

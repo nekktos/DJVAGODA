@@ -52,6 +52,9 @@ namespace DjvaGoda.Core
         public List<CartSighting> Carts = new List<CartSighting>();
         public bool HumanOnSide;
         public bool HasBarracks;
+        /// Дворец, который этой стороне есть смысл брать (злодей, дворец не его);
+        /// пусто — штурма нет.
+        public V3? Palace;
         public int SidesLeft = Factions.Count;
     }
 
@@ -261,6 +264,9 @@ namespace DjvaGoda.Core
         /// Чужие точки появления целями не бывают по построению.
         public V3? PickTarget(WarbandView view)
         {
+            // Войско в силе — на штурм дворца: цель злодея — дворец, а не одни
+            // постройки стражи (playtest-10: «набеги не забегают в замок»).
+            if (view.Palace.HasValue && view.Band.Count >= AiStats.AssaultBand) return view.Palace;
             var home = Base;
             var here = Anchor ?? home;
             V3? best = null;

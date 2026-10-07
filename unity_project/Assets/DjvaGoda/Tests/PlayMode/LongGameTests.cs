@@ -25,7 +25,7 @@ namespace DjvaGoda.Tests
         const float GameMinutes = 24f;
         const float Speed = 4f;
         const float Sample = 5f;
-        static readonly string[] Links = { "storage", "labourers", "caravan", "iron", "barracks", "soldier", "forge", "gear", "armor" };
+        static readonly string[] Links = { "storage", "labourers", "caravan", "iron", "barracks", "soldier", "forge", "gear", "armor", "assault", "palace" };
 
         readonly Dictionary<string, float> _reached = new Dictionary<string, float>();
         MatchAi _ai;
@@ -63,7 +63,7 @@ namespace DjvaGoda.Tests
             Time.timeScale = Speed;
             float started = Time.realtimeSinceStartup;
             float game = 0f, next = Sample;
-            while (game < GameMinutes * 60f && !_reached.ContainsKey("gear"))
+            while (game < GameMinutes * 60f && !(_reached.ContainsKey("gear") && _reached.ContainsKey("assault")))
             {
                 yield return null;
                 game += Time.deltaTime;
@@ -101,6 +101,11 @@ namespace DjvaGoda.Tests
             var hero = _ai.HeroOf(Faction.Villain);
             Reach("gear", game, hero != null && hero.Kit.GearTier >= 1);
             Reach("armor", game, hero != null && hero.Kit.ArmorTier >= 1);
+            // Штурм: войско злодея идёт на дворец; дворец — взят (в зачёт не входят, сводка).
+            var band = _ai.WarbandOf(Faction.Villain);
+            Reach("assault", game, band != null && band.Brain.Goal.HasValue && band.Brain.Goal.Value.FlatDistance(MatchState.Palace) < 5f);
+            var goals = Object.FindAnyObjectByType<MatchGoals>();
+            Reach("palace", game, goals != null && goals.State.PalaceOwner == Faction.Villain);
             if ((int)game % 60 != 0) return;
             Debug.Log(string.Format("[долгая] {0,2} мин: звеньев {1}, казна {2}, батраков {3}, бойцов {4}, обозов {5}",
                 (int)(game / 60f), _reached.Count, Stock(), Builder.Crew(Faction.Villain).Count, Soldiers(), carts));
