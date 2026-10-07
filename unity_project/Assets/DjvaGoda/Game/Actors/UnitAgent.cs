@@ -100,6 +100,13 @@ namespace DjvaGoda.Game
             var step = _follower.NextStep(here, destination, finder, Nav != null ? (System.Func<V3, V3>)Nav.ClosestPoint : null);
             float distance = here.FlatDistance(destination);
             float stopAt = facingTarget ? Brain.ReachOf(target) : UnitStats.SlotTolerance;
+            // Цель над головой или под ногами (пандус, плато) — не «пришли», даже если
+            // по карте рядом: идти по сетке в обход. Иначе набег вставал под
+            // бортом пандуса у дворца и не шёл наверх (playtest-10).
+            // Высота — по сетке под точкой: на склоне слоты строя считаются от высоты
+            // якоря, и сравнение с ней самой держало бы бойцов в вечном шаге.
+            float destY = Nav != null && Nav.Ready ? Nav.ClosestPoint(destination).Y : destination.Y;
+            if (Mathf.Abs(here.Y - destY) > 1.5f) distance = Mathf.Max(distance, stopAt + 1f);
             var desired = new V3(0f, 0f, 0f);
             bool moving = distance > stopAt;
             if (moving)
