@@ -110,11 +110,13 @@ namespace DjvaGoda.Core
         // --- шахты -----------------------------------------------------------
 
         /// Пять шахт, все в лесу эльфов (концепт): по железу — у каждой стороны
-        /// своя ближняя; камень ближе к людям, уголь — к злодею, золото в центре.
+        /// своя ближняя; камень (север) и золото (юг) — на оси между замком и
+        /// цитаделью, общие; уголь — на северо-востоке. Камень у замка обоз
+        /// злодея брал через полкарты мимо стражи и погибал (долгая партия).
         public static readonly MineSite[] Mines =
         {
             new MineSite(ResourceKind.Iron, new V3(-200f, 0f, -170f), "Глубокая"),
-            new MineSite(ResourceKind.Stone, new V3(-100f, 0f, 310f), "Сосновая"),
+            new MineSite(ResourceKind.Stone, new V3(20f, 0f, 360f), "Сосновая"),
             new MineSite(ResourceKind.Coal, new V3(200f, 0f, 300f), "Лунная"),
             new MineSite(ResourceKind.Gold, new V3(-40f, 0f, -250f), "Серебряная"),
             new MineSite(ResourceKind.Iron, new V3(190f, 0f, -200f), "Тихая"),
@@ -154,7 +156,7 @@ namespace DjvaGoda.Core
         /// Сторожевая башня на севере, за плато замка.
         public static readonly V3 Watchtower = new V3(-140f, 0f, 480f);
         /// Древние руины и древний портал — на краях леса, север и юг.
-        public static readonly V3 AncientRuins = new V3(40f, 0f, 385f);
+        public static readonly V3 AncientRuins = new V3(-100f, 0f, 400f);
         public static readonly V3 AncientPortal = new V3(100f, 0f, -262f);
         /// Военный лагерь людей — юго-запад, за деревнями.
         public static readonly V3 MilitaryCamp = new V3(-260f, 0f, -470f);

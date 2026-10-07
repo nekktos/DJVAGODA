@@ -132,9 +132,18 @@ namespace DjvaGoda.Game
         /// Хватит ли на трату, не залезая в отложенное на закалку вожака: с
         /// кузней золото иначе целиком уходило на наём (батрак 12, боец 25), и
         /// «долгая партия» так и не закаливала оружие при готовой кузне.
-        bool Spare(int[] cost)
+        /// Пока лошадей меньше нужного, а конюшня стоит, — откладывается и цена
+        /// лошади: обоз погиб на тракте, золото ушло на наём, и злодей-ИИ
+        /// остался без лошадей, обозов и золота до конца партии (долгая партия
+        /// за эльфов на новой карте). Сама покупка лошади это отложенное берёт.
+        bool Spare(int[] cost, bool forHorse = false)
         {
-            var reserve = StewardRules.GearReserve(Ready(BuildingKind.Forge) != null, LeaderGearCost());
+            var reserve = (int[])StewardRules.GearReserve(Ready(BuildingKind.Forge) != null, LeaderGearCost()).Clone();
+            if (!forHorse && StewardRules.WantHorse(Ready(BuildingKind.Stable) != null, Treasury.Horses))
+            {
+                if (reserve.Length < Res.Count) System.Array.Resize(ref reserve, Res.Count);
+                for (int i = 0; i < Res.Count; i++) reserve[i] += Res.At(Res.HorseCost, i);
+            }
             return StewardRules.CanSpareFor(Treasury, cost, reserve);
         }
 
@@ -170,7 +179,7 @@ namespace DjvaGoda.Game
         void BuyHorse()
         {
             if (!StewardRules.WantHorse(Ready(BuildingKind.Stable) != null, Treasury.Horses)) return;
-            if (Spare(Res.HorseCost) && Treasury.Spend(Res.HorseCost)) Treasury.Horses++;
+            if (Spare(Res.HorseCost, true) && Treasury.Spend(Res.HorseCost)) Treasury.Horses++;
         }
 
         void SendCaravan(EconomyView view)
