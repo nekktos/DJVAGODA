@@ -332,6 +332,23 @@ namespace DjvaGoda.Game
                 Icons.Draw(new Rect(x, 108, icon, icon), "res_" + i, true);
                 GUI.Label(new Rect(x + icon + 4, 108, cell - icon, 24), wallet.Stored.Amounts[i].ToString(), _label);
             }
+            Feeding(side, x0, w);
+        }
+
+        /// Кормёжка артели под полосой ресурсов: когда и сколько еды нужно
+        /// (playtest-10: о том, что батраков кормят, тестер узнал лишь по голоду).
+        void Feeding(Faction side, float x0, float w)
+        {
+            int crew = Agents.CountCrew(side, new int[LabourerStats.RoleNames.Length]);
+            if (crew == 0) return;
+            int need = crew * Res.FeedPerWorker;
+            int have = Treasury.Of(side).GetAmount(ResourceKind.Food);
+            int left = Mathf.Max(0, MatchNet.SecondsToFeed);
+            bool short_ = have < need;
+            var style = new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter };
+            style.normal.textColor = short_ ? new Color(1f, 0.45f, 0.35f) : new Color(0.85f, 0.95f, 0.8f);
+            Shadowed(new Rect(x0, 137, w, 22), "кормёжка батраков через " + left / 60 + ":" + (left % 60).ToString("00")
+                + " — нужно " + need + " еды, есть " + have + (short_ ? " — не хватит: поставь поле и фермера" : ""), style);
         }
 
         /// Запасы при себе — иконками у полос: зелья, бинты, стрелы.

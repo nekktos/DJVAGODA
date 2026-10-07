@@ -71,6 +71,20 @@ namespace DjvaGoda.Game
 
         float _depositT;
         float _hungerT;
+        /// Секунд до кормёжки артелей — едет клиентам (шаг в секунду), видно в HUD.
+        public readonly NetworkVariable<int> FeedIn = new NetworkVariable<int>((int)Res.FeedInterval);
+
+        /// Сколько секунд до следующей кормёжки (у хоста — точно, у клиента — от хоста).
+        public static int SecondsToFeed
+        {
+            get
+            {
+                var me = Instance;
+                if (me == null) return (int)Res.FeedInterval;
+                if (me.IsSpawned && !me.IsServer) return me.FeedIn.Value;
+                return Mathf.CeilToInt(Res.FeedInterval - me._hungerT);
+            }
+        }
 
         void Awake()
         {
@@ -130,6 +144,7 @@ namespace DjvaGoda.Game
                 _hungerT = 0f;
                 Feed();
             }
+            if (IsSpawned && FeedIn.Value != SecondsToFeed) FeedIn.Value = SecondsToFeed;
             _depositT += Time.deltaTime;
             if (_depositT >= Res.DepositInterval)
             {

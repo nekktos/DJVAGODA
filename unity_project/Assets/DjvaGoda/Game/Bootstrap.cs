@@ -21,6 +21,14 @@ namespace DjvaGoda.Game
 
         void Awake()
         {
+            // Журнал тестера (Player.log): обычные строки — без стека вызовов.
+            // Со стеком каждая строка разрасталась в десять, и отчёт в 360 строк
+            // нёс три десятка сообщений (playtest-10). Ошибки — со стеком, как были.
+            if (!Application.isEditor)
+            {
+                Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+                Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+            }
             World = Object.FindAnyObjectByType<World>();
             if (World == null) Debug.LogError("В сцене нет мира: ДжваГода → Собрать мир.");
             else Nav = World.GetComponent<NavWorld>();

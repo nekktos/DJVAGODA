@@ -175,7 +175,7 @@ namespace DjvaGoda.Game
                 new Step { Text = "Найми батраков: они рубят, копают и строят сами",
                     Keys = () => "сверху: " + K("hire_labourer") + " — нанять, " + RoleKeys() + " — кем именно",
                     Done = () => Agents.CountCrew(Faction.Villain, new int[LabourerStats.RoleNames.Length]) > 0 },
-                new Step { Text = "Поставь поле: еда растёт на нём сама, а фермер уносит её на склад",
+                new Step { Text = "Батраков кормят раз в 5 минут, 12 еды на каждого — без еды голод. Поставь поле: еда растёт сама, фермер уносит её на склад",
                     Keys = () => "сверху: " + K("build_farm") + " — поле, нужно " + Price(BuildingKind.Farm) + " · " + K("role_farmer") + " — батрака фермером",
                     Done = () => Has(BuildingKind.Farm), Place = "своя база", At = home },
                 // playtest-10: тестер встал на «купи лошадь» — не знал, где взять золото.
