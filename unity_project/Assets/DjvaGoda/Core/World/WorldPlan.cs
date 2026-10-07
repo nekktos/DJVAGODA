@@ -515,6 +515,19 @@ namespace DjvaGoda.Core
             }
         }
 
+        /// У подножия гор и валунов деревьев нет: батрак-лесоруб уходил к такому
+        /// дереву и застревал между скалами (долгая партия на новой карте).
+        bool NearCrag(float x, float z)
+        {
+            var at = new V3(x, 0f, z);
+            foreach (var piece in Pieces)
+            {
+                if ((piece.Shape != PieceShape.Peak && piece.Shape != PieceShape.Rock) || piece.Harvest.HasValue) continue;
+                if (piece.Center.FlatDistance(at) < Math.Max(piece.Size.X, piece.Size.Z) * 0.6f + 12f) return true;
+            }
+            return false;
+        }
+
         /// Деревья на холмах: 170 штук там, где земля выше 3 м.
         public const int HillTrees = 170;
 
@@ -524,10 +537,10 @@ namespace DjvaGoda.Core
             var rng = new Rng(90210);
             int placed = 0;
             float half = MapLayout.WorldSize * 0.5f;
-            for (int i = 0; i < 900 && placed < HillTrees; i++)
+            for (int i = 0; i < 3000 && placed < HillTrees; i++)
             {
                 float x = Range(rng, -half, half), z = -Range(rng, -half, half);
-                if (_relief.Height(x, z) < 3f) continue;
+                if (_relief.Height(x, z) < 3f || NearCrag(x, z)) continue;
                 placed++;
                 Tree(x, z, Range(rng, 8f, 13f));
             }

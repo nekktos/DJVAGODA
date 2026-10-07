@@ -55,7 +55,7 @@ namespace DjvaGoda.Game
                 if (building != null && building.Side == Side) view.Sites.Add(SiteOf(building));
             }
             AddHarvestables(view);
-            if (Brain.Role == LabourerRole.Miner) view.SideMine = Mines.SiteFor(Home);
+            if (Brain.Role == LabourerRole.Miner) view.SideMine = Mines.SiteFor(Home, Side);
             var order = Brain.Tick(delta, view);
             Walk(delta, order.Goal);
             switch (order.Action)

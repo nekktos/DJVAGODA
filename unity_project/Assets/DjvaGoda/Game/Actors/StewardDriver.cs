@@ -199,6 +199,7 @@ namespace DjvaGoda.Game
             if (!mine.HasValue) return;
             int team = Mathf.Min(StewardRules.AiHarness, free);
             Treasury.HorsesOut += team;
+            Mines.Worked((int)Side, Mines.Nearest(MapLayout.MineEntrance(mine.Value.At)));
             var route = new List<V3> { storage.At, MapLayout.MineEntrance(mine.Value.At) };
             if (Nav != null && Nav.Ready)
             {

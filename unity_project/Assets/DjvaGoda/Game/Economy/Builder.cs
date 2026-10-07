@@ -236,7 +236,9 @@ namespace DjvaGoda.Game
             }
             var route = new List<V3> { storage.At };
             route.AddRange(points);
-            route.Add(Mines.Dock(Mines.Nearest(route[route.Count - 1])));
+            int mine = Mines.Nearest(route[route.Count - 1]);
+            route.Add(Mines.Dock(mine));
+            Mines.Worked((int)side, mine);
             int want = Mathf.Clamp(_character.HarnessSize, CaravanRules.HorsesMin, CaravanRules.HorsesMax);
             int team = Mathf.Min(want, wallet.HorsesFree);
             wallet.HorsesOut += team;

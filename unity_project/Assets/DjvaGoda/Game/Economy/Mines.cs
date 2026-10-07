@@ -27,6 +27,17 @@ namespace DjvaGoda.Game
         {
             _states = new MineState[MapLayout.Mines.Length];
             for (int i = 0; i < _states.Length; i++) _states[i] = new MineState(MapLayout.Mines[i].Kind);
+            for (int i = 0; i < _worked.Length; i++) _worked[i] = -1;
+        }
+
+        /// Шахта, куда сторона последний раз отправила обоз: туда и идут её
+        /// шахтёры. Иначе копали ближнюю (у злодея — железо), а обоз за золотом
+        /// привозил из дальней шахты по десятку (долгая партия на новой карте).
+        static readonly int[] _worked = { -1, -1, -1 };
+
+        public static void Worked(int side, int index)
+        {
+            if (side >= 0 && side < _worked.Length && index >= 0 && index < MapLayout.Mines.Length) _worked[side] = index;
         }
 
         public static void Tick(float delta)
@@ -61,10 +72,11 @@ namespace DjvaGoda.Game
             return States[index].Take(CaravanRules.Capacity);
         }
 
-        /// Место работы шахтёра: шахта, ближайшая к дому стороны.
-        public static WorkSite SiteFor(V3 home)
+        /// Место работы шахтёра: куда ходит обоз стороны, а пока не ходил —
+        /// шахта, ближайшая к дому.
+        public static WorkSite SiteFor(V3 home, int side)
         {
-            int index = Nearest(home);
+            int index = side >= 0 && side < _worked.Length && _worked[side] >= 0 ? _worked[side] : Nearest(home);
             var mine = MapLayout.Mines[index];
             return new WorkSite
             {
