@@ -413,6 +413,7 @@ namespace DjvaGoda.Game
         {
             if (_character == null) return;
             var body = _character.Body;
+            Eyes(body.EyesMissing());
             int severed = body.SeveredMask;
             bool changed = severed != _shownSevered;
             for (int i = 0; i < 4 && !changed; i++) if (body.Prosthetics[i] != _shownTier[i]) changed = true;
@@ -450,6 +451,29 @@ namespace DjvaGoda.Game
                 if ((severed & (1 << i)) != 0)
                     foreach (Transform part in _limb[i])
                         if (part.GetComponent<MeshRenderer>() != null || part.childCount > 0) part.gameObject.SetActive(false);
+        }
+
+        int _shownEyes;
+        Transform _eyeMarks;
+
+        /// Выбитый глаз видят и другие (как в Godot-версии): повязка на месте
+        /// глаза и ремешок вокруг головы; без обоих глаз — повязка через оба.
+        void Eyes(int missing)
+        {
+            if (missing == _shownEyes) return;
+            _shownEyes = missing;
+            if (_eyeMarks != null) Destroy(_eyeMarks.gameObject);
+            _eyeMarks = null;
+            if (missing <= 0 || _head == null) return;
+            _eyeMarks = new GameObject("Повязка").transform;
+            _eyeMarks.SetParent(_head, false);
+            var e = BodyShapes.Ellipsoid();
+            BodyShapes.Part(_eyeMarks, "Ремешок", e, "leather", new Vector3(0f, 0.035f, 0f), new Vector3(0.212f, 0.028f, 0.232f));
+            for (int i = 0; i < missing && i < 2; i++)
+            {
+                float s = i == 0 ? 1f : -1f;
+                BodyShapes.Part(_eyeMarks, "Наглазник", e, "mane", new Vector3(0.047f * s, 0.032f, 0.1f), new Vector3(0.062f, 0.055f, 0.03f));
+            }
         }
 
         static readonly string[] TierMaterials = { "wood", "wood", "metal", "gold", "pale_skin" };

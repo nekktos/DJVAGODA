@@ -83,6 +83,10 @@ namespace DjvaGoda.Game
                         && float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out at))
                         _deals.Add(new KeyValuePair<float, Vector2Int>(at, new Vector2Int(kind, arg)));
                 }
+            // Ключи сессии — один раз за запуск: после выхода сцена грузится
+            // заново, и -host не должен поднять игру снова.
+            if (_argsUsed) return;
+            _argsUsed = true;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-host") _session.Host(PortAt(args, i + 1));
@@ -90,6 +94,7 @@ namespace DjvaGoda.Game
             }
         }
 
+        static bool _argsUsed;
         bool _walk;
         int _attackSlot;
         int _castSlot;

@@ -106,9 +106,12 @@ namespace DjvaGoda.Game
 
         public static AudioClip HitFlesh(int seed)
         {
-            var d = Buffer(0.22f);
-            Tone(d, 0.9f, 150f, 55f, 0.002f, 0.06f);
-            Noise(d, 0.7f, 0.35f, 0.001f, 0.04f, seed);
+            // Глухой шлепок: шум под фильтром и короткий низкий толчок без
+            // скольжения высоты (скольжение звучало мультяшным «буумп» — playtest-10).
+            var d = Buffer(0.18f);
+            Noise(d, 0.9f, 0.3f, 0.001f, 0.035f, seed);
+            Noise(d, 0.35f, 0.7f, 0.0005f, 0.012f, seed + 7);
+            Tone(d, 0.45f, 85f, 80f, 0.001f, 0.025f);
             return Clip("удар по живому", Finish(d, 1.3f));
         }
 
@@ -168,9 +171,11 @@ namespace DjvaGoda.Game
 
         public static AudioClip Fireball(int seed)
         {
+            // Гул огня: шум, нарастающий и спадающий; без тона — восходящий тон
+            // звучал свистком из мультфильма.
             var d = Buffer(0.6f);
-            Noise(d, 0.6f, 0.3f, 0.08f, 0.25f, seed);
-            Tone(d, 0.35f, 180f, 420f, 0.05f, 0.3f);
+            Noise(d, 0.7f, 0.25f, 0.1f, 0.22f, seed);
+            Noise(d, 0.25f, 0.6f, 0.05f, 0.12f, seed + 3);
             return Clip("бросок огня", Finish(d, 1.4f));
         }
 
@@ -185,10 +190,11 @@ namespace DjvaGoda.Game
 
         public static AudioClip Death(int seed)
         {
-            var d = Buffer(0.6f);
-            Tone(d, 0.8f, 95f, 45f, 0.005f, 0.12f);
-            Noise(d, 0.6f, 0.25f, 0.004f, 0.1f, seed);
-            Noise(d, 0.35f, 0.2f, 0.002f, 0.08f, seed + 1, Rate / 6);
+            // Тело оземь: два глухих удара шумом и низкий толчок без съезда высоты.
+            var d = Buffer(0.5f);
+            Noise(d, 0.8f, 0.15f, 0.004f, 0.08f, seed);
+            Tone(d, 0.4f, 70f, 66f, 0.003f, 0.05f);
+            Noise(d, 0.45f, 0.15f, 0.002f, 0.07f, seed + 1, Rate / 6);
             return Clip("падение", Finish(d, 1.4f));
         }
 
@@ -242,10 +248,10 @@ namespace DjvaGoda.Game
 
         public static AudioClip Hoof(int seed)
         {
-            var d = Buffer(0.16f);
-            Tone(d, 0.55f, 340f, 260f, 0.001f, 0.03f, 0, 0.6f);
-            Noise(d, 0.4f, 0.7f, 0.0005f, 0.012f, seed);
-            Tone(d, 0.3f, 110f, 80f, 0.001f, 0.04f);
+            // Копыто о землю — глухо: звонкий тон давал «кокосовые половинки».
+            var d = Buffer(0.14f);
+            Noise(d, 0.7f, 0.35f, 0.0005f, 0.02f, seed);
+            Tone(d, 0.35f, 150f, 140f, 0.001f, 0.02f);
             return Clip("копыто", Finish(d, 1.3f));
         }
 

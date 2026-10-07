@@ -114,6 +114,14 @@ namespace DjvaGoda.Game
             // Модель по виду и ступени (BuildingShapes); недостроенная — леса и стены без крыши.
             _view = BuildingShapes.Build(transform, State.Kind, State.Grade, State.Side, State.Done);
             _walls = _view.Find(BuildingShapes.WallsName);
+            if (State.Kind == BuildingKind.Stable && State.Done)
+            {
+                var size = Res.BuildingSize(State.Kind).ToUnity();
+                var paddock = _view.gameObject.AddComponent<StableHorses>();
+                paddock.Side = State.Side;
+                paddock.Width = size.x;
+                paddock.Paddock = new Vector3(0f, 0f, size.z * 0.5f + 4.5f);
+            }
             _shownGrade = State.Grade;
             _wasDone = State.Done;
             ShowProgress(Res.BuildingSize(State.Kind).ToUnity());

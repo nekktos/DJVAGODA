@@ -164,6 +164,49 @@ namespace DjvaGoda.Game
 
         void Close() { _open = false; }
 
+        /// Свободную лошадь конюшни — под седло: встаёт у загона, садись (E).
+        Deal LeadOutHorse(Wallet wallet)
+        {
+            var stable = BuildingAtHand(BuildingKind.Stable);
+            if (stable == null) return Deal.No("подойди к конюшне");
+            if (wallet.HorsesFree <= 0) return Deal.No("свободных лошадей нет: купи или дождись обоза");
+            wallet.Horses -= 1;
+            var size = Res.BuildingSize(BuildingKind.Stable);
+            HorseActor.Spawn(stable.At + UnitBrain.Rotate(new V3(size.X * 0.5f + 2f, 0f, size.Z * 0.5f + 1f), stable.transform.eulerAngles.y * Mathf.Deg2Rad));
+            if (_combat != null) _combat.Tell("лошадь у конюшни — E, чтобы сесть");
+            return Deal.Done();
+        }
+
+        /// Лошадь рядом — обратно в конюшню (снова пойдёт в упряжку обоза).
+        Deal StableHorse(Wallet wallet)
+        {
+            if (BuildingAtHand(BuildingKind.Stable) == null) return Deal.No("подойди к конюшне");
+            var horse = HorseActor.Near(_character.Feet);
+            if (horse == null) return Deal.No("рядом нет свободной лошади — спешься у конюшни");
+            if (wallet.Horses >= Res.HorseLimit) return Deal.No("конюшня полна");
+            horse.Remove();
+            wallet.Horses += 1;
+            if (_combat != null) _combat.Tell("лошадь в конюшне");
+            return Deal.Done();
+        }
+
+        /// Открыто окно места у своего (локального) персонажа: мышь — для кнопок,
+        /// камера её не захватывает, удара нет.
+        public static bool WindowOpen
+        {
+            get
+            {
+                foreach (var actor in Actor.All)
+                {
+                    var player = actor as PlayerCharacter;
+                    if (player == null || !player.LocalControl) continue;
+                    var shop = player.GetComponent<Shop>();
+                    if (shop != null && shop._open) return true;
+                }
+                return false;
+            }
+        }
+
         /// Заявка из окон интерфейса (меню прокачки и др.): у хоста — сразу, у клиента — хосту.
         public void Request(DealKind deal, int arg) { Ask(deal, arg); }
 
@@ -193,7 +236,10 @@ namespace DjvaGoda.Game
                     result = Deals.Fortify(_character.Kit, wallet, building != null ? building.State : null);
                     break;
                 case DealKind.Horse:
-                    result = Deals.HireHorse(wallet, BuildingAtHand(BuildingKind.Stable) != null, HasOwn(BuildingKind.Stable));
+                    // 0 — купить в конюшню, 1 — вывести под седло, 2 — завести обратно.
+                    if (arg == 1) result = LeadOutHorse(wallet);
+                    else if (arg == 2) result = StableHorse(wallet);
+                    else result = Deals.HireHorse(wallet, BuildingAtHand(BuildingKind.Stable) != null, HasOwn(BuildingKind.Stable));
                     break;
                 case DealKind.Pickup:
                     TakePickup();
@@ -498,7 +544,11 @@ namespace DjvaGoda.Game
             {
                 GUILayout.Label("Конюшня: лошадей " + wallet.HorsesFree + " свободно из " + wallet.Horses + ", больше " + Res.HorseLimit + " не держит");
                 GUI.enabled = wallet.CanAfford(Res.HorseCost) && wallet.Horses < Res.HorseLimit;
-                if (GUILayout.Button("взять лошадь — " + Res.FormatCost(Res.HorseCost), _style, GUILayout.Height(32))) Ask(DealKind.Horse, 0);
+                if (GUILayout.Button("купить лошадь — " + Res.FormatCost(Res.HorseCost), _style, GUILayout.Height(32))) Ask(DealKind.Horse, 0);
+                GUI.enabled = wallet.HorsesFree > 0;
+                if (GUILayout.Button("вывести лошадь под седло", _style, GUILayout.Height(32))) Ask(DealKind.Horse, 1);
+                GUI.enabled = HorseActor.Near(_character.Feet) != null;
+                if (GUILayout.Button("завести лошадь обратно в конюшню", _style, GUILayout.Height(32))) Ask(DealKind.Horse, 2);
                 GUI.enabled = true;
                 HarnessRow();
             }

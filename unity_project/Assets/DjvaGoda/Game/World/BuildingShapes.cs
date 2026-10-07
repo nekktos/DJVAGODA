@@ -211,9 +211,7 @@ namespace DjvaGoda.Game
                     Fence(root, new Vector3(0f, 0f, d * 0.5f + 4.5f), w, 7f, false);
                     Part(root, "Стог", BodyShapes.Dome(), "thatch", new Vector3(w * 0.5f + 1.8f, 0f, 0f), new Vector3(2.6f, 2.6f, 2.6f));
                     Box(root, "Кормушка", "wood", new Vector3(-w * 0.35f, 0.45f, d * 0.5f + 1.6f), new Vector3(2.2f, 0.5f, 0.7f));
-                    var horse = Beast.Horse(root);
-                    horse.transform.localPosition = new Vector3(w * 0.15f, 0f, d * 0.5f + 4.5f);
-                    horse.transform.localRotation = Quaternion.Euler(0f, 70f, 0f);
+                    // Лошадей в загон ставит StableHorses — по числу купленных.
                     break;
                 case BuildingKind.House:
                     Box(root, "Труба", "stone", new Vector3(w * 0.25f, wallH + roofH * 0.7f, -d * 0.15f), new Vector3(0.8f, roofH * 1.1f, 0.8f));

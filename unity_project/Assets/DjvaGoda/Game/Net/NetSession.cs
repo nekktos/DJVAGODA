@@ -29,7 +29,36 @@ namespace DjvaGoda.Game
         readonly Dictionary<ulong, string> _profile = new Dictionary<ulong, string>();
         readonly List<ulong> _toSpawn = new List<ulong>();
 
-        void Awake() { Instance = this; }
+        /// Строка состояния, пережившая перезагрузку сцены (почему отключили).
+        static string _carried;
+
+        void Awake()
+        {
+            Instance = this;
+            _restarting = false;
+            if (_carried != null)
+            {
+                Status = _carried;
+                _carried = null;
+            }
+        }
+
+        /// Конец сессии — мир заново: сцена перезагружается. Без этого повторная
+        /// игра шла в старом мире — сетевые постройки уничтожены остановкой
+        /// сервера, а ИИ помнит, что партия начата, и стартовых не ставит
+        /// (playtest-10: «эльфы выбывают» в первые секунды, построек ноль).
+        static bool _restarting;
+
+        static void Restart(string status)
+        {
+            if (status != null) _carried = status;
+            if (_restarting) return;
+            _restarting = true;
+            GameMode.Strategy = false;
+            var runner = new GameObject("Перезапуск партии");
+            DontDestroyOnLoad(runner);
+            runner.AddComponent<SceneRestart>();
+        }
 
         bool _prepared;
 
@@ -98,11 +127,13 @@ namespace DjvaGoda.Game
 
         public void Leave()
         {
+            bool inSession = Net != null && (Net.IsServer || Net.IsClient);
             if (Net != null) Net.Shutdown();
             _faction.Clear();
             _slot.Clear();
             _profile.Clear();
             _toSpawn.Clear();
+            if (inSession) Restart(null);
         }
 
         /// Одобрение на хосте: место и сторона по правилам ядра; мест нет — отказ.
@@ -198,11 +229,28 @@ namespace DjvaGoda.Game
                 // Клиента отключили (отказ хоста, хост ушёл, не дозвонились).
                 string reason = Net.DisconnectReason;
                 Status = string.IsNullOrEmpty(reason) ? "Связь с хостом потеряна." : reason;
+                // Мир клиента — копия хостового: без хоста он мёртв, начинаем заново.
+                if (client == Net.LocalClientId || Net.LocalClientId == 0) Restart(Status);
                 return;
             }
             _faction.Remove(client);
             _slot.Remove(client);
             Status = "Игрок " + client + " отключился.";
+        }
+    }
+
+    /// Дожидается остановки сети, убирает менеджер, пережимший смену сцены
+    /// (Netcode переносит его в DontDestroyOnLoad), и грузит сцену заново.
+    public class SceneRestart : MonoBehaviour
+    {
+        System.Collections.IEnumerator Start()
+        {
+            var net = NetworkManager.Singleton;
+            while (net != null && net.ShutdownInProgress) yield return null;
+            if (net != null && net.gameObject.scene.name == "DontDestroyOnLoad") Destroy(net.gameObject);
+            yield return null;
+            UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+            Destroy(gameObject);
         }
     }
 }

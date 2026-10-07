@@ -48,6 +48,8 @@ namespace DjvaGoda.Game
         public int HarnessSize = Builder.HarnessSize;
         /// Ввод героя ИИ; пусто — ввод игрока.
         public MotorInput? Scripted;
+        /// Перевязка без клавиатуры (вожак-ИИ): держать «B», стоя на месте.
+        public bool ScriptedBandage;
         public bool LocalControl = true;
         /// Считать ли движение здесь. Чужого персонажа ведёт присланное положение
         /// (NetPlayer), иначе мотор тянул бы его гравитацией и нулевым вводом.
@@ -160,7 +162,8 @@ namespace DjvaGoda.Game
             transform.rotation = CoreSpace.YawToRotation(Yaw);
 
             float flat = new Vector2(_controller.velocity.x, _controller.velocity.z).magnitude;
-            if (_bandaging.Tick(delta, Body.Bleeding, Scripted == null && LocalControl && !GameMode.Strategy && GameInput.Held("bandage"), flat))
+            bool holdBandage = Scripted == null ? LocalControl && !GameMode.Strategy && GameInput.Held("bandage") : ScriptedBandage;
+            if (_bandaging.Tick(delta, Body.Bleeding, holdBandage, flat))
             {
                 if (Bandaged != null) Bandaged();
                 else Body.ApplyBandage();

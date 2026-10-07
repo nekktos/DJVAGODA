@@ -155,6 +155,16 @@ namespace DjvaGoda.Game
         void Steer(HeroDecision decision)
         {
             var here = _hero.Feet;
+            // Кровь течёт, бинты есть, драки нет — встать и перевязаться, как
+            // игрок (playtest-10: злодей-ИИ истекал кровью от пары ударов).
+            bool bandage = _hero.Body.Bleeding && _hero.Body.Bandages > 0
+                && decision.Task != HeroTask.Fight && decision.Task != HeroTask.Defend;
+            _hero.ScriptedBandage = bandage;
+            if (bandage)
+            {
+                _hero.Scripted = new MotorInput();
+                return;
+            }
             if (decision.Walk)
             {
                 PathFinder finder = _nav != null && _nav.Ready ? _nav.Finder : null;

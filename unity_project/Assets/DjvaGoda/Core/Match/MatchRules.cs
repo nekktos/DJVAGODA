@@ -35,6 +35,9 @@ namespace DjvaGoda.Core
             "древние земли вернулись к эльфам",
             "злодей и эльфы уничтожены",
         };
+        /// Глагол по числу: «Лесные эльфы» — множественное (playtest-10: «эльфы выбывает»).
+        public static readonly string[] OutVerb = { "выбывает", "выбывают", "выбывает" };
+
         public static readonly string[] OutText = { "вожак злодея пал", "эльфов больше нет", "стража сломлена" };
 
         public Faction PalaceOwner = Faction.Guard;
@@ -138,7 +141,7 @@ namespace DjvaGoda.Core
                 if (faction == Faction.Guard && GuardAbsorbed)
                     said.Add(Factions.NameOf(faction) + " больше не сторона: она служит злодею");
                 else
-                    said.Add(Factions.NameOf(faction) + " выбывает из партии: " + OutText[f]);
+                    said.Add(Factions.NameOf(faction) + " " + OutVerb[f] + " из партии: " + OutText[f]);
             }
             int left = -1;
             int count = 0;

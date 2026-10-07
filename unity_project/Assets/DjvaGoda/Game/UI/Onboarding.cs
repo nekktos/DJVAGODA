@@ -178,6 +178,11 @@ namespace DjvaGoda.Game
                 new Step { Text = "Поставь поле: еда растёт на нём сама, а фермер уносит её на склад",
                     Keys = () => "сверху: " + K("build_farm") + " — поле, нужно " + Price(BuildingKind.Farm) + " · " + K("role_farmer") + " — батрака фермером",
                     Done = () => Has(BuildingKind.Farm), Place = "своя база", At = home },
+                // playtest-10: тестер встал на «купи лошадь» — не знал, где взять золото.
+                new Step { Text = "Лошадь стоит золота. Золото — в жёлтых жилах микро-шахты у форта: бей их молотом",
+                    Keys = () => "нужно " + Res.FormatCost(Res.HorseCost) + " · " + K("weapon_4") + " — молот, " + K("attack") + " по жёлтой жиле",
+                    Done = () => Wallet.Horses > 0 || Wallet.GetAmount(ResourceKind.Gold) >= Res.At(Res.HorseCost, ResourceKind.Gold),
+                    Place = "золото микро-шахты", At = MapLayout.MicroMine + MapLayout.MicroMineGold[0] },
                 new Step { Text = "Обозу нужна лошадь, а лошадь продают в конюшне. Поставь её и купи первую",
                     Keys = () => "сверху: " + K("build_stable") + " — конюшня, нужно " + Price(BuildingKind.Stable) + " · у конюшни " + K("interact") + " — купить лошадь",
                     Done = () => Wallet.Horses > 0, Place = "своя база", At = home },

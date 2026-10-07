@@ -139,6 +139,9 @@ namespace DjvaGoda.Game
         public override void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)
         {
             if (!Alive) return;
+            // Распорядитель стражи и старейшина эльфов — места заданий: свои и
+            // союзники их не ранят (playtest-10: стражник зарубил своего распорядителя).
+            if (Champion && source != null && source.Side >= 0 && !Factions.Hostile(source.Side, Side)) return;
             var formation = Brain.Formation(Commander != null ? CommanderFormation : (FormationKind?)null);
             Health = Mathf.Max(0f, Health - DamageRules.ToUnit(amount, formation, aoe, weapon));
             if (Alive) return;

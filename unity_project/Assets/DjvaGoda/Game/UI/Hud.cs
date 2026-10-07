@@ -50,6 +50,37 @@ namespace DjvaGoda.Game
                 Bar(new Rect(Screen.width * 0.5f - 120, 66, 240, 8), state.CaptureProgress, new Color(0.9f, 0.7f, 0.2f));
         }
 
+        static Texture2D _fade;
+
+        /// Слепота (GDD, раздел 4: «слепота на половину экрана»): без одного
+        /// глаза закрыта правая половина, без двух — весь экран. Слепящее
+        /// проклятие закрывает половину так же. Край мягкий — тень, а не шторка.
+        static void Blindness(PlayerCharacter me)
+        {
+            int lost = me.Body.EyesMissing();
+            if (me.Spells.Blind > 0f) lost = Mathf.Max(lost, 1);
+            if (lost <= 0) return;
+            if (_fade == null)
+            {
+                _fade = new Texture2D(64, 1, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+                for (int x = 0; x < 64; x++) _fade.SetPixel(x, 0, new Color(0f, 0f, 0f, Mathf.SmoothStep(0f, 1f, x / 63f)));
+                _fade.Apply();
+            }
+            float w = Screen.width, h = Screen.height;
+            if (lost >= 2)
+            {
+                GUI.color = new Color(0f, 0f, 0f, 0.97f);
+                GUI.DrawTexture(new Rect(0, 0, w, h), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                return;
+            }
+            const float soft = 0.12f;
+            GUI.DrawTexture(new Rect(w * (0.5f - soft), 0, w * soft, h), _fade);
+            GUI.color = new Color(0f, 0f, 0f, 1f);
+            GUI.DrawTexture(new Rect(w * 0.5f, 0, w * 0.5f, h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+        }
+
         /// Прицел (как в Godot-версии): точка и четыре чёрточки с просветом —
         /// сплошной крест закрывал бы ту самую цель, в которую смотришь. Тёмная
         /// обводка — чтобы прицел читался и на белом мраморе, и на небе.
@@ -98,14 +129,7 @@ namespace DjvaGoda.Game
             // Сверху — только хозяйство: прицел, заклинания и оружие там ни к чему.
             if (GameMode.Strategy) return;
 
-            // Слепота: заклятие злодея и выбитые глаза — экран темнеет.
-            float blind = Mathf.Max(me.Spells.Blind > 0f ? 0.85f : 0f, me.Body.Blindness() * 0.6f);
-            if (blind > 0f)
-            {
-                GUI.color = new Color(0f, 0f, 0f, blind);
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
-                GUI.color = Color.white;
-            }
+            Blindness(me);
 
             // Прицел; откат — полоской под ним.
             float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;

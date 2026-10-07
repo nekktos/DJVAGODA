@@ -31,7 +31,7 @@ namespace DjvaGoda.Game
         void Awake()
         {
             Instance = this;
-            _wind = Flat("Ветер", Synth.Wind(), 0.35f, true);
+            _wind = Flat("Ветер", Synth.Wind(), 0f, true);
             _crickets = Flat("Стрекот", Synth.Cricket(), 0.06f, false);
             for (int i = 0; i < _voices.Length; i++)
             {
@@ -63,6 +63,29 @@ namespace DjvaGoda.Game
         }
 
         /// Фон звучит, только пока идёт партия (в меню птицам петь незачем).
+        // Ветер порывами (playtest-10: «противный, звучит постоянно без
+        // перерыва»): порыв 6–14 с нарастает и спадает, между порывами 15–40 с
+        // тишины. Громкость порыва — разная, пик тише прежнего ровного гула.
+        const float GustPeak = 0.22f;
+        float _gustLeft, _gustLength = 1f, _calmLeft = 8f, _gustLevel;
+
+        void Gusts(float delta)
+        {
+            if (_gustLeft > 0f)
+            {
+                _gustLeft -= delta;
+                float t = 1f - Mathf.Clamp01(_gustLeft / _gustLength);
+                _wind.volume = _gustLevel * Mathf.Sin(t * Mathf.PI);
+                if (_gustLeft <= 0f) _calmLeft = Random.Range(15f, 40f);
+                return;
+            }
+            _wind.volume = 0f;
+            _calmLeft -= delta;
+            if (_calmLeft > 0f) return;
+            _gustLength = _gustLeft = Random.Range(6f, 14f);
+            _gustLevel = GustPeak * Random.Range(0.5f, 1f);
+        }
+
         static bool InMatch() { return !Sfx.Muted && MatchGoals.Instance != null; }
 
         void Update()
@@ -75,6 +98,7 @@ namespace DjvaGoda.Game
                 else { _wind.Stop(); _crickets.Stop(); }
             }
             if (!on) return;
+            Gusts(Time.deltaTime);
             _untilCricket -= Time.deltaTime;
             if (_untilCricket <= 0f)
             {

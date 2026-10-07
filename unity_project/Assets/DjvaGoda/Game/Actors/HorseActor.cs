@@ -130,6 +130,14 @@ namespace DjvaGoda.Game
             if (Rider != null && MatchNet.Hosting) transform.position = Rider.transform.position;
         }
 
+        /// Убрать с карты (лошадь завели в конюшню) — по сети у всех.
+        public void Remove()
+        {
+            var net = GetComponent<NetworkObject>();
+            if (net != null && net.IsSpawned) net.Despawn(true);
+            else Destroy(gameObject);
+        }
+
         public override void TakeDamage(float amount, string zone, WeaponKind? weapon, bool aoe, Actor source)
         {
             if (!Alive || Ridden) return;
