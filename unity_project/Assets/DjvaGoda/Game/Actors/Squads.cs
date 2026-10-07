@@ -48,7 +48,13 @@ namespace DjvaGoda.Game
             var squad = Of(player);
             var deal = Deals.TrainUnit(Treasury.Of(player.Faction), archer, atBarracks != null, hasBarracks, squad.Count, Capacity(player.Faction));
             if (!deal.Ok) return deal;
-            Spawn(player, archer ? UnitKind.Archer : UnitKind.Swordsman, atBarracks.At, squad.Count);
+            // Перед фасадом с учётом поворота казармы: «+9 м по z от центра»
+            // у повёрнутой казармы стражи попадало в стены, и боец застревал
+            // в её коробке (playtest-10: «отряд растёт, а толку нет»).
+            var size = Res.BuildingSize(atBarracks.State.Kind);
+            float yaw = atBarracks.transform.eulerAngles.y * Mathf.Deg2Rad;
+            var front = atBarracks.At + UnitBrain.Rotate(new V3(0f, 0f, size.Z * 0.5f + 4f), yaw);
+            Spawn(player, archer ? UnitKind.Archer : UnitKind.Swordsman, front, squad.Count);
             return deal;
         }
 
@@ -58,7 +64,7 @@ namespace DjvaGoda.Game
         {
             float angle = index * 0.9f;
             float radius = 3f + index * 0.45f;
-            var at = near + new V3(Mathf.Cos(angle) * radius, 1f, 9f + Mathf.Sin(angle) * radius);
+            var at = near + new V3(Mathf.Cos(angle) * radius, 1f, Mathf.Sin(angle) * radius);
             var role = kind == UnitKind.Archer ? AgentRole.Archer : AgentRole.Swordsman;
             var go = Agents.Make(role, player.Faction, at, kind == UnitKind.Archer ? "Лучник отряда" : "Мечник отряда");
             var unit = go.AddComponent<UnitAgent>();
