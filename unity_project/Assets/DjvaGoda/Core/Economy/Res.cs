@@ -44,6 +44,8 @@ namespace DjvaGoda.Core
         /// Микро-шахта злодея: хватает только на путь до первого обоза.
         public const int MicroStoneHitsEach = 3;
         public const int MicroGoldHitsEach = 4;
+        public const int MicroIronHitsEach = 3;
+        public const int MicroCoalHitsEach = 3;
         public const int SourceHits = 6;
         public const float HarvestRange = 3.2f;
         /// Сдача ноши: у своего склада, ближе 14 м, раз в секунду (world.gd).

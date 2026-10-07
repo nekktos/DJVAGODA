@@ -41,10 +41,14 @@ namespace DjvaGoda.Core
         public const float MineEntranceAhead = 20f;
         public const float MineClearing = 42f;
 
-        /// Микро-шахта злодея — сразу за восточной стеной форта: камень и золото.
+        /// Микро-шахта злодея — сразу за восточной стеной форта: все руды
+        /// понемногу и конечно (ответ автора от 07.10) — камень, золото, железо,
+        /// уголь; дальше — обозом из больших шахт.
         public static readonly V3 MicroMine = new V3(-192f, 0f, -296f);
         public static readonly V3[] MicroMineStone = { new V3(-5f, 0f, 4f), new V3(5f, 0f, -3f) };
         public static readonly V3[] MicroMineGold = { new V3(0f, 0f, -8f), new V3(-6f, 0f, -9f) };
+        public static readonly V3[] MicroMineIron = { new V3(9f, 0f, 5f), new V3(12f, 0f, -2f) };
+        public static readonly V3[] MicroMineCoal = { new V3(5f, 0f, -13f), new V3(11f, 0f, -10f) };
 
         /// Лавка у каждой стороны своя, рядом со спавном.
         public static readonly V3[] Traders =

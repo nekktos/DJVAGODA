@@ -110,6 +110,9 @@ namespace DjvaGoda.Core
         static Piece Harvestable(Piece piece, ResourceKind kind, int hits)
         {
             piece.Harvest = kind;
+            // Жила видна своей рудой: золото, железо, уголь — не серым камнем
+            // (playtest-10: золото у форта не узнали — оно было как камень).
+            if (piece.Shape == PieceShape.Rock && kind != ResourceKind.Stone) piece.Material = "ore_" + (int)kind;
             piece.Hits = hits > 0 ? hits : Res.SourceHits;
             return piece;
         }
@@ -242,6 +245,12 @@ namespace DjvaGoda.Core
             for (int i = 0; i < MapLayout.MicroMineGold.Length; i++)
                 Harvestable(Rock(at + MapLayout.MicroMineGold[i], new V3(2.6f, 2.2f, 2.6f), -i * 2.1f, 190 + i),
                     ResourceKind.Gold, Res.MicroGoldHitsEach);
+            for (int i = 0; i < MapLayout.MicroMineIron.Length; i++)
+                Harvestable(Rock(at + MapLayout.MicroMineIron[i], new V3(2.6f, 2.2f, 2.6f), i * 1.7f, 290 + i),
+                    ResourceKind.Iron, Res.MicroIronHitsEach);
+            for (int i = 0; i < MapLayout.MicroMineCoal.Length; i++)
+                Harvestable(Rock(at + MapLayout.MicroMineCoal[i], new V3(2.6f, 2.2f, 2.6f), i * 2.5f, 390 + i),
+                    ResourceKind.Coal, Res.MicroCoalHitsEach);
         }
 
         void Ruin(V3 at)

@@ -93,7 +93,7 @@ namespace DjvaGoda.Tests
             foreach (var actor in Actor.All)
                 if (actor is CaravanActor && actor.Side == (int)Faction.Villain && actor.Alive) carts++;
             Reach("caravan", game, carts > 0);
-            // Железо с микро-шахты не берётся — только обозом из леса эльфов; потраченное тоже в счёт.
+            // Железо: немного с микро-шахты, основное — обозом из леса эльфов; потраченное тоже в счёт.
             Reach("iron", game, wallet.GetAmount(ResourceKind.Iron) > 0 || Has(BuildingKind.SwordBarracks) || Has(BuildingKind.ArcherBarracks));
             Reach("barracks", game, Has(BuildingKind.SwordBarracks) || Has(BuildingKind.ArcherBarracks));
             Reach("soldier", game, Soldiers() > 0);

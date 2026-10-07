@@ -50,7 +50,7 @@ namespace DjvaGoda.Game
             { "wood", new Spec("planks", White, 0.4f) },
             { "rock", new Spec("rock", White, 0.15f) },
             { "ore_1", new Spec("ore_stone", White, 0.5f) },
-            { "ore_2", new Spec("ore_gold", White, 0.5f, 0.35f) },
+            { "ore_2", new Spec("ore_gold", new Color(1.35f, 1.1f, 0.55f), 0.5f, 0.45f) },
             { "ore_3", new Spec("ore_iron", White, 0.5f) },
             { "ore_5", new Spec("ore_coal", White, 0.5f, 0.3f) },
             { "roof", new Spec("roof", White, 0.4f) },
