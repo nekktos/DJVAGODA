@@ -2,6 +2,7 @@
 // у хоста. Шахта копит сама малую долю, каждый шахтёр у входа прибавляет свою
 // (MineState ядра); добытое уезжает только обозом: обоз в конце маршрута
 // берёт у той шахты, к входу которой приехал.
+using System.Collections.Generic;
 using DjvaGoda.Core;
 
 namespace DjvaGoda.Game
@@ -27,17 +28,29 @@ namespace DjvaGoda.Game
         {
             _states = new MineState[MapLayout.Mines.Length];
             for (int i = 0; i < _states.Length; i++) _states[i] = new MineState(MapLayout.Mines[i].Kind);
-            for (int i = 0; i < _worked.Length; i++) _worked[i] = -1;
+            for (int i = 0; i < _worked.Length; i++)
+            {
+                _worked[i] = -1;
+                _visited[i].Clear();
+            }
         }
 
-        /// Шахта, куда сторона последний раз отправила обоз: туда и идут её
-        /// шахтёры. Иначе копали ближнюю (у злодея — железо), а обоз за золотом
-        /// привозил из дальней шахты по десятку (долгая партия на новой карте).
+        /// Шахтёры стороны сидят на самой медленной руде (золото) из шахт, куда
+        /// она уже возила обоз: быстрые копятся и сами. Раньше копали ближнюю
+        /// (у злодея — железо) или бегали через карту за каждым новым обозом,
+        /// и злодей-ИИ сидел без золота на бойцов (долгие партии на новой карте).
         static readonly int[] _worked = { -1, -1, -1 };
+        static readonly HashSet<int>[] _visited = { new HashSet<int>(), new HashSet<int>(), new HashSet<int>() };
 
         public static void Worked(int side, int index)
         {
-            if (side >= 0 && side < _worked.Length && index >= 0 && index < MapLayout.Mines.Length) _worked[side] = index;
+            if (side < 0 || side >= _worked.Length || index < 0 || index >= MapLayout.Mines.Length) return;
+            _visited[side].Add(index);
+            int best = _worked[side];
+            foreach (int mine in _visited[side])
+                if (best < 0 || MineState.BaseRate(MapLayout.Mines[mine].Kind) < MineState.BaseRate(MapLayout.Mines[best].Kind))
+                    best = mine;
+            _worked[side] = best;
         }
 
         public static void Tick(float delta)
