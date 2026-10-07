@@ -171,8 +171,8 @@ namespace DjvaGoda.Game
             if (stable == null) return Deal.No("подойди к конюшне");
             if (wallet.HorsesFree <= 0) return Deal.No("свободных лошадей нет: купи или дождись обоза");
             wallet.Horses -= 1;
-            var size = Res.BuildingSize(BuildingKind.Stable);
-            HorseActor.Spawn(stable.At + UnitBrain.Rotate(new V3(size.X * 0.5f + 2f, 0f, size.Z * 0.5f + 1f), stable.transform.eulerAngles.y * Mathf.Deg2Rad));
+            // Рядом с тем, кто вывел: сразу садиться (E), не искать у угла конюшни.
+            HorseActor.Spawn(_character.Feet + UnitBrain.Rotate(new V3(1.8f, 0f, 0.5f), _character.Yaw));
             if (_combat != null) _combat.Tell("лошадь у конюшни — E, чтобы сесть");
             return Deal.Done();
         }
