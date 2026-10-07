@@ -194,7 +194,18 @@ namespace DjvaGoda.Core
                     else PlanNext(view, path);
                     break;
                 case WarbandState.March:
-                    if (Spent(band) || IsStuck(band)) GoHome(band, path);
+                    // У цели — осада: бьём, пока стоит, потом следующая. Без этого
+                    // центр отряда у стен постройки не двигался, «застрял» уводил
+                    // отряд домой, дома та же цель — набег бегал туда-сюда и ничего
+                    // не добивал (playtest-10: «у пандуса бегают, внутрь не заходят»).
+                    if (Spent(band)) GoHome(band, path);
+                    else if (AtGoal(band))
+                    {
+                        _stuckT = 0f;
+                        _lastCentre = null;
+                        PlanNext(view, path);
+                    }
+                    else if (IsStuck(band)) GoHome(band, path);
                     else if (Arrived(band, here)) PlanNext(view, path);
                     else Chase(view, path);
                     break;
@@ -368,6 +379,12 @@ namespace DjvaGoda.Core
         }
 
         /// Середина не сдвинулась на 2 м за 24 с похода — набег отменяется.
+        bool AtGoal(List<V3> band)
+        {
+            var centre = Centre(band);
+            return Goal.HasValue && centre.HasValue && centre.Value.FlatDistance(Goal.Value) <= AiStats.SiegeRadius;
+        }
+
         bool IsStuck(List<V3> band)
         {
             var centre = Centre(band);
