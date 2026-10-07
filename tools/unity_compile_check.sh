@@ -22,11 +22,16 @@ base() {
 }
 src() { find "$1" -name "*.cs" | while read f; do echo "\"$(pwd -W)/$f\""; done; }
 
-{ base; echo "-out:$OUT/Game.dll"; src Assets/DjvaGoda/Game; } > "$OUT/game.rsp"
+# Ядро — из исходников: собранное в Library отстаёт от правок, пока редактор их не увидел.
+{ base | grep -v "DjvaGoda.Core.dll"; echo "-out:$OUT/Core.dll"; src Assets/DjvaGoda/Core; } > "$OUT/core.rsp"
+CSC "@$OUT/core.rsp" | grep -v "warning" || true
+[ -f "$OUT/Core.dll" ] || { echo "Core: ошибки компиляции"; exit 1; }
+
+{ base | grep -v "DjvaGoda.Core.dll"; echo "-r:\"$OUT/Core.dll\""; echo "-out:$OUT/Game.dll"; src Assets/DjvaGoda/Game; } > "$OUT/game.rsp"
 CSC "@$OUT/game.rsp" | grep -v "warning" || true
 [ -f "$OUT/Game.dll" ] || { echo "Game: ошибки компиляции"; exit 1; }
 
 NUNIT=$(find Library/PackageCache -path "*unity-custom/nunit.framework.dll" | head -1)
-{ base; echo "-out:$OUT/PlayTests.dll"; echo "-r:\"$OUT/Game.dll\""; echo "-r:\"$(pwd -W)/$NUNIT\""; src Assets/DjvaGoda/Tests/PlayMode; } > "$OUT/tests.rsp"
+{ base | grep -v "DjvaGoda.Core.dll"; echo "-r:\"$OUT/Core.dll\""; echo "-out:$OUT/PlayTests.dll"; echo "-r:\"$OUT/Game.dll\""; echo "-r:\"$(pwd -W)/$NUNIT\""; src Assets/DjvaGoda/Tests/PlayMode; } > "$OUT/tests.rsp"
 CSC "@$OUT/tests.rsp" | grep -v "warning" || true
 echo "проверка компиляции: готово"

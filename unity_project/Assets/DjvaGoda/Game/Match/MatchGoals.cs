@@ -67,9 +67,15 @@ namespace DjvaGoda.Game
 
         public static bool IsOut(Faction side) { return Instance != null && Instance.State.Out[(int)side]; }
 
+        /// Кто именно нанёс смертельный удар: место злодея занимает убийца.
+        readonly Dictionary<int, int> _killerActors = new Dictionary<int, int>();
+        readonly HashSet<int> _fallen = new HashSet<int>();
+
         void NoteKill(Actor victim, Actor source)
         {
-            if (victim != null && source != null) _killers[victim.Id] = source.Side;
+            if (victim == null || source == null) return;
+            _killers[victim.Id] = source.Side;
+            _killerActors[victim.Id] = source.Id;
         }
 
         void Update()
@@ -101,7 +107,7 @@ namespace DjvaGoda.Game
             Progress.Value = State.CaptureProgress;
             Claimant.Value = State.Claimant;
             Contested.Value = State.Contested;
-            int flags = State.GuardAbsorbed ? 1 << 9 : 0;
+            int flags = (State.GuardAbsorbed ? 1 << 9 : 0) | (State.VillainAbsorbed ? 1 << 10 : 0);
             for (int f = 0; f < Factions.Count; f++)
             {
                 if (State.LeaderDown[f]) flags |= 1 << f;
@@ -125,6 +131,7 @@ namespace DjvaGoda.Game
                 State.Victors[f] = (flags & (1 << (6 + f))) != 0;
             }
             State.GuardAbsorbed = (flags & (1 << 9)) != 0;
+            State.VillainAbsorbed = (flags & (1 << 10)) != 0;
         }
 
         /// Какие стороны стоят в круге дворца: живые персонажи, по сюзерену.
@@ -152,6 +159,13 @@ namespace DjvaGoda.Game
                 if (State.LeaderDown[(int)player.Faction]) continue;
                 int killer;
                 if (!_killers.TryGetValue(player.Id, out killer)) killer = -1;
+                if (_fallen.Contains(player.Id)) continue;
+                if (player.Faction == Faction.Villain && VillainFell(player))
+                {
+                    // Исход решён раз и навсегда: тело прежнего злодея больше не считаем.
+                    _fallen.Add(player.Id);
+                    continue;
+                }
                 var text = State.ReportLeaderDown(player.Faction, killer);
                 if (text != null) Announce(text);
                 foreach (var more in State.CheckVictories(Snapshots())) Announce(more);
@@ -186,22 +200,89 @@ namespace DjvaGoda.Game
             return sides;
         }
 
-        bool _absorbed;
-
-        /// Дворец взят злодеем: постройки стражи и её казна — его. Бойцы
-        /// стражи остаются в своих цветах, но служат ему (союз в Factions).
-        void Absorb()
+        /// Злодей пал от руки игрока (ответ автора от 07.10): рядовой стражник
+        /// или эльф занимает его место, командир стражи забирает его владения
+        /// страже. true — исход обработан здесь.
+        bool VillainFell(PlayerCharacter villain)
         {
-            _absorbed = true;
+            int killerId;
+            var killer = _killerActors.TryGetValue(villain.Id, out killerId) ? Actor.ById(killerId) as PlayerCharacter : null;
+            if (killer == null || !killer.Alive) return false;
+            bool human = killer.GetComponent<HeroDriver>() == null;
+            switch (MatchState.VillainFallBy(killer.Faction, human, killer.Kit.IsLeader))
+            {
+                case MatchState.VillainFall.Usurped:
+                    Usurp(killer);
+                    return true;
+                case MatchState.VillainFall.Absorbed:
+                    var said = State.AbsorbVillain();
+                    if (said != null) Announce(said);
+                    HandOverVillain();
+                    foreach (var more in State.CheckVictories(Snapshots())) Announce(more);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// Убийца встаёт на место злодея: его сторона, вожак, хозяйство и казна
+        /// злодея — его. Свой отряд идёт за ним. Прежний вожак мёртв навсегда.
+        void Usurp(PlayerCharacter killer)
+        {
+            var was = killer.Faction;
+            foreach (var unit in Squads.Of(killer))
+            {
+                unit.Brain.Side = (int)Faction.Villain;
+                unit.Side = (int)Faction.Villain;
+            }
+            killer.ChangeFaction(Faction.Villain);
+            killer.Kit.IsLeader = true;
+            var net = killer.GetComponent<NetPlayer>();
+            if (net != null && net.IsSpawned)
+            {
+                net.Side.Value = (int)Faction.Villain;
+                if (NetSession.Instance != null) NetSession.Instance.Reassign(net.OwnerClientId, Faction.Villain);
+            }
+            // Злодей снова ведом — не «пал».
+            State.LeaderDown[(int)Faction.Villain] = false;
+            Announce(Factions.NameOf(was) + ": " + killer.name + " сразил злодея и занял его место");
+        }
+
+        /// Владения злодея — страже: постройки, казна, лошади, батраки и бойцы.
+        void HandOverVillain()
+        {
             foreach (var actor in Actor.All)
             {
+                if (actor == null || actor.Side != (int)Faction.Villain) continue;
                 var building = actor as BuildingActor;
-                if (building == null || building.Side != (int)Faction.Guard) continue;
-                building.State.Side = Faction.Villain;
-                building.Side = (int)Faction.Villain;
+                if (building != null)
+                {
+                    building.State.Side = Faction.Guard;
+                    building.Side = (int)Faction.Guard;
+                    continue;
+                }
+                var worker = actor as LabourerAgent;
+                if (worker != null && worker.Brain != null)
+                {
+                    worker.Brain.Side = Faction.Guard;
+                    worker.Side = (int)Faction.Guard;
+                    continue;
+                }
+                var unit = actor as UnitAgent;
+                if (unit != null && unit.Brain != null && !unit.Champion)
+                {
+                    unit.Brain.Side = (int)Faction.Guard;
+                    unit.Side = (int)Faction.Guard;
+                }
             }
-            var from = Treasury.Of(Faction.Guard);
-            var into = Treasury.Of(Faction.Villain);
+            MoveTreasury(Faction.Villain, Faction.Guard);
+        }
+
+        /// Казна стороны — другой: склад, ноша, свободные лошади.
+        static void MoveTreasury(Faction fromSide, Faction intoSide)
+        {
+            var from = Treasury.Of(fromSide);
+            var into = Treasury.Of(intoSide);
             into.RaiseCapacity(from.Stored.Capacity);
             for (int i = 0; i < Res.Count; i++)
             {
@@ -218,6 +299,23 @@ namespace DjvaGoda.Game
             from.Carried.Amounts = Res.Empty();
             from.Stored.Amounts = Res.Empty();
             from.Horses = from.HorsesOut;
+        }
+
+        bool _absorbed;
+
+        /// Дворец взят злодеем: постройки стражи и её казна — его. Бойцы
+        /// стражи остаются в своих цветах, но служат ему (союз в Factions).
+        void Absorb()
+        {
+            _absorbed = true;
+            foreach (var actor in Actor.All)
+            {
+                var building = actor as BuildingActor;
+                if (building == null || building.Side != (int)Faction.Guard) continue;
+                building.State.Side = Faction.Villain;
+                building.Side = (int)Faction.Villain;
+            }
+            MoveTreasury(Faction.Guard, Faction.Villain);
         }
 
         /// Объявить всем (хост).

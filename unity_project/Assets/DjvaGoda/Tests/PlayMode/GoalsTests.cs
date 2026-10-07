@@ -59,8 +59,9 @@ namespace DjvaGoda.Tests
             Assert.That(Said(_goals, "ПОБЕДА"), Is.True, "победа не объявлена");
         }
 
+        /// Злодея сразил эльф-игрок — эльф занимает место злодея (ответ автора от 07.10).
         [UnityTest]
-        public IEnumerator VillainLeaderFallsToElf()
+        public IEnumerator ElfKillsVillainAndTakesHisPlace()
         {
             var villain = TestArena.Fighter(Faction.Villain, TestArena.Centre, 0f);
             villain.Kit.IsLeader = true;
@@ -70,10 +71,51 @@ namespace DjvaGoda.Tests
             Actor.Strike(villain, 5000f, "torso", WeaponKind.Sword, false, elf);
             yield return null;
             yield return null;
+            Assert.That(elf.Faction, Is.EqualTo(Faction.Villain), "эльф не стал злодеем");
+            Assert.That(elf.Kit.IsLeader, Is.True, "новый злодей не вожак");
+            Assert.That(_goals.State.LeaderDown[(int)Faction.Villain], Is.False, "злодей числится павшим, хотя место занято");
+            yield return TestArena.Wait(MatchState.CheckInterval + 0.5f);
+            Assert.That(_goals.State.Out[(int)Faction.Villain], Is.False, "злодей выбыл, хотя место занято");
+            Assert.That(Said(_goals, "занял его место"), Is.True, "смена злодея не объявлена");
+        }
+
+        /// Злодея сразил командир стражи — владения злодея отходят страже, злодей выбывает.
+        [UnityTest]
+        public IEnumerator CommanderKillsVillainAndTakesHisHoldings()
+        {
+            var storage = BuildingActor.Spawn(BuildingKind.Storage, Faction.Villain, TestArena.Centre.ToCore() + new V3(30f, 0f, 0f), true, null);
+            Treasury.Of(Faction.Villain).Carried.Amounts = new[] { 0, 0, 55, 0, 0, 0 };
+            var villain = TestArena.Fighter(Faction.Villain, TestArena.Centre, 0f);
+            villain.Kit.IsLeader = true;
+            var commander = TestArena.Fighter(Faction.Guard, TestArena.Centre + new Vector3(1.5f, 0f, 0f), 0f);
+            commander.Kit.IsLeader = true;
+            _goals.RunWithoutNetwork = true;
+            yield return TestArena.Settle();
+            int gold = Treasury.Of(Faction.Guard).GetAmount(ResourceKind.Gold);
+            Actor.Strike(villain, 5000f, "torso", WeaponKind.Sword, false, commander);
+            yield return null;
+            yield return null;
+            Assert.That(commander.Faction, Is.EqualTo(Faction.Guard), "командир сменил сторону");
+            Assert.That(_goals.State.VillainAbsorbed, Is.True, "владения злодея не перешли страже");
+            Assert.That(storage.Side, Is.EqualTo((int)Faction.Guard), "склад злодея не перешёл страже");
+            Assert.That(Treasury.Of(Faction.Guard).GetAmount(ResourceKind.Gold), Is.EqualTo(gold + 55), "казна злодея не перешла");
+            Assert.That(_goals.State.Out[(int)Faction.Villain], Is.True, "злодей не выбыл");
+            Assert.That(_goals.State.Out[(int)Faction.Guard], Is.False, "стража выбыла без причины");
+        }
+
+        /// Злодей истёк кровью — некому занять место: злодей выбывает.
+        [UnityTest]
+        public IEnumerator VillainDiesWithoutKillerAndIsOut()
+        {
+            var villain = TestArena.Fighter(Faction.Villain, TestArena.Centre, 0f);
+            villain.Kit.IsLeader = true;
+            _goals.RunWithoutNetwork = true;
+            yield return TestArena.Settle();
+            Actor.Strike(villain, 5000f, "torso", WeaponKind.Sword, false, null);
+            yield return null;
+            yield return null;
             Assert.That(_goals.State.LeaderDown[(int)Faction.Villain], Is.True, "павший вожак не замечен");
             Assert.That(_goals.State.Out[(int)Faction.Villain], Is.True, "злодей без вожака не выбыл");
-            Assert.That(Said(_goals, Factions.Names[(int)Faction.Elves]), Is.True, "убийца вожака не назван");
-            Assert.That(_goals.State.Out[(int)Faction.Guard], Is.False, "стража выбыла без причины");
         }
     }
 }

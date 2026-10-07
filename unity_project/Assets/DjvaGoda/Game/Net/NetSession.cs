@@ -206,6 +206,12 @@ namespace DjvaGoda.Game
             return go.GetComponent<PlayerCharacter>();
         }
 
+        /// Игрок сменил сторону (занял место злодея): места и счёт людей — по новой.
+        public void Reassign(ulong client, Faction side)
+        {
+            if (_faction.ContainsKey(client)) _faction[client] = (int)side;
+        }
+
         /// Люди за сторону (у хоста): одобренные подключения этой стороны.
         public int HumansOf(Faction side)
         {

@@ -175,6 +175,12 @@ namespace DjvaGoda.Game
         void Update()
         {
             if (!IsSpawned) return;
+            // Сторона сменилась у хоста (занял место злодея) — облик у себя.
+            if (!IsServer && (Faction)Side.Value != _character.Faction)
+            {
+                _character.ChangeFaction((Faction)Side.Value);
+                name = (Ai.Value ? "ИИ" : "Игрок " + OwnerClientId) + " (" + Factions.Names[Side.Value] + ")";
+            }
             if (IsOwner)
             {
                 if (Mathf.Abs(Pitch.Value - _character.Pitch) > 0.001f) Pitch.Value = _character.Pitch;

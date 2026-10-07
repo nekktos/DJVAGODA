@@ -78,6 +78,28 @@ namespace DjvaGoda.Game
             HitZone.Humanoid(transform, this);
         }
 
+        /// Сменить сторону (занял место злодея): облик, снаряжение и оружие —
+        /// новой стороны. На каждом пире (по сети — NetPlayer по Side).
+        public void ChangeFaction(Faction side)
+        {
+            if (Faction == side) return;
+            Faction = side;
+            Kit.Side = side;
+            Side = (int)side;
+            var body = transform.Find("Тело");
+            if (body != null)
+            {
+                body.name = "Тело (старое)";
+                Destroy(body.gameObject);
+            }
+            Bootstrap.AddBody(transform, side);
+            var combat = GetComponent<PlayerCombat>();
+            if (combat != null && !Factions.AllowsWeapon(side, combat.Weapon)) combat.Weapon = Factions.DefaultWeapon(side);
+            var view = GetComponent<WeaponView>();
+            if (view != null) view.Refresh();
+            _shownFallen = false;
+        }
+
         /// Сторону назначают после AddComponent (Awake уже прошёл) — снаряжение узнаёт её здесь.
         void Start()
         {

@@ -48,11 +48,39 @@ namespace DjvaGoda.Core
         public readonly bool[] Out = new bool[Factions.Count];
         public readonly bool[] Victors = new bool[Factions.Count];
         public bool GuardAbsorbed;
+        /// Злодея сразил командир стражи (ответ автора от 07.10): владения
+        /// злодея — под рукой стражи, его люди служат ей.
+        public bool VillainAbsorbed;
 
-        /// Союз стражи со злодеем после взятия дворца — на каждом пире.
+        /// Союзы по исходам — на каждом пире: стража под злодеем после взятия
+        /// дворца или злодеевы люди под стражей после гибели злодея от командира.
         public void ApplyAlliances()
         {
             Factions.Overlord[(int)Faction.Guard] = GuardAbsorbed ? (int)Faction.Villain : -1;
+            Factions.Overlord[(int)Faction.Villain] = VillainAbsorbed && !GuardAbsorbed ? (int)Faction.Guard : -1;
+        }
+
+        /// Кто сразил злодея — и что из этого следует (ответ автора от 07.10).
+        public enum VillainFall { Down, Usurped, Absorbed }
+
+        /// Рядовой стражник или эльф (живой игрок) занимает место злодея;
+        /// командир стражи забирает его владения страже; прочие — злодей пал.
+        public static VillainFall VillainFallBy(Faction killer, bool killerIsHuman, bool killerIsCommander)
+        {
+            if (!killerIsHuman) return VillainFall.Down;
+            if (killer == Faction.Guard && killerIsCommander) return VillainFall.Absorbed;
+            if (killer == Faction.Guard || killer == Faction.Elves) return VillainFall.Usurped;
+            return VillainFall.Down;
+        }
+
+        /// Владения злодея — страже: злодей выбывает, его люди служат страже.
+        public string AbsorbVillain()
+        {
+            if (VillainAbsorbed) return null;
+            VillainAbsorbed = true;
+            LeaderDown[(int)Faction.Villain] = true;
+            ApplyAlliances();
+            return "Командир стражи сразил злодея: его владения и люди теперь под стражей";
         }
 
         /// Такт захвата: кто из сторон стоит в круге. Возвращает объявления.
@@ -125,6 +153,7 @@ namespace DjvaGoda.Core
         public bool SideOut(Faction faction, SideSnapshot side)
         {
             if (faction == Faction.Guard && GuardAbsorbed) return true;
+            if (faction == Faction.Villain && VillainAbsorbed) return true;
             if (faction == Faction.Elves) return side.ElfHouses == 0 && side.LivingElves == 0;
             return Broken(faction, side);
         }
@@ -140,6 +169,8 @@ namespace DjvaGoda.Core
                 Out[f] = true;
                 if (faction == Faction.Guard && GuardAbsorbed)
                     said.Add(Factions.NameOf(faction) + " больше не сторона: она служит злодею");
+                else if (faction == Faction.Villain && VillainAbsorbed)
+                    said.Add("Злодея больше нет: его люди служат страже");
                 else
                     said.Add(Factions.NameOf(faction) + " " + OutVerb[f] + " из партии: " + OutText[f]);
             }

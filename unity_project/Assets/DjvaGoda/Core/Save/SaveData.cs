@@ -81,6 +81,7 @@ namespace DjvaGoda.Core
         public bool[] victors = new bool[Factions.Count];
         public bool[] outOfMatch = new bool[Factions.Count];
         public bool guardAbsorbed;
+        public bool villainAbsorbed;
         public List<SavedBuilding> buildings = new List<SavedBuilding>();
         public List<SavedLabourer> labourers = new List<SavedLabourer>();
         public List<SavedTreasury> treasuries = new List<SavedTreasury>();
@@ -91,6 +92,7 @@ namespace DjvaGoda.Core
         {
             palaceOwner = (int)match.PalaceOwner;
             guardAbsorbed = match.GuardAbsorbed;
+            villainAbsorbed = match.VillainAbsorbed;
             for (int f = 0; f < Factions.Count; f++)
             {
                 leaderDown[f] = match.LeaderDown[f];
@@ -104,6 +106,7 @@ namespace DjvaGoda.Core
         {
             match.PalaceOwner = (Faction)palaceOwner;
             match.GuardAbsorbed = guardAbsorbed;
+            match.VillainAbsorbed = villainAbsorbed;
             for (int f = 0; f < Factions.Count; f++)
             {
                 match.LeaderDown[f] = leaderDown[f];

@@ -39,6 +39,14 @@ namespace DjvaGoda.Game
             }
         }
 
+        /// Тело собрано заново (сменилась сторона) — оружие в руку заново.
+        public void Refresh()
+        {
+            if (_view != null) Destroy(_view.gameObject);
+            _view = null;
+            _shown = null;
+        }
+
         /// В хвате кисти: клинок смотрит вперёд, пока рука опущена, и вверх при замахе.
         public static void Hold(Transform weapon, Transform hand, WeaponKind kind)
         {
