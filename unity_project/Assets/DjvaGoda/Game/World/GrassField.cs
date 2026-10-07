@@ -70,7 +70,9 @@ namespace DjvaGoda.Game
             {
                 float x = (cx + (float)rng.NextDouble()) * Cell, z = (cz + (float)rng.NextDouble()) * Cell;
                 float yaw = (float)rng.NextDouble() * 360f, size = 0.7f + (float)rng.NextDouble() * 0.8f;
-                if (Mathf.Abs(x) > half || Mathf.Abs(z) > half || MapLayout.DistanceToRoad(x, z) < RoadHalf) continue;
+                if (Mathf.Abs(x) > half || Mathf.Abs(z) > half || MapLayout.DistanceToRoad(x, z) < RoadHalf
+                    || MapLayout.DistanceToRiver(x, z) < MapLayout.RiverWidth * 0.5f + 1f || MapLayout.InSea(x, z, 1f)
+                    || MapLayout.InVillainRing(x, z, -15f)) continue;
                 float y = _world.Relief.Height(x, z);
                 list.Add(Matrix4x4.TRS(new Vector3(x, y - 0.02f, z), Quaternion.Euler(0f, yaw, 0f), Vector3.one * size));
             }

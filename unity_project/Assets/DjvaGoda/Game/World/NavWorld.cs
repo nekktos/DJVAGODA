@@ -56,6 +56,32 @@ namespace DjvaGoda.Game
 
         public List<V3> PathBetween(V3 from, V3 to)
         {
+            var path = Stitched(from, to);
+            bool reached = path.Count > 0 && path[path.Count - 1].FlatDistance(ClosestPoint(to)) < 2f;
+            if (reached) return path;
+            // Поиск упёрся в борт плато или в кольцо гор (предел узлов), а вход
+            // туда один: на плато — пандус, к форту — перевал. Идём через вход.
+            var gate = GateBetween(from, to);
+            if (!gate.HasValue) return path;
+            var first = Stitched(from, gate.Value);
+            var second = Stitched(gate.Value, to);
+            if (first.Count == 0 || second.Count == 0) return path;
+            for (int i = 1; i < second.Count; i++) first.Add(second[i]);
+            return first;
+        }
+
+        /// Вход, через который лежит путь: пандус замка или перевал злодея.
+        static V3? GateBetween(V3 from, V3 to)
+        {
+            bool fromUp = MapLayout.OnPlateau(from.X, from.Z, 0f), toUp = MapLayout.OnPlateau(to.X, to.Z, 0f);
+            if (fromUp != toUp) return MapLayout.RampFoot;
+            bool fromRing = MapLayout.InVillainRing(from.X, from.Z, 0f), toRing = MapLayout.InVillainRing(to.X, to.Z, 0f);
+            if (fromRing != toRing) return MapLayout.VillainPass;
+            return null;
+        }
+
+        List<V3> Stitched(V3 from, V3 to)
+        {
             var result = new List<V3>();
             var start = ClosestPoint(from).ToUnity();
             var goal = ClosestPoint(to).ToUnity();

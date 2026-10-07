@@ -10,9 +10,9 @@ namespace DjvaGoda.Tests
 {
     public static class TestArena
     {
-        /// Ровное место — дорога от тракта к деревням людей, вне леса и вдали
-        /// от построек.
-        public static readonly Vector3 Centre = new Vector3(-380f, 0f, -150f);
+        /// Ровное место — дорога от замка к деревне людей, в полях вне леса и
+        /// вдали от построек.
+        public static readonly Vector3 Centre = new Vector3(-370f, 0f, -80f);
 
         public static IEnumerator Load()
         {

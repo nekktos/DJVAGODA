@@ -1,5 +1,6 @@
-// Лес зоны эльфов (перенос forest.gd): 3200 деревьев кольцом вокруг поселения
-// посреди карты, с неровной кромкой, поляной посередине и полянами под шахты.
+// Лес эльфов (перенос forest.gd): 7000 деревьев на всю карту — кроме плато
+// замка, полей людей у моря и кольца гор злодея, — с поляной поселения
+// посередине, полянами под шахты, просеками дорог и берегами реки.
 //
 // Дерево адресуется НОМЕРОМ: хост рубит по номеру, клиенты валят по номеру,
 // опоздавшему досылают список поваленных. Зерно одно — лес одинаков у всех.
@@ -13,7 +14,7 @@ namespace DjvaGoda.Core
 {
     public class Forest
     {
-        public const int TreeCount = 3200;
+        public const int TreeCount = 7000;
         public const int Seed = 3615;
         public const float Clearing = 70f;
         public const float SolidRadius = 70f;
@@ -45,13 +46,19 @@ namespace DjvaGoda.Core
             holes.Add(new KeyValuePair<V3, float>(MapLayout.Crossroads + new V3(-10f, 0f, -25f), 85f));
             holes.Add(new KeyValuePair<V3, float>(MapLayout.AncientRuins, 36f));
             holes.Add(new KeyValuePair<V3, float>(MapLayout.AncientPortal, 30f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.Watchtower, 22f));
             holes.Add(new KeyValuePair<V3, float>(MapLayout.ElfCampEast, 26f));
-            holes.Add(new KeyValuePair<V3, float>(MapLayout.ElvesCentre + new V3(-150f, 0f, 150f), 24f));
-            holes.Add(new KeyValuePair<V3, float>(MapLayout.VillainCentre + WorldPlan.FortOffset, 150f));
-            holes.Add(new KeyValuePair<V3, float>(MapLayout.HumansCentre, 150f));
+            holes.Add(new KeyValuePair<V3, float>(WorldPlan.ElfCampWest, 24f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.VillainPass, 40f));
+            float edge = MapLayout.WorldSize * 0.5f - 22f;
             return new Forest(MapLayout.ElvesCentre, MapLayout.ForestRadius, Clearing, Seed, holes,
-                (x, z) => MapLayout.OnPlateau(x, z, 25f) || MapLayout.DistanceToRoad(x, z) < RoadClearance);
+                (x, z) => Math.Abs(x) > edge || Math.Abs(z) > edge || x < MapLayout.FieldsEdgeX
+                    || MapLayout.OnPlateau(x, z, 25f) || MapLayout.InVillainRing(x, z, 45f)
+                    || MapLayout.DistanceToRoad(x, z) < RoadClearance || MapLayout.DistanceToRiver(x, z) < RiverClearance);
         }
+
+        /// Берег реки: от оси реки до ствола.
+        public const float RiverClearance = 13f;
 
         /// Просека: от оси дороги до ствола.
         public const float RoadClearance = 16f;

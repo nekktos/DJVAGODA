@@ -393,21 +393,35 @@ public class CoreTests
     [Test]
     public void Map()
     {
-        // Железо у злодея и у стражи своё, и от ворот до него — почти поровну.
-        var villainIron = MapLayout.MineOf(ResourceKind.Iron, MapLayout.VillainGate).Value.At;
+        // Железо у злодея и у стражи своё, и от перевала и пандуса до него — почти
+        // поровну; камень и золото — общие, тоже поровну.
+        var villainIron = MapLayout.MineOf(ResourceKind.Iron, MapLayout.VillainPass).Value.At;
         var guardIron = MapLayout.MineOf(ResourceKind.Iron, MapLayout.RampFoot).Value.At;
-        float toVillain = villainIron.FlatDistance(MapLayout.VillainGate);
+        float toVillain = villainIron.FlatDistance(MapLayout.VillainPass);
         float toGuard = guardIron.FlatDistance(MapLayout.RampFoot);
-        Check(villainIron.FlatDistance(guardIron) > 100f && Math.Abs(toVillain - toGuard) < 20f,
-            "железо — у злодея и у стражи своё, от ворот поровну", toVillain + " против " + toGuard);
-        var elves = MapLayout.ElvesCentre;
-        bool outward = true, inForest = true;
+        bool shared = true;
+        foreach (var kind in new[] { ResourceKind.Stone, ResourceKind.Gold })
+        {
+            var at = MapLayout.MineOf(kind).Value.At;
+            shared &= Math.Abs(at.FlatDistance(MapLayout.VillainPass) - at.FlatDistance(MapLayout.RampFoot)) < 20f;
+        }
+        Check(villainIron.FlatDistance(guardIron) > 100f && Math.Abs(toVillain - toGuard) < 20f && shared,
+            "железо — у злодея и у стражи своё, камень и золото общие; всё от перевала и пандуса поровну",
+            toVillain + " против " + toGuard + ", общие поровну " + shared);
+        // У каждой шахты вход — на дороге, и дорог от входа не меньше двух.
+        int lonely = 0;
+        bool inForest = true;
         foreach (var mine in MapLayout.Mines)
         {
-            outward &= MapLayout.MineEntrance(mine.At).FlatDistance(elves) > mine.At.FlatDistance(elves);
-            inForest &= mine.At.FlatDistance(elves) < MapLayout.ForestRadius;
+            var door = MapLayout.MineEntrance(mine.At);
+            int roads = 0;
+            foreach (var road in MapLayout.MineRoads)
+                if (road.From.FlatDistance(door) < 0.5f || road.To.FlatDistance(door) < 0.5f) roads++;
+            if (roads < 2) lonely++;
+            inForest &= mine.At.X > MapLayout.FieldsEdgeX && !MapLayout.OnPlateau(mine.At.X, mine.At.Z, 0f)
+                && !MapLayout.InVillainRing(mine.At.X, mine.At.Z, 0f);
         }
-        Check(outward && inForest, "шахты — только в лесу эльфов, входы прочь от поселения", "все пять");
+        Check(lonely == 0 && inForest, "шахты — только в лесу, от входа каждой — по две дороги", "без двух дорог: " + lonely);
     }
 
     [Test]
@@ -676,8 +690,11 @@ public class CoreTests
         mustBeFlat.Add(MapLayout.Crossroads);
         mustBeFlat.Add(MapLayout.VillainGate);
         mustBeFlat.Add(MapLayout.MicroMine);
-        mustBeFlat.Add(new V3(-200f, 0f, MapLayout.RoadZ));
-        mustBeFlat.Add(new V3(200f, 0f, MapLayout.RoadZ));
+        mustBeFlat.Add(MapLayout.CastleFork);
+        mustBeFlat.Add(MapLayout.VillainPass);
+        mustBeFlat.Add(new V3(-185f, 0f, 0f));
+        mustBeFlat.Add(new V3(124f, 0f, -151f));
+        mustBeFlat.Add(new V3(70f, 0f, 300f));
         mustBeFlat.Add(new V3(600f, 0f, -150f));
         mustBeFlat.AddRange(MapLayout.Hamlets);
         var emperor = MapLayout.PalaceCentre;
@@ -736,7 +753,7 @@ public class CoreTests
         elves.Think(view, null);
         Check(elves.State == WarbandState.March && elves.Goal.HasValue && elves.Goal.Value.Distance(villainFort) < 0.1f
             && elves.Announced.HasValue,
-            "полный отряд эльфов идёт в набег на постройку злодея в 400 м и объявляет его", elves.StateName);
+            "полный отряд эльфов идёт в набег на постройку злодея в 590 м и объявляет его", elves.StateName);
 
         var villainHome = Factions.Spawn[(int)Faction.Villain];
         var weak = new WarbandBrain(Faction.Villain);
@@ -758,7 +775,7 @@ public class CoreTests
         guardView.SidesLeft = 2;
         guard.Think(guardView, null);
         Check(guardHome && guard.State == WarbandState.March && guard.Goal.Value.Distance(elfHome) < 0.1f,
-            "стража не достаёт до форта (815 м > 800) и не трогает эльфов, пока в партии три стороны",
+            "стража не достаёт до форта (1030 м > 800) и не трогает эльфов, пока в партии три стороны",
             "при двух сторонах цель " + guard.Goal);
 
         var villain = new WarbandBrain(Faction.Villain);
@@ -1316,25 +1333,27 @@ public class CoreTests
             var p = forest.Positions[i];
             float r = p.FlatDistance(centre);
             if (r < Forest.Clearing) inClearing++;
-            if (r > MapLayout.ForestRadius || MapLayout.OnPlateau(p.X, p.Z, 0f)) outside++;
+            if (MapLayout.OnPlateau(p.X, p.Z, 0f) || MapLayout.InVillainRing(p.X, p.Z, 0f) || p.X < MapLayout.FieldsEdgeX
+                || Math.Abs(p.X) > MapLayout.WorldSize * 0.5f || Math.Abs(p.Z) > MapLayout.WorldSize * 0.5f) outside++;
+            if (MapLayout.DistanceToRiver(p.X, p.Z) < MapLayout.RiverWidth * 0.5f) onRoad++;
             if (MapLayout.DistanceToRoad(p.X, p.Z) < Forest.RoadClearance) onRoad++;
             if (r <= AiStats.ElfWoods) woods++;
             foreach (var mine in MapLayout.Mines)
                 if (p.FlatDistance(mine.At) < MapLayout.MineClearing) inMine++;
         }
         Check(forest.Count == Forest.TreeCount && inClearing == 0 && inMine == 0 && outside == 0 && onRoad == 0,
-            "лес эльфов: 3200 деревьев посреди карты, поселение, поляны шахт и просеки дорог пусты, на плато не заходит",
-            "деревьев " + forest.Count + ", на полянах " + (inClearing + inMine) + ", на дорогах " + onRoad + ", снаружи " + outside);
+            "лес эльфов: 7000 деревьев на всю карту; поселение, поляны шахт, дороги и река пусты; нет леса на плато, в полях и в горах злодея",
+            "деревьев " + forest.Count + ", на полянах " + (inClearing + inMine) + ", на дорогах и в реке " + onRoad + ", снаружи " + outside);
         Check(woods > 50, "у поселения (110 м) есть свой лес: герою-эльфу есть что рубить на дома", "деревьев " + woods);
 
         var twin = Forest.ForMap();
         Check(twin.Positions[777].Distance(forest.Positions[777]) < 0.001f && twin.Scales[1234] == forest.Scales[1234]
-            && forest.Positions[0].Distance(new V3(130.1601f, 0f, -93.4818f)) < 0.01f,
+            && forest.Positions[0].Distance(new V3(33.9899f, 0f, 321.7316f)) < 0.01f,
             "лес одинаков у хоста и клиента: дерево адресуется номером, первое — там, где записано",
             "дерево 0 — " + forest.Positions[0]);
-        Check(new Rng(0).NextULong() == 0xE220A8397B1DCDAFUL && Math.Abs(Relief.ForMap().Height(250f, -330f) - 8.6346f) < 0.01f,
+        Check(new Rng(0).NextULong() == 0xE220A8397B1DCDAFUL && Math.Abs(Relief.ForMap().Height(400f, 300f) - 20.4527f) < 0.01f,
             "генератор ядра — эталонный SplitMix64: лес и холмы не зависят от среды выполнения",
-            "холм в (250, -330) — " + Relief.ForMap().Height(250f, -330f).ToString("0.000"));
+            "холм в (400, 300) — " + Relief.ForMap().Height(400f, 300f).ToString("0.000"));
 
         int first = forest.Hit(10);
         int left = first;
@@ -1378,9 +1397,9 @@ public class CoreTests
         var villain = Factions.Spawn[(int)Faction.Villain];
         var fort = MapLayout.ZoneCenters[(int)Zone.Villain] + WorldPlan.FortOffset;
         bool inside = Math.Abs(villain.X - fort.X) < WorldPlan.FortHalf && Math.Abs(villain.Z - fort.Z) < WorldPlan.FortHalf;
-        bool gate = !Walled(plan, "ZoneVillain", villain, new V3(villain.X, 0f, fort.Z - 140f), 0f);
+        bool gate = !Walled(plan, "ZoneVillain", villain, new V3(villain.X, 0f, fort.Z + 140f), 0f);
         bool wall = Walled(plan, "ZoneVillain", villain, new V3(fort.X + 140f, 0f, villain.Z), 0f);
-        Check(inside && gate && wall, "злодей появляется в форте и выходит на юг через ворота; в стену не пройти",
+        Check(inside && gate && wall, "злодей появляется в форте и выходит на север через ворота; в стену не пройти",
             "ворота " + gate + ", стена на восток " + wall);
 
         var guard = Factions.Spawn[(int)Faction.Guard];

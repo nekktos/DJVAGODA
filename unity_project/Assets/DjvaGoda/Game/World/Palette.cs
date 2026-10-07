@@ -79,6 +79,11 @@ namespace DjvaGoda.Game
         {
             { "ghost_ok", new Color(0.35f, 0.85f, 0.35f) },
             { "ghost_bad", new Color(0.9f, 0.25f, 0.2f) },
+            // Карта «Изумрудный Разлом»: вода, лава, выжженная земля злодея, поля людей.
+            { "water", new Color(0.16f, 0.36f, 0.52f) },
+            { "lava", new Color(1f, 0.32f, 0.08f) },
+            { "scorched", new Color(0.17f, 0.12f, 0.12f) },
+            { "field", new Color(0.72f, 0.62f, 0.30f) },
         };
 
         /// Цвета прежних заглушек — запас, если текстуры ещё не собраны.

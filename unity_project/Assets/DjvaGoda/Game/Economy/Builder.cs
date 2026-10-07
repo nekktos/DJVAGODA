@@ -239,11 +239,35 @@ namespace DjvaGoda.Game
             int mine = Mines.Nearest(route[route.Count - 1]);
             route.Add(Mines.Dock(mine));
             Mines.Worked((int)side, mine);
+            route = Walked(route);
             int want = Mathf.Clamp(_character.HarnessSize, CaravanRules.HorsesMin, CaravanRules.HorsesMax);
             int team = Mathf.Min(want, wallet.HorsesFree);
             wallet.HorsesOut += team;
             if (team < want && _combat != null) _combat.Tell("свободных лошадей " + team + " — запрягли столько");
             CaravanActor.Spawn(side, OwnerId, route, team, Object.FindAnyObjectByType<World>(), wallet, Mines.Load);
+        }
+
+        /// Маршрут игрока по сетке: точки игрока остаются все, между ними — путь
+        /// в обход стен. Прямыми обоз злодея выезжал со склада сквозь стену
+        /// форта (playtest, сообщение автора от 07.10).
+        static List<V3> Walked(List<V3> points)
+        {
+            var nav = Object.FindAnyObjectByType<NavWorld>();
+            if (nav == null || !nav.Ready) return points;
+            var walked = new List<V3> { points[0] };
+            for (int i = 1; i < points.Count; i++)
+            {
+                var leg = nav.PathBetween(points[i - 1], points[i]);
+                if (leg.Count < 2)
+                {
+                    walked.Add(points[i]);
+                    continue;
+                }
+                for (int k = 1; k < leg.Count; k++) walked.Add(leg[k]);
+                // Точка игрока — сама, даже если сетка кончилась рядом с ней.
+                if (leg[leg.Count - 1].FlatDistance(points[i]) > 0.5f) walked.Add(points[i]);
+            }
+            return walked;
         }
 
         /// Хозяйство: −1 — нанять батрака, иначе — перевести одного на дело.

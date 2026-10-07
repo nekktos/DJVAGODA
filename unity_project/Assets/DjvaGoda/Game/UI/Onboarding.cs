@@ -169,7 +169,7 @@ namespace DjvaGoda.Game
             {
                 new Step { Text = "Ты злодей. Всё вокруг — твоя зона. Осмотрись: пробегись и оглядись", Keys = WalkKeys,
                     Done = () => !Near(_spawn, LookedAround) },
-                new Step { Text = "Строить пока не на что. Набери сам: камень и золото — в микро-шахте к югу от форта, дерево — в роще у стены",
+                new Step { Text = "Строить пока не на что. Набери сам: камень и золото — в микро-шахте к западу от форта, дерево — в роще у северной стены",
                     Keys = () => K("weapon_4") + " — молот, им камень бьётся вдвое · " + K("attack") + " по залежи или дереву",
                     Done = () => Wallet.CanAfford(Res.BuildingCost(BuildingKind.Storage)) || Has(BuildingKind.Storage),
                     Place = "микро-шахта", At = MapLayout.MicroMine },
@@ -191,7 +191,7 @@ namespace DjvaGoda.Game
                 new Step { Text = "Обозу нужна лошадь, а лошадь продают в конюшне. Поставь её и купи первую",
                     Keys = () => "сверху: " + K("build_stable") + " — конюшня, нужно " + Price(BuildingKind.Stable) + " · у конюшни " + K("interact") + " — купить лошадь",
                     Done = () => Wallet.Horses > 0, Place = "своя база", At = home },
-                new Step { Text = "Железа у форта — пара жил, и они кончатся. Ближняя железная шахта, Тихая, — на опушке леса эльфов к юго-западу от форта: нарисуй туда маршрут обоза",
+                new Step { Text = "Железа у форта — пара жил, и они кончатся. Ближняя железная шахта, Тихая, — в лесу к северу от перевала, на этом берегу реки: нарисуй туда маршрут обоза",
                     Keys = () => "сверху: " + K("route") + " — рисовать, ЛКМ — точки, последняя у шахты, Enter — отправить",
                     Done = () => Wallet.GetAmount(ResourceKind.Iron) >= 40, Place = "шахта", At = IronMine(Faction.Villain) },
                 new Step { Text = "Воевать пока некем. Поставь казарму: бойцы берутся только из неё",
@@ -209,8 +209,8 @@ namespace DjvaGoda.Game
                 new Step { Text = "Кузня закаляет оружие за железо и уголь. Уголь — в угольной шахте в лесу эльфов, везёт обоз",
                     Keys = () => "сверху: " + K("build_forge") + " — кузня, нужно " + Price(BuildingKind.Forge) + " · у кузни " + K("interact") + " — закалить · шаг необязательный",
                     Done = () => Has(BuildingKind.Forge), Skip = () => !Wallet.CanAfford(Res.BuildingCost(BuildingKind.Forge)), Place = "своя база", At = home },
-                new Step { Text = "Вот ради чего всё: замок людей на северо-западе, на том конце тракта. Сходи посмотри, что тебя ждёт",
-                    Keys = () => "тракт идёт на запад через лес · на плато ведёт пандус с юга", Done = () => Near(MatchState.Palace, 150f), Place = "дворец", At = MatchState.Palace, Near = 150f },
+                new Step { Text = "Вот ради чего всё: замок людей в северо-западном углу, на том конце тракта. Сходи посмотри, что тебя ждёт",
+                    Keys = () => "из гор — через перевал, тракт идёт на северо-запад через лес · на плато ведёт пандус с юга", Done = () => Near(MatchState.Palace, 150f), Place = "дворец", At = MatchState.Palace, Near = 150f },
                 new Step { Text = "В своей лавке у форта — чёрная кираса: режет урон почти на пятую часть",
                     Keys = () => K("interact") + " у прилавка · цена " + Res.FormatCost(Res.ArmorCost(Faction.Villain, 1)) + " · шаг необязательный",
                     Done = () => Near(MapLayout.Traders[(int)Faction.Villain], Shop.TraderRange),
@@ -225,7 +225,7 @@ namespace DjvaGoda.Game
         {
             return new List<Step>
             {
-                new Step { Text = "Ты лесной эльф. Твой лес — Изумрудное Сердце посреди карты, все шахты — в нём. Осмотрись", Keys = WalkKeys,
+                new Step { Text = "Ты лесной эльф. Твой лес — вся карта, кроме замка людей и гор злодея; все шахты — в нём. Осмотрись", Keys = WalkKeys,
                     Done = () => !Near(_spawn, LookedAround) },
                 new Step { Text = "Лавка — твоя и рядом. Запомни место: сюда носить награбленное и здесь же покупать",
                     Keys = () => K("interact") + " у прилавка · денег пока нет, они с грабежа · чужие лавки тебя не обслужат",
@@ -236,7 +236,7 @@ namespace DjvaGoda.Game
                 new Step { Text = "Живёшь ты грабежом. Чужие обозы идут по тракту — перекрёсток к югу от поселения",
                     Keys = () => K("interact") + " у вставшей повозки — выпрячь лошадей",
                     Done = () => Near(MapLayout.Workbench, Arrived), Place = "перекрёсток", At = MapLayout.Workbench },
-                new Step { Text = "Верни древние земли: уничтожь злодея и стражу. Злодей — в цитадели на востоке, стража — в замке на северо-западе",
+                new Step { Text = "Верни древние земли: уничтожь злодея и стражу. Злодей — в цитадели в юго-восточном углу за горами (вход — перевал), стража — в замке в северо-западном углу",
                     Keys = () => "на плато замка ведёт пандус с юга · " + CaptureRule(), Done = () => false, Live = true, Place = "дворец", At = MatchState.Palace },
             };
         }

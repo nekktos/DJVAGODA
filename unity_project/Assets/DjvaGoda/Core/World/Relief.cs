@@ -76,12 +76,14 @@ namespace DjvaGoda.Core
             spots.Add(Spot(MapLayout.Crossroads));
             var emperor = MapLayout.PalaceCentre;
             spots.Add(new FlatSpot(emperor.X, emperor.Z, PlateauFlat, PlateauFade));
-            var fort = MapLayout.VillainCentre + WorldPlan.FortOffset;
-            spots.Add(new FlatSpot(fort.X, fort.Z, ZoneFlat, ZoneFade));
+            var fort = MapLayout.FortCentre;
+            spots.Add(new FlatSpot(fort.X, fort.Z, ZoneFlat + 40f, ZoneFade + 20f));
             spots.Add(Spot(MapLayout.MicroMine));
+            spots.Add(Spot(MapLayout.VillainPass));
+            spots.Add(Spot(MapLayout.CastleFork));
             foreach (var hamlet in MapLayout.Hamlets) spots.Add(Spot(hamlet));
             foreach (var mark in new[] { MapLayout.Watchtower, MapLayout.AncientRuins, MapLayout.AncientPortal,
-                         MapLayout.MilitaryCamp, MapLayout.ElfCampEast, MapLayout.VillainCamp })
+                         MapLayout.MilitaryCamp, MapLayout.ElfCampEast, MapLayout.VillainCamp, MapLayout.Port, WorldPlan.ElfCampWest })
                 spots.Add(Spot(mark));
             foreach (var mine in MapLayout.Mines)
             {
@@ -112,8 +114,9 @@ namespace DjvaGoda.Core
         public float Mask(float x, float z)
         {
             float m = 1f;
-            // Дороги — отрезки MapLayout.Roads.
+            // Дороги и река — отрезки MapLayout.Roads и MapLayout.River.
             m = Math.Min(m, Ramp(MapLayout.DistanceToRoad(x, z), RoadFlat, RoadFade));
+            m = Math.Min(m, Ramp(MapLayout.DistanceToRiver(x, z), RoadFlat, RoadFade));
             foreach (var spot in _spots)
             {
                 float dx = x - spot.X;
@@ -123,6 +126,10 @@ namespace DjvaGoda.Core
             // Край карты: там стоят стены мира.
             float edge = _half - Math.Max(Math.Abs(x), Math.Abs(z));
             m = Math.Min(m, Ramp(edge, 0f, EdgeFlat));
+            // Море у западного края и плоский берег за ним.
+            m = Math.Min(m, Ramp(x + _half - MapLayout.SeaWidth, 0f, EdgeFlat));
+            // Поля людей у моря — равнина: холмы начинаются у кромки леса.
+            m = Math.Min(m, Ramp(x - (MapLayout.FieldsEdgeX - 40f), 0f, 80f));
             return Math.Max(0f, Math.Min(1f, m));
         }
 
