@@ -195,7 +195,7 @@ namespace DjvaGoda.Game
                 for (int i = 0; i < Res.Count; i++) need[i] += Res.At(gear, i);
             }
             var ore = StewardRules.PickOre(Treasury, forge, need);
-            var mine = MapLayout.MineOf(ore);
+            var mine = MapLayout.MineOf(ore, storage.At);
             if (!mine.HasValue) return;
             int team = Mathf.Min(StewardRules.AiHarness, free);
             Treasury.HorsesOut += team;

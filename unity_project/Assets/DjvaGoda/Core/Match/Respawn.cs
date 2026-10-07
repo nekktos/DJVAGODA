@@ -24,9 +24,9 @@ namespace DjvaGoda.Core
         /// Стартовые дома эльфов: три в кольце поселения.
         public static readonly V3[] ElfHousesStart =
         {
-            new V3(-255f, 0f, 300f),
-            new V3(-340.4f, 0f, 280.3f),
-            new V3(-310f, 0f, 343.9f),
+            MapLayout.ElvesCentre + new V3(45f, 0f, 0f),
+            MapLayout.ElvesCentre + new V3(-40.4f, 0f, -19.7f),
+            MapLayout.ElvesCentre + new V3(-10f, 0f, 43.9f),
         };
 
         /// Сколько домов могут держать эльфы: пять на игрока, не меньше чем на одного

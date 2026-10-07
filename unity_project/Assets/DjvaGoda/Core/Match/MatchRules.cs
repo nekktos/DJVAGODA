@@ -23,7 +23,7 @@ namespace DjvaGoda.Core
 
     public class MatchState
     {
-        public static readonly V3 Palace = new V3(300f, 6f, 300f);
+        public static readonly V3 Palace = MapLayout.PalaceCentre + new V3(0f, 6f, 0f);
         public const float CaptureRadius = 34f;
         public const float CaptureSeconds = 20f;
         public const float DecayPerSecond = 0.06f;

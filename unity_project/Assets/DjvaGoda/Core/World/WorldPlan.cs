@@ -73,6 +73,7 @@ namespace DjvaGoda.Core
             BuildMines();
             BuildCrossroads();
             BuildHamlets();
+            BuildLandmarks();
             BuildHillTrees();
         }
 
@@ -134,11 +135,20 @@ namespace DjvaGoda.Core
             }
         }
 
+        /// Дороги — полосы вдоль отрезков MapLayout.Roads; на стыках внахлёст.
         void BuildRoads()
         {
             _group = "Roads";
-            Box(new V3(0f, 0.05f, 0f), new V3(MapLayout.WorldSize, 0.1f, 14f), "road").Decor = true;
-            Box(new V3(0f, 0.05f, 0f), new V3(14f, 0.1f, MapLayout.WorldSize), "road").Decor = true;
+            float width = MapLayout.RoadWidth;
+            foreach (var road in MapLayout.Roads)
+            {
+                var from = road.From;
+                var to = road.To;
+                float dx = to.X - from.X, dz = to.Z - from.Z;
+                float length = (float)Math.Sqrt(dx * dx + dz * dz);
+                var mid = new V3((from.X + to.X) * 0.5f, 0.05f, (from.Z + to.Z) * 0.5f);
+                Box(mid, new V3(width, 0.1f, length + width), "road", (float)Math.Atan2(dx, dz)).Decor = true;
+            }
         }
 
         void BuildElves()
@@ -173,8 +183,9 @@ namespace DjvaGoda.Core
             _group = "ZoneEmperor";
             Trader(MapLayout.Traders[2]);
             float top = MapLayout.PlateauHeight;
-            Box(new V3(c.X, top * 0.5f, c.Z), new V3(360f, top, 360f), "stone");
-            Add(PieceShape.Ramp, new V3(c.X, -1f, c.Z - 225f),
+            float plateau = MapLayout.PlateauHalf * 2f;
+            Box(new V3(c.X, top * 0.5f, c.Z), new V3(plateau, top, plateau), "stone");
+            Add(PieceShape.Ramp, new V3(MapLayout.RampFoot.X, -1f, MapLayout.RampFoot.Z),
                 new V3(MapLayout.RampWidth, top, MapLayout.RampRun), "stone", 0f);
 
             float w = CourtWall;
@@ -211,7 +222,7 @@ namespace DjvaGoda.Core
             _group = "ZoneVillain";
             Trader(MapLayout.Traders[0]);
             MicroMine();
-            BuildRidge(c, new Rng(2989));
+            BuildMountains(new Rng(2989));
 
             var f = c + FortOffset;
             float w = FortHalf;
@@ -226,15 +237,37 @@ namespace DjvaGoda.Core
             Box(new V3(f.X, 16f, f.Z + 20f), new V3(40f, 32f, 40f), "dark_stone").Detail = "keep";
             for (int side = -1; side <= 1; side += 2) Ruin(new V3(f.X + side * 45f, 0f, f.Z - 30f));
 
+            // Роща для лесорубов полукругом к югу от стены — мимо тракта,
+            // рудника и лагеря.
             var grove = new Rng(4231);
-            for (int i = 0; i < 26; i++)
+            for (int placed = 0, tries = 0; placed < GroveTrees && tries < 400; tries++)
             {
                 double a = Range(grove, 0.18f, 0.82f) * Math.PI;
                 float r = Range(grove, 96f, 132f);
                 float x = f.X + (float)Math.Cos(a) * r, z = f.Z - (float)Math.Sin(a) * r;
+                var at = new V3(x, 0f, z);
+                if (MapLayout.DistanceToRoad(x, z) < 14f || at.FlatDistance(MapLayout.MicroMine) < 26f
+                    || at.FlatDistance(MapLayout.VillainCamp) < 34f) continue;
                 Harvestable(Tree(x, z, Range(grove, 9f, 15f)), ResourceKind.Wood, 0);
+                placed++;
+            }
+            // Выжженная земля у цитадели: тёмные камни без добычи.
+            var ash = new Rng(6061);
+            for (int i = 0; i < 18; i++)
+            {
+                double a = Range(ash, 0f, 2f) * Math.PI;
+                float r = Range(ash, 100f, 170f);
+                var at = new V3(f.X + (float)Math.Cos(a) * r, 0f, f.Z - (float)Math.Sin(a) * r);
+                if (MapLayout.DistanceToRoad(at.X, at.Z) < 14f || at.FlatDistance(MapLayout.MicroMine) < 26f
+                    || at.FlatDistance(MapLayout.VillainCamp) < 34f || at.X > MapLayout.MountainX - 50f
+                    || (Math.Abs(at.X - f.X) < w + 20f && Math.Abs(at.Z - f.Z) < w + 20f)) continue;
+                float s = Range(ash, 2f, 4f);
+                Rock(new V3(at.X, _relief.Height(at.X, at.Z), at.Z), new V3(s, s * 0.6f, s),
+                    -(float)(ash.NextDouble() * 2 * Math.PI), ash.Next(1 << 30)).Material = "dark_stone";
             }
         }
+
+        public const int GroveTrees = 26;
 
         void MicroMine()
         {
@@ -253,7 +286,7 @@ namespace DjvaGoda.Core
                     ResourceKind.Coal, Res.MicroCoalHitsEach);
         }
 
-        void Ruin(V3 at)
+        void Ruin(V3 at, string material = "dark_stone")
         {
             float[][] pieces =
             {
@@ -262,45 +295,48 @@ namespace DjvaGoda.Core
                 new[] { -3f, 9.5f, 7f, 1.1f, 1.2f },
             };
             foreach (var p in pieces)
-                Box(new V3(at.X + p[0], p[3] * 0.5f, at.Z - p[1]), new V3(p[2], p[3], p[4]), "dark_stone");
+                Box(new V3(at.X + p[0], p[3] * 0.5f, at.Z - p[1]), new V3(p[2], p[3], p[4]), material);
             for (int i = 0; i < 2; i++)
                 Box(new V3(at.X - 4f + i * 7f, 0.25f, at.Z - 1f + i * 3f), new V3(0.5f, 0.5f, 7f), "trunk", -(0.4f + i * 0.9f));
         }
 
-        /// Гряда гор полукругом за фортом, с наружной стороны зоны.
-        void BuildRidge(V3 c, Rng rng)
+        /// Тёмные горы (концепт): хребет вдоль восточного края за цитаделью —
+        /// выше всего напротив неё, — и северные горы от угла на запад.
+        /// Перед хребтом — осыпь валунов.
+        void BuildMountains(Rng rng)
         {
-            var outward = new V3(c.X, 0f, c.Z).Normalized();
-            // Угол обходит по часовой стрелке, если смотреть сверху: тот же
-            // обход, что в Godot-версии, — и та же гряда.
-            double mid = Math.Atan2(-outward.Z, outward.X);
-            double span = Math.PI * 1.05;
-            float radius = MapLayout.ZoneHalf - 60f;
-            const int peaks = 15;
-            for (int i = 0; i < peaks; i++)
+            float half = MapLayout.WorldSize * 0.5f;
+            const int east = 15;
+            for (int i = 0; i < east; i++)
             {
-                float t = (float)i / (peaks - 1);
-                double a = mid + (t - 0.5) * span;
-                float crest = (float)Math.Sin(t * Math.PI);
-                float height = 16f + crest * 52f + Range(rng, -5f, 5f);
-                float width = 52f + crest * 30f + Range(rng, -6f, 6f);
-                float x = c.X + (float)Math.Cos(a) * radius + Range(rng, -14f, 14f);
-                float z = c.Z - (float)Math.Sin(a) * radius - Range(rng, -14f, 14f);
-                var peak = Add(PieceShape.Peak, new V3(x, 0f, z), new V3(width, height, width * Range(rng, 0.8f, 1.15f)),
-                    "rock", -(float)(rng.NextDouble() * 2 * Math.PI));
-                peak.ShapeSeed = rng.Next(1 << 30);
+                float t = (float)i / (east - 1);
+                float z = -half + 40f + t * (MapLayout.WorldSize - 80f) + Range(rng, -12f, 12f);
+                float crest = (float)Math.Exp(-Math.Pow((z - MapLayout.VillainCentre.Z) / 260f, 2));
+                Peak(new V3(MapLayout.MountainX + Range(rng, -10f, 12f), 0f, z), 30f + crest * 40f + Range(rng, -5f, 5f),
+                    60f + crest * 22f + Range(rng, -6f, 6f), rng);
             }
-            for (int i = 0; i < 22; i++)
+            const int north = 6;
+            for (int i = 0; i < north; i++)
             {
-                float t = (float)rng.NextDouble();
-                double a = mid + (t - 0.5) * span;
-                float crest = (float)Math.Sin(t * Math.PI);
-                float back = radius - Range(rng, 34f, 62f);
-                float s = 7f + crest * 9f + Range(rng, -2f, 3f);
-                Rock(new V3(c.X + (float)Math.Cos(a) * back, 0f, c.Z - (float)Math.Sin(a) * back),
-                    new V3(s, s * Range(rng, 0.5f, 0.8f), s * Range(rng, 0.7f, 1.2f)),
-                    -(float)(rng.NextDouble() * 2 * Math.PI), rng.Next(1 << 30));
+                float x = MapLayout.MountainX - 70f - i * 60f + Range(rng, -10f, 10f);
+                Peak(new V3(x, 0f, half - 40f + Range(rng, -8f, 6f)), 24f + (north - i) * 5f + Range(rng, -4f, 4f),
+                    54f + Range(rng, -6f, 6f), rng);
             }
+            for (int i = 0; i < 24; i++)
+            {
+                float z = Range(rng, -half + 60f, half - 60f);
+                float x = MapLayout.MountainX - Range(rng, 30f, 46f);
+                float s = Range(rng, 6f, 13f);
+                Rock(new V3(x, 0f, z), new V3(s, s * Range(rng, 0.5f, 0.8f), s * Range(rng, 0.7f, 1.2f)),
+                    -(float)(rng.NextDouble() * 2 * Math.PI), rng.Next(1 << 30)).Material = "dark_stone";
+            }
+        }
+
+        void Peak(V3 at, float height, float width, Rng rng)
+        {
+            var peak = Add(PieceShape.Peak, at, new V3(width, height, width * Range(rng, 0.8f, 1.15f)),
+                "rock", -(float)(rng.NextDouble() * 2 * Math.PI));
+            peak.ShapeSeed = rng.Next(1 << 30);
         }
 
         /// Шахты: глыба 34×16 на рельефе, вход прочь от поселения, куча руды сбоку.
@@ -330,28 +366,107 @@ namespace DjvaGoda.Core
             Box(new V3(bench.X, 1.2f, bench.Z), new V3(6f, 2.4f, 3f), "wood").Detail = "bench";
             Box(new V3(bench.X, 2.7f, bench.Z), new V3(6.6f, 0.6f, 3.6f), "stone");
             Cylinder(new V3(bench.X - 3.6f, 2f, bench.Z), 0.4f, 4f, "accent");
-            Cylinder(new V3(0f, 6f, 0f), 3f, 12f, "marble");
-            Box(new V3(0f, 13f, 0f), new V3(4f, 2f, 4f), "accent");
+            // Верстовой столб на стыке тропы и тракта — у обочины, не на дороге.
+            var o = MapLayout.Crossroads;
+            Cylinder(new V3(o.X + 14f, 6f, o.Z + 14f), 3f, 12f, "marble");
+            Box(new V3(o.X + 14f, 13f, o.Z + 14f), new V3(4f, 2f, 4f), "accent");
             for (int i = 0; i < 3; i++)
-                Box(new V3(30f + i * 12f, 0.4f + i * 0.8f, -25f), new V3(10f, 0.8f + i * 1.6f, 10f), "stone");
+                Box(new V3(o.X + 30f + i * 12f, 0.4f + i * 0.8f, o.Z - 25f), new V3(10f, 0.8f + i * 1.6f, 10f), "stone");
 
-            // Стартовое сырьё у перекрёстка: четырнадцать деревьев и девять камней.
+            // Стартовое сырьё у перекрёстка: четырнадцать деревьев и девять камней,
+            // мимо дорог и верстака.
             var rng = new Rng(7717);
-            for (int i = 0; i < 14; i++)
+            for (int placed = 0, tries = 0; placed < CrossroadsTrees && tries < 300; tries++)
             {
                 double a = rng.NextDouble() * 2 * Math.PI;
                 float r = Range(rng, 26f, 60f);
-                Harvestable(Tree((float)Math.Cos(a) * r, -((float)Math.Sin(a) * r + 30f), Range(rng, 9f, 15f)), ResourceKind.Wood, 0);
+                float x = o.X + (float)Math.Cos(a) * r, z = o.Z - ((float)Math.Sin(a) * r + 30f);
+                float height = Range(rng, 9f, 15f);
+                if (!CrossroadsFree(x, z)) continue;
+                Harvestable(Tree(x, z, height), ResourceKind.Wood, 0);
+                placed++;
             }
-            for (int i = 0; i < 9; i++)
+            for (int placed = 0, tries = 0; placed < CrossroadsStones && tries < 300; tries++)
             {
                 double a = rng.NextDouble() * 2 * Math.PI;
                 float r = Range(rng, 30f, 65f);
                 float s = Range(rng, 3f, 5.5f);
-                var foot = new V3((float)Math.Cos(a) * r - 35f, 0f, -((float)Math.Sin(a) * r + 5f));
-                Harvestable(Rock(foot, new V3(s, s * 0.75f, s * Range(rng, 0.75f, 1.15f)), -(float)(rng.NextDouble() * 2 * Math.PI), rng.Next(1 << 30)),
-                    ResourceKind.Stone, 0);
+                var foot = new V3(o.X + (float)Math.Cos(a) * r - 35f, 0f, o.Z - ((float)Math.Sin(a) * r + 5f));
+                float depth = Range(rng, 0.75f, 1.15f);
+                float yaw = -(float)(rng.NextDouble() * 2 * Math.PI);
+                int seed = rng.Next(1 << 30);
+                if (!CrossroadsFree(foot.X, foot.Z)) continue;
+                Harvestable(Rock(foot, new V3(s, s * 0.75f, s * depth), yaw, seed), ResourceKind.Stone, 0);
+                placed++;
             }
+        }
+
+        public const int CrossroadsTrees = 14;
+        public const int CrossroadsStones = 9;
+
+        static bool CrossroadsFree(float x, float z)
+        {
+            var at = new V3(x, 0f, z);
+            return MapLayout.DistanceToRoad(x, z) > 12f && at.FlatDistance(MapLayout.Workbench) > 10f
+                && at.FlatDistance(MapLayout.Crossroads + new V3(14f, 0f, 14f)) > 8f;
+        }
+
+        /// Приметы концепта: сторожевая башня, древние руины и портал, лагеря.
+        /// Только вид и укрытие — в правилах игры их нет.
+        void BuildLandmarks()
+        {
+            _group = "Landmarks";
+            var tower = MapLayout.Watchtower;
+            Cylinder(new V3(tower.X, 13f, tower.Z), 6f, 26f, "stone").Detail = "tower:roof";
+            Box(new V3(tower.X, 1.5f, tower.Z - 7f), new V3(3f, 3f, 2f), "wood");
+
+            var ruins = MapLayout.AncientRuins;
+            Ruin(ruins, "stone");
+            var rng = new Rng(5150);
+            for (int i = 0; i < 7; i++)
+            {
+                double a = 2 * Math.PI * i / 7.0;
+                float h = Range(rng, 2f, 9f);
+                Cylinder(new V3(ruins.X + (float)Math.Cos(a) * 24f, h * 0.5f, ruins.Z - (float)Math.Sin(a) * 24f), 1.3f, h, "marble");
+            }
+
+            // Портал: две колонны и перемычка в кольце стоячих камней.
+            var portal = MapLayout.AncientPortal;
+            for (int side = -1; side <= 1; side += 2)
+                Cylinder(new V3(portal.X + side * 5f, 5f, portal.Z), 1.4f, 10f, "dark_stone");
+            Box(new V3(portal.X, 10.8f, portal.Z), new V3(13f, 1.6f, 2.4f), "dark_stone");
+            for (int i = 0; i < 9; i++)
+            {
+                double a = 2 * Math.PI * i / 9.0 + 0.2;
+                float h = Range(rng, 3.5f, 6f);
+                Box(new V3(portal.X + (float)Math.Cos(a) * 18f, h * 0.5f, portal.Z - (float)Math.Sin(a) * 18f),
+                    new V3(1.8f, h, 1.2f), "stone", (float)-a);
+            }
+
+            Camp(MapLayout.MilitaryCamp, "linen", 6, rng);
+            Camp(MapLayout.ElfCampEast, "foliage", 4, rng);
+            Camp(MapLayout.ElvesCentre + new V3(-150f, 0f, 150f), "foliage", 3, rng);
+            Camp(MapLayout.VillainCamp, "leather", 5, rng);
+        }
+
+        /// Лагерь: шатры кругом, костровище посередине, шест со знаменем.
+        void Camp(V3 at, string cloth, int tents, Rng rng)
+        {
+            for (int i = 0; i < tents; i++)
+            {
+                double a = 2 * Math.PI * i / tents + Range(rng, -0.2f, 0.2f);
+                float r = Range(rng, 12f, 16f);
+                var p = new V3(at.X + (float)Math.Cos(a) * r, 0f, at.Z - (float)Math.Sin(a) * r);
+                float size = Range(rng, 3f, 4.2f);
+                Cone(new V3(p.X, size * 0.6f, p.Z), size, size * 1.2f, cloth);
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                double a = 2 * Math.PI * i / 6.0;
+                Box(new V3(at.X + (float)Math.Cos(a) * 1.6f, 0.25f, at.Z - (float)Math.Sin(a) * 1.6f), new V3(0.8f, 0.5f, 0.8f), "stone");
+            }
+            Cylinder(new V3(at.X + 5f, 4f, at.Z + 5f), 0.25f, 8f, "wood");
+            Box(new V3(at.X + 6.3f, 7f, at.Z + 5f), new V3(2.4f, 1.6f, 0.1f), "accent");
         }
 
         /// Хутора — «древние земли» для заданий эльфов: пять домиков вокруг колодца.
@@ -393,7 +508,9 @@ namespace DjvaGoda.Core
             for (int i = 0; i < 10; i++)
             {
                 var p = c + new V3(Range(rng, -260f, 260f), 0f, -Range(rng, -260f, 260f));
-                if (p.FlatDistance(c) < 90f) continue;
+                float edge = MapLayout.WorldSize * 0.5f - 40f;
+                if (p.FlatDistance(c) < 90f || Math.Abs(p.X) > edge || Math.Abs(p.Z) > edge
+                    || MapLayout.OnPlateau(p.X, p.Z, 30f) || MapLayout.DistanceToRoad(p.X, p.Z) < 36f) continue;
                 Box(new V3(p.X, 0.15f, p.Z), new V3(60f, 0.3f, 40f), "foliage", -(float)(rng.NextDouble() * Math.PI)).Decor = true;
             }
         }

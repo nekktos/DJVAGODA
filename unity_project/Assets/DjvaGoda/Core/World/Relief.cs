@@ -73,9 +73,16 @@ namespace DjvaGoda.Core
             foreach (var zone in MapLayout.ZoneCenters) spots.Add(new FlatSpot(zone.X, zone.Z, ZoneFlat, ZoneFade));
             foreach (var trader in MapLayout.Traders) spots.Add(Spot(trader));
             spots.Add(Spot(MapLayout.Workbench));
-            spots.Add(new FlatSpot(0f, 0f, SpotFlat, SpotFade));
-            var emperor = MapLayout.ZoneCenters[(int)Zone.Emperor];
+            spots.Add(Spot(MapLayout.Crossroads));
+            var emperor = MapLayout.PalaceCentre;
             spots.Add(new FlatSpot(emperor.X, emperor.Z, PlateauFlat, PlateauFade));
+            var fort = MapLayout.VillainCentre + WorldPlan.FortOffset;
+            spots.Add(new FlatSpot(fort.X, fort.Z, ZoneFlat, ZoneFade));
+            spots.Add(Spot(MapLayout.MicroMine));
+            foreach (var hamlet in MapLayout.Hamlets) spots.Add(Spot(hamlet));
+            foreach (var mark in new[] { MapLayout.Watchtower, MapLayout.AncientRuins, MapLayout.AncientPortal,
+                         MapLayout.MilitaryCamp, MapLayout.ElfCampEast, MapLayout.VillainCamp })
+                spots.Add(Spot(mark));
             foreach (var mine in MapLayout.Mines)
             {
                 spots.Add(Spot(mine.At));
@@ -105,9 +112,8 @@ namespace DjvaGoda.Core
         public float Mask(float x, float z)
         {
             float m = 1f;
-            // Дороги — крест через центр карты.
-            m = Math.Min(m, Ramp(Math.Abs(x), RoadFlat, RoadFade));
-            m = Math.Min(m, Ramp(Math.Abs(z), RoadFlat, RoadFade));
+            // Дороги — отрезки MapLayout.Roads.
+            m = Math.Min(m, Ramp(MapLayout.DistanceToRoad(x, z), RoadFlat, RoadFade));
             foreach (var spot in _spots)
             {
                 float dx = x - spot.X;

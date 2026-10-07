@@ -22,15 +22,16 @@ namespace DjvaGoda.Game
 {
     public class MatchAi : MonoBehaviour
     {
-        /// Казарма стражи и её хозяйство (Godot-версия, z — в осях Unity).
-        public static readonly V3 GuardBarracks = new V3(332f, 6f, 238f);
+        /// Казарма стражи и её хозяйство во дворе замка (от центра дворца).
+        static readonly V3 Court = MapLayout.PalaceCentre + new V3(0f, 6f, 0f);
+        public static readonly V3 GuardBarracks = Court + new V3(32f, 0f, -62f);
         public static readonly KeyValuePair<BuildingKind, V3>[] GuardEstate =
         {
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, new V3(340f, 6f, 200f)),
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, new V3(220f, 6f, 210f)),
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, new V3(220f, 6f, 250f)),
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.House, new V3(380f, 6f, 240f)),
-            new KeyValuePair<BuildingKind, V3>(BuildingKind.Stable, new V3(380f, 6f, 200f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Storage, Court + new V3(40f, 0f, -100f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, Court + new V3(-80f, 0f, -90f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Farm, Court + new V3(-80f, 0f, -50f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.House, Court + new V3(80f, 0f, -60f)),
+            new KeyValuePair<BuildingKind, V3>(BuildingKind.Stable, Court + new V3(80f, 0f, -100f)),
         };
 
         /// Без сети (проверки) — включить вручную; по сети ИИ живёт только у хоста.

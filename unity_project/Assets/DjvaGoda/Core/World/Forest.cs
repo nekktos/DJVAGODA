@@ -1,5 +1,5 @@
-// Лес зоны эльфов (перенос forest.gd): 1700 деревьев кольцом вокруг поселения,
-// с неровной кромкой, поляной посередине и полянами под шахты.
+// Лес зоны эльфов (перенос forest.gd): 3200 деревьев кольцом вокруг поселения
+// посреди карты, с неровной кромкой, поляной посередине и полянами под шахты.
 //
 // Дерево адресуется НОМЕРОМ: хост рубит по номеру, клиенты валят по номеру,
 // опоздавшему досылают список поваленных. Зерно одно — лес одинаков у всех.
@@ -13,7 +13,7 @@ namespace DjvaGoda.Core
 {
     public class Forest
     {
-        public const int TreeCount = 1700;
+        public const int TreeCount = 3200;
         public const int Seed = 3615;
         public const float Clearing = 70f;
         public const float SolidRadius = 70f;
@@ -34,19 +34,34 @@ namespace DjvaGoda.Core
         readonly List<bool> _felled = new List<bool>();
         readonly Dictionary<long, List<int>> _cells = new Dictionary<long, List<int>>();
 
-        /// Лес карты: кольцо в зоне эльфов, поляны под все четыре шахты.
+        /// Лес карты — Изумрудное Сердце посреди мира: поляна поселения, поляны
+        /// под шахты, хутора, приметы и перекрёсток; просеки дорог; не заходит
+        /// на плато замка, к цитадели и в деревни людей.
         public static Forest ForMap()
         {
             var holes = new List<KeyValuePair<V3, float>>();
             foreach (var mine in MapLayout.Mines) holes.Add(new KeyValuePair<V3, float>(mine.At, MapLayout.MineClearing));
-            return new Forest(MapLayout.ZoneCenters[(int)Zone.Elves], MapLayout.ZoneHalf - 30f, Clearing, Seed, holes);
+            foreach (var hamlet in MapLayout.Hamlets) holes.Add(new KeyValuePair<V3, float>(hamlet, 48f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.Crossroads + new V3(-10f, 0f, -25f), 85f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.AncientRuins, 36f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.AncientPortal, 30f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.ElfCampEast, 26f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.ElvesCentre + new V3(-150f, 0f, 150f), 24f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.VillainCentre + WorldPlan.FortOffset, 150f));
+            holes.Add(new KeyValuePair<V3, float>(MapLayout.HumansCentre, 150f));
+            return new Forest(MapLayout.ElvesCentre, MapLayout.ForestRadius, Clearing, Seed, holes,
+                (x, z) => MapLayout.OnPlateau(x, z, 25f) || MapLayout.DistanceToRoad(x, z) < RoadClearance);
         }
 
-        public Forest(V3 centre, float radius, float clearing, int seed, IList<KeyValuePair<V3, float>> holes)
+        /// Просека: от оси дороги до ствола.
+        public const float RoadClearance = 16f;
+
+        public Forest(V3 centre, float radius, float clearing, int seed, IList<KeyValuePair<V3, float>> holes,
+            Func<float, float, bool> blocked = null)
         {
             var rng = new Rng(seed);
             int attempts = 0;
-            while (Positions.Count < TreeCount && attempts < TreeCount * 4)
+            while (Positions.Count < TreeCount && attempts < TreeCount * 6)
             {
                 attempts++;
                 double a = rng.NextDouble() * 2.0 * Math.PI;
@@ -55,7 +70,7 @@ namespace DjvaGoda.Core
                 float r = (float)(Math.Sqrt(rng.NextDouble()) * radius * wobble);
                 if (r < clearing) continue;
                 var p = new V3(centre.X + (float)Math.Cos(a) * r, 0f, centre.Z - (float)Math.Sin(a) * r);
-                if (InHole(p, holes)) continue;
+                if (InHole(p, holes) || (blocked != null && blocked(p.X, p.Z))) continue;
                 Positions.Add(p);
                 Scales.Add(0.75f + (float)rng.NextDouble() * 0.7f);
                 _hits.Add(Res.SourceHits);

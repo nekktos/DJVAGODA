@@ -146,6 +146,10 @@ namespace DjvaGoda.EditorTools
                 return item;
             }
             EditorUtility.CopySerialized(item, existing);
+            // CopySerialized меняет данные меша, но не перезаливает их в видеокарту:
+            // редактор рисовал прежний рельеф поверх новых дорог и плато.
+            var mesh = existing as Mesh;
+            if (mesh != null) mesh.vertices = mesh.vertices;
             existing.name = Path.GetFileNameWithoutExtension(file);
             EditorUtility.SetDirty(existing);
             return existing;

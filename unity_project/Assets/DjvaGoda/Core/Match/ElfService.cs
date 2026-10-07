@@ -4,7 +4,7 @@ namespace DjvaGoda.Core
 {
     public class ElfTaskRecord
     {
-        public static readonly V3 ElderPosition = new V3(-286f, 0f, 316f);
+        public static readonly V3 ElderPosition = MapLayout.ElvesCentre + new V3(14f, 0f, 16f);
         public const float ElderRespawn = 180f;
 
         public ElfTaskKind? Task;

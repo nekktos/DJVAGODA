@@ -181,7 +181,7 @@ namespace DjvaGoda.Core
     /// Он же помнит грабителей обоза стражи — на них висит погоня.
     public class CommanderPost
     {
-        public static readonly V3 Position = new V3(270f, 6f, 235f);
+        public static readonly V3 Position = MapLayout.PalaceCentre + new V3(-30f, 6f, -65f);
         public const float RespawnDelay = 180f;
         /// Двор, который он обороняет: за его пределы за целью не идёт.
         public const float Leash = 45f;
